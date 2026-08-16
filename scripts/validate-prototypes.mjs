@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import {
   assertAllowedEnvironmentReferences,
   assertPrototypeName,
+  readDirectoryIfExists,
 } from "./artifact-utils.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -36,7 +37,7 @@ const validateSourceDirectory = async (directory, prototype) => {
   }
 };
 
-const entries = await readdir(prototypesRoot, { withFileTypes: true });
+const entries = await readDirectoryIfExists(prototypesRoot, { withFileTypes: true });
 let packageCount = 0;
 
 for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {

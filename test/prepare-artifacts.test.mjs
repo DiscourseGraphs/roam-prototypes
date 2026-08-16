@@ -24,6 +24,20 @@ const withRepository = async (callback) => {
   }
 };
 
+test("prepares an empty manifest when the prototypes directory does not exist", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "roam-empty-artifacts-test-"));
+  try {
+    const manifest = await prepareArtifacts({ repoRoot: root });
+    assert.deepEqual(manifest, { schemaVersion: 1, prototypes: [] });
+    assert.deepEqual(
+      JSON.parse(await readFile(path.join(root, "packaged-artifacts", "manifest.json"))),
+      manifest,
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("packages only the four public artifact names", async () => {
   await withRepository(async ({ root }) => {
     const manifest = await prepareArtifacts({ repoRoot: root });

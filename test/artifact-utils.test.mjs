@@ -5,13 +5,23 @@ import {
   assertPrototypeName,
   assertPublicArtifactSafe,
   branchToSlug,
+  readDirectoryIfExists,
   releasePath,
 } from "../scripts/artifact-utils.mjs";
 
 test("normalizes branches for one preview URL segment", () => {
   assert.equal(
-    branchToSlug("agent/Personal Homepage_shell"),
-    "agent--personal-homepage-shell",
+    branchToSlug("agent/Example Prototype_shell"),
+    "agent--example-prototype-shell",
+  );
+});
+
+test("treats a missing optional directory as empty", async () => {
+  assert.deepEqual(
+    await readDirectoryIfExists("directory-that-does-not-exist", {
+      withFileTypes: true,
+    }),
+    [],
   );
 });
 
@@ -44,9 +54,9 @@ test("allows only build-time environment constants in browser source", () => {
 });
 
 test("validates lowercase kebab-case prototype names", () => {
-  assert.equal(assertPrototypeName("personal-homepage"), "personal-homepage");
-  assert.throws(() => assertPrototypeName("Personal Homepage"));
-  assert.throws(() => assertPrototypeName("../personal-homepage"));
+  assert.equal(assertPrototypeName("example-prototype"), "example-prototype");
+  assert.throws(() => assertPrototypeName("Example Prototype"));
+  assert.throws(() => assertPrototypeName("../example-prototype"));
 });
 
 test("builds stable and preview Blob paths", () => {
@@ -54,19 +64,19 @@ test("builds stable and preview Blob paths", () => {
     releasePath({
       mode: "stable",
       branch: "main",
-      prototype: "personal-homepage",
+      prototype: "example-prototype",
       file: "extension.js",
     }),
-    "releases/prototypes/personal-homepage/extension.js",
+    "releases/prototypes/example-prototype/extension.js",
   );
   assert.equal(
     releasePath({
       mode: "preview",
-      branch: "agent/personal-homepage",
-      prototype: "personal-homepage",
+      branch: "agent/example-prototype",
+      prototype: "example-prototype",
       file: "README.md",
     }),
-    "releases/prototypes/previews/agent--personal-homepage/personal-homepage/README.md",
+    "releases/prototypes/previews/agent--example-prototype/example-prototype/README.md",
   );
 });
 
