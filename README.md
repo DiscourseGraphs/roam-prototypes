@@ -18,7 +18,7 @@ Pull-request previews:
 https://discoursegraphs.com/releases/prototypes/previews/<branch-slug>/<prototype>/
 ```
 
-Branch slugs are lowercase. A slash becomes `--`, and other non-alphanumeric runs become `-`. For example, `agent/personal-homepage-shell` becomes `agent--personal-homepage-shell`.
+Branch slugs are lowercase. A slash becomes `--`, and other non-alphanumeric runs become `-`. For example, `agent/example-shell` becomes `agent--example-shell`.
 
 Roam expects an installable release directory to contain:
 
@@ -36,8 +36,7 @@ It may also contain:
 roam-prototypes/
 ├── packages/
 │   └── extension-base/      # Shared configuration, template, and Roam guidance
-├── prototypes/
-│   └── personal-homepage/   # Reserved; implementation awaits an approved spec
+├── prototypes/              # Generated prototype workspaces appear here
 ├── scripts/                 # Generator, validation, and trusted publishing
 ├── test/                    # Generator and deployment-contract tests
 └── .github/workflows/

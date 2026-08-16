@@ -57,7 +57,7 @@ test(
         `${JSON.stringify({ private: true, packageManager: "pnpm@10.15.1" }, null, 2)}\n`,
         "utf8",
       );
-      const placeholder = path.join(repoRoot, "prototypes", "personal-homepage");
+      const placeholder = path.join(repoRoot, "prototypes", "readme-only-placeholder");
       await mkdir(placeholder, { recursive: true });
       await writeFile(path.join(placeholder, "README.md"), "# Reserved\n", "utf8");
 
@@ -83,7 +83,7 @@ test(
         repoRoot,
       );
       assert.match(recursiveBuild, new RegExp(name));
-      assert.doesNotMatch(recursiveBuild, /personal-homepage@/);
+      assert.doesNotMatch(recursiveBuild, /readme-only-placeholder@/);
 
       for (const file of [
         "extension.js",

@@ -36,6 +36,15 @@ const SECRET_PATTERNS = [
   },
 ];
 
+export const readDirectoryIfExists = async (directory, options) => {
+  try {
+    return await readdir(directory, options);
+  } catch (error) {
+    if (error?.code === "ENOENT") return [];
+    throw error;
+  }
+};
+
 export const assertPrototypeName = (name) => {
   if (!PROTOTYPE_NAME.test(name)) {
     throw new Error(`Invalid prototype directory name: ${name}`);

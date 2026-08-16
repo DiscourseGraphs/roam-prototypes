@@ -5,6 +5,7 @@ import {
   ALLOWED_ARTIFACTS,
   assertAllowedEnvironmentReferences,
   assertPrototypeName,
+  readDirectoryIfExists,
   validateArtifactDirectory,
 } from "./artifact-utils.mjs";
 
@@ -69,7 +70,9 @@ export const prepareArtifacts = async ({
   await mkdir(resolvedOutput, { recursive: true });
 
   const prototypesRoot = path.join(resolvedRoot, "prototypes");
-  const entries = await readdir(prototypesRoot, { withFileTypes: true });
+  const entries = await readDirectoryIfExists(prototypesRoot, {
+    withFileTypes: true,
+  });
   const packaged = [];
 
   for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
