@@ -7,7 +7,6 @@ This is a pnpm monorepo for public, installable Roam developer-extension artifac
 - Always create a workspace with `pnpm create:prototype -- --name <kebab-case> --title "<title>" --description "<public description>"`.
 - Pass `--spec <file>` when a specification is provided. Read `SPEC.md` completely before implementation.
 - Use `--adopt-existing` only for a placeholder containing `README.md` and optional `SPEC.md`. Preserve those documents.
-- Do not scaffold or implement `personal-homepage` until its specification and follow-up instructions are available.
 - Do not copy the template by hand or create a branch/repository per prototype.
 
 ## Implementation rules
