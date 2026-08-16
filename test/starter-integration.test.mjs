@@ -72,10 +72,14 @@ test(
         skipInstall: true,
       });
 
-      run(
-        ["install", "--ignore-scripts", "--offline", "--lockfile=false", "--force"],
-        repoRoot,
-      );
+      const installArguments = [
+        "install",
+        "--ignore-scripts",
+        "--lockfile=false",
+        "--force",
+      ];
+      if (!process.env.CI) installArguments.push("--offline");
+      run(installArguments, repoRoot);
       run(["--dir", destination, "test"], repoRoot);
       const recursiveBuild = run(
         ["--recursive", "--if-present", "--filter", "./prototypes/**", "build"],
