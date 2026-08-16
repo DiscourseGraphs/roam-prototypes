@@ -34,16 +34,31 @@ It may also contain:
 
 ```text
 roam-prototypes/
+├── packages/
+│   └── extension-base/      # Shared configuration, template, and Roam guidance
 ├── prototypes/
 │   └── personal-homepage/   # Reserved; implementation awaits an approved spec
-├── scripts/                 # Artifact validation and trusted publishing
-├── test/                    # Deployment-contract tests
+├── scripts/                 # Generator, validation, and trusted publishing
+├── test/                    # Generator and deployment-contract tests
 └── .github/workflows/
     ├── ci.yml
     └── publish.yml
 ```
 
-An implemented prototype builds its public files into `prototypes/<prototype>/dist/`. The packaging step copies only the four allowlisted artifact names. A prototype without `dist/extension.js` is treated as non-installable and is not published.
+An implemented prototype builds its public files into `prototypes/<prototype>/dist/`. The packaging step copies only the four allowlisted artifact names. A prototype without `package.json` is a placeholder; a prototype without `dist/extension.js` is non-installable and is not published.
+
+## Create a prototype
+
+Node 22 and pnpm 10.15.1 are the repository standards. From the repository root:
+
+```text
+pnpm install --ignore-scripts
+pnpm create:prototype -- --name example --title "Example" --description "What the prototype explores."
+```
+
+Add `--spec path/to/SPEC.md` when a specification is available. The generator validates the slug, renders the canonical starter, declares the shared esbuild tooling, updates the pnpm workspace installation, and prints the build commands and release URLs. It also supports `--dry-run`, `--skip-install`, and `--adopt-existing`; see [CONTRIBUTING.md](CONTRIBUTING.md).
+
+For an LLM, a sufficient request is: “Create prototype `<name>` using the repository generator.” Give it the title, public description, and specification when available. Repository instructions in [AGENTS.md](AGENTS.md) cover the rest.
 
 ## Deployment design
 
@@ -65,4 +80,3 @@ gh secret set BLOB_READ_WRITE_TOKEN --repo DiscourseGraphs/roam-prototypes
 ```
 
 Do not commit the token or any other credential. See [SECURITY.md](SECURITY.md) and [CONTRIBUTING.md](CONTRIBUTING.md).
-

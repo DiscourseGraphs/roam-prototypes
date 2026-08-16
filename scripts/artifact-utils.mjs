@@ -10,6 +10,7 @@ export const ALLOWED_ARTIFACTS = Object.freeze([
 
 const MAX_ARTIFACT_BYTES = 10 * 1024 * 1024;
 const PROTOTYPE_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+const ALLOWED_ENV_REFERENCES = new Set(["NODE_ENV", "VERSION"]);
 
 const SECRET_PATTERNS = [
   {
@@ -40,6 +41,21 @@ export const assertPrototypeName = (name) => {
     throw new Error(`Invalid prototype directory name: ${name}`);
   }
   return name;
+};
+
+export const assertAllowedEnvironmentReferences = (source, label) => {
+  const allowedReference = new RegExp(
+    `(?<![\\w$.])process\\s*\\.\\s*env\\s*\\.\\s*(?:${[...ALLOWED_ENV_REFERENCES].join("|")})\\b`,
+    "g",
+  );
+  const withoutAllowedReferences = source.replace(allowedReference, "");
+  const environmentRoot =
+    /\bprocess\s*(?:(?:\?\.|\.)\s*env\b|\[\s*["']env["']\s*\])/;
+  if (environmentRoot.test(withoutAllowedReferences)) {
+    throw new Error(
+      `${label} uses process indirectly or references a disallowed environment value`,
+    );
+  }
 };
 
 export const branchToSlug = (branch) => {
@@ -115,4 +131,3 @@ export const validateArtifactDirectory = async (directory, prototype) => {
   }
   return files;
 };
-
