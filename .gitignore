@@ -1,8 +1,8 @@
 node_modules/
 packaged-artifacts/
 prototypes/*/dist/
+prototypes/starter-integration-*/
 *.log
 .env
 .env.*
 !.env.example
-

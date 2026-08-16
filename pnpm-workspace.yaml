@@ -1,0 +1,10 @@
+packages:
+  - "packages/*"
+  - "prototypes/*"
+
+catalog:
+  "@samepage/scripts": 0.75.7
+  jsdom: 30.0.1
+  roamjs-components: 0.88.4
+  use-sync-external-store: 1.6.0
+  vitest: 4.1.10

@@ -1,0 +1,24 @@
+{
+  "name": "__PROTOTYPE_NAME__",
+  "version": "0.0.0",
+  "private": true,
+  "description": __PROTOTYPE_DESCRIPTION_JSON__,
+  "type": "module",
+  "scripts": {
+    "start": "samepage dev",
+    "build": "samepage build --dry",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "roamjs-components": "catalog:",
+    "use-sync-external-store": "catalog:"
+  },
+  "devDependencies": {
+    "@samepage/scripts": "catalog:",
+    "jsdom": "catalog:",
+    "vitest": "catalog:"
+  },
+  "samepage": {
+    "extends": "__EXTENSION_BASE_PACKAGE__"
+  }
+}

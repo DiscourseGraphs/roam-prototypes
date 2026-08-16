@@ -17,23 +17,29 @@ jobs:
       - name: Check out source
         uses: actions/checkout@v6
 
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10.15.1
+          run_install: false
+
       - name: Set up Node.js
         uses: actions/setup-node@v6
         with:
           node-version: "22"
-          cache: npm
+          cache: pnpm
 
       - name: Install dependencies without lifecycle scripts
-        run: npm ci --ignore-scripts
+        run: pnpm install --frozen-lockfile --ignore-scripts
 
       - name: Test deployment contract
-        run: npm test
+        run: pnpm test
 
       - name: Build prototypes
-        run: npm run build
+        run: pnpm build
 
       - name: Prepare public artifacts
-        run: npm run prepare:artifacts
+        run: pnpm prepare:artifacts
 
       - name: Upload public artifact bundle
         uses: actions/upload-artifact@v7

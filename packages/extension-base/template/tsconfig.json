@@ -1,0 +1,16 @@
+{
+  "extends": "__EXTENSION_BASE_TSCONFIG__",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "~/*": [
+        "./src/*"
+      ]
+    }
+  },
+  "include": [
+    "src",
+    "tests",
+    "vitest.config.ts"
+  ]
+}

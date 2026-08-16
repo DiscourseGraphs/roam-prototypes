@@ -3,19 +3,20 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "workspaces": [
-    "prototypes/*"
-  ],
+  "packageManager": "pnpm@10.15.1",
   "scripts": {
-    "build": "node scripts/build.mjs",
+    "build": "node scripts/validate-prototypes.mjs && pnpm --recursive --if-present --filter './prototypes/**' build",
+    "create:prototype": "node scripts/create-prototype.mjs",
     "prepare:artifacts": "node scripts/prepare-artifacts.mjs",
     "publish": "node scripts/publish.mjs",
-    "test": "node --test"
+    "test": "node --test && pnpm --recursive --if-present --filter './prototypes/**' test",
+    "validate:prototypes": "node scripts/validate-prototypes.mjs"
   },
   "dependencies": {
     "@vercel/blob": "^2.8.0"
   },
   "engines": {
-    "node": ">=22"
+    "node": ">=22",
+    "pnpm": "10.15.1"
   }
 }
