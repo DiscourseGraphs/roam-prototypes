@@ -18,6 +18,8 @@ Pull-request previews:
 https://discoursegraphs.com/releases/prototypes/previews/<branch-slug>/<prototype>/
 ```
 
+After a preview is published, the workflow adds the exact Roam loading URL to the pull request as a **Roam prototype previews** comment.
+
 Branch slugs are lowercase. A slash becomes `--`, and other non-alphanumeric runs become `-`. For example, `agent/example-shell` becomes `agent--example-shell`.
 
 Roam expects an installable release directory to contain:
