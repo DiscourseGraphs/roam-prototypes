@@ -55,7 +55,10 @@ test("rejects secrets and disallowed environment references", async () => {
       "process.env.API_SECRET;",
       "utf8",
     );
-    await assert.rejects(prepareArtifacts({ repoRoot: root }), /disallowed process\.env/);
+    await assert.rejects(
+      prepareArtifacts({ repoRoot: root }),
+      /process indirectly or references a disallowed environment value/,
+    );
 
     await writeFile(
       path.join(root, "prototypes", "sample-prototype", "src", "index.ts"),

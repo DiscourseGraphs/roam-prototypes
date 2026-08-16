@@ -22,13 +22,24 @@ test("allows only build-time environment constants in browser source", () => {
       "extension.js",
     ),
   );
-  assert.throws(
-    () => assertAllowedEnvironmentReferences("process.env.API_KEY", "extension.js"),
-    /disallowed process\.env\.API_KEY/,
-  );
-  assert.throws(
-    () => assertAllowedEnvironmentReferences('process.env["API_KEY"]', "extension.js"),
-    /dynamic process\.env reference/,
+  for (const source of [
+    "process.env.API_KEY",
+    'process.env["API_KEY"]',
+    "const { API_KEY } = process.env;",
+    "const environment = process.env; environment.API_KEY;",
+    "globalThis.process.env.API_KEY",
+    'process["env"].API_KEY',
+  ]) {
+    assert.throws(
+      () => assertAllowedEnvironmentReferences(source, "extension.js"),
+      /process indirectly or references a disallowed environment value/,
+    );
+  }
+  assert.doesNotThrow(() =>
+    assertAllowedEnvironmentReferences(
+      "const result = processResults(input);",
+      "extension.js",
+    ),
   );
 });
 

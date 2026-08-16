@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
 import { cp, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -7,21 +6,14 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { createPrototype } from "../scripts/create-prototype.mjs";
 import { prepareArtifacts } from "../scripts/prepare-artifacts.mjs";
+import { runPnpmSync } from "../scripts/pnpm.mjs";
 
 const sourceRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const pnpmCli = process.env.npm_execpath || path.join(
-  path.dirname(process.execPath),
-  "node_modules",
-  "pnpm",
-  "bin",
-  "pnpm.cjs",
-);
 const run = (args, cwd) => {
-  const result = spawnSync(process.execPath, [pnpmCli, ...args], {
+  const result = runPnpmSync(args, {
     cwd,
     encoding: "utf8",
     env: process.env,
-    shell: false,
     timeout: 120_000,
   });
   if (result.error) throw result.error;

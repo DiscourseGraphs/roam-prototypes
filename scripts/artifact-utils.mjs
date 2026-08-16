@@ -44,16 +44,17 @@ export const assertPrototypeName = (name) => {
 };
 
 export const assertAllowedEnvironmentReferences = (source, label) => {
-  const bracketReference = /process\.env\s*\[/;
-  if (bracketReference.test(source)) {
-    throw new Error(`${label} uses a dynamic process.env reference`);
-  }
-
-  const references = source.matchAll(/process\.env\.([A-Za-z_][A-Za-z0-9_]*)/g);
-  for (const match of references) {
-    if (!ALLOWED_ENV_REFERENCES.has(match[1])) {
-      throw new Error(`${label} uses disallowed process.env.${match[1]}`);
-    }
+  const allowedReference = new RegExp(
+    `(?<![\\w$.])process\\s*\\.\\s*env\\s*\\.\\s*(?:${[...ALLOWED_ENV_REFERENCES].join("|")})\\b`,
+    "g",
+  );
+  const withoutAllowedReferences = source.replace(allowedReference, "");
+  const environmentRoot =
+    /\bprocess\s*(?:(?:\?\.|\.)\s*env\b|\[\s*["']env["']\s*\])/;
+  if (environmentRoot.test(withoutAllowedReferences)) {
+    throw new Error(
+      `${label} uses process indirectly or references a disallowed environment value`,
+    );
   }
 };
 

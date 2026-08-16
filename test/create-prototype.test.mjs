@@ -95,6 +95,33 @@ test("adopts README/SPEC-only placeholders without overwriting them", async () =
   });
 });
 
+test("preserves generated files when the workspace install fails", async () => {
+  await withSandbox(async ({ root, prototypesRoot }) => {
+    const specPath = path.join(root, "input.md");
+    const destination = path.join(prototypesRoot, "sample-prototype");
+    await writeFile(specPath, "# Keep this specification\n", "utf8");
+
+    await assert.rejects(
+      createPrototype(
+        options(prototypesRoot, {
+          specPath,
+          skipInstall: false,
+          install: () => {
+            throw new Error("pnpm is unavailable");
+          },
+        }),
+      ),
+      /Files were preserved; run pnpm install --ignore-scripts/,
+    );
+
+    assert.equal(
+      await readFile(path.join(destination, "SPEC.md"), "utf8"),
+      "# Keep this specification\n",
+    );
+    assert.ok(JSON.parse(await readFile(path.join(destination, "package.json"), "utf8")));
+  });
+});
+
 test("rejects invalid names, traversal, duplicates, and non-placeholder adoption", async () => {
   await withSandbox(async ({ prototypesRoot }) => {
     await assert.rejects(

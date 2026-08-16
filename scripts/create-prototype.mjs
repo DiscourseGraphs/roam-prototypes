@@ -1,4 +1,3 @@
-import { spawnSync } from "node:child_process";
 import {
   mkdir,
   readFile,
@@ -13,6 +12,7 @@ import {
   assertAllowedEnvironmentReferences,
   assertPrototypeName,
 } from "./artifact-utils.mjs";
+import { runPnpmSync } from "./pnpm.mjs";
 
 const scriptRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const unresolvedToken = /__[A-Z][A-Z0-9_]*__/g;
@@ -86,19 +86,11 @@ const validateExistingPlaceholder = async (directory) => {
   return new Set(entries.map((entry) => entry.name));
 };
 
-const installWorkspace = (repoRoot) => {
-  const pnpmCli = process.env.npm_execpath || path.join(
-    path.dirname(process.execPath),
-    "node_modules",
-    "pnpm",
-    "bin",
-    "pnpm.cjs",
-  );
-  const result = spawnSync(process.execPath, [pnpmCli, "install", "--ignore-scripts"], {
+export const installWorkspace = (repoRoot) => {
+  const result = runPnpmSync(["install", "--ignore-scripts"], {
     cwd: repoRoot,
     env: process.env,
     stdio: "inherit",
-    shell: false,
   });
   if (result.error) throw result.error;
   if (result.status !== 0) {
@@ -118,6 +110,7 @@ export const createPrototype = async ({
   prototypesRoot = path.join(repoRoot, "prototypes"),
   templateRoot = path.join(repoRoot, "packages", "extension-base", "template"),
   createdDate = new Date().toISOString().slice(0, 10),
+  install = installWorkspace,
 } = {}) => {
   assertPrototypeName(name || "");
   if (!title?.trim()) throw new Error("Prototype title is required");
@@ -219,7 +212,6 @@ export const createPrototype = async ({
       await writeFile(target, file.content, "utf8");
       writtenFiles.push(target);
     }
-    if (!skipInstall) installWorkspace(repoRoot);
   } catch (error) {
     if (createdDirectory) {
       await rm(destination, { recursive: true, force: true });
@@ -238,6 +230,17 @@ export const createPrototype = async ({
       );
     }
     throw error;
+  }
+
+  if (!skipInstall) {
+    try {
+      install(repoRoot);
+    } catch (error) {
+      throw new Error(
+        `Created ${name}, but pnpm install failed. Files were preserved; run pnpm install --ignore-scripts from the repository root. ${error instanceof Error ? error.message : error}`,
+        { cause: error },
+      );
+    }
   }
 
   return output;
