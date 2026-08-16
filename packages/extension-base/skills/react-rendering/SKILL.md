@@ -7,12 +7,22 @@ description: Render React or Roam-aware UI in a prototype while respecting host 
 
 Prefer existing `roamjs-components` primitives for Roam-consistent controls, dialogs, toasts, settings, and observers. Scope prototype CSS under a unique class such as `.roam-prototype-<slug>` so it cannot restyle the graph globally.
 
+Roam automatically injects and removes a published `extension.css`. The extension API also automatically cleans up its commands, slash commands, settings panel, and experimental AI tools. DOM nodes, observers, event listeners, intervals, and custom registered components remain the extension's responsibility.
+
+Use the supported Roam renderers when the UI is fundamentally Roam content:
+
+- Declarative JSX: `roamAlphaAPI.ui.react.Block`, `.Page`, `.Search`, and `.BlockString`.
+- Imperative DOM: `roamAlphaAPI.ui.components.renderBlock`, `.renderPage`, `.renderSearch`, and `.renderString`.
+- Pair every imperative render with `roamAlphaAPI.ui.components.unmountNode` during cleanup.
+
+Use a custom React tree when the prototype owns a larger interface or needs state and composition beyond those Roam renderers.
+
 When mounting custom React UI:
 
 1. Create a dedicated container with a prototype-specific data attribute or class.
-2. Mount one React root per container and retain the root reference.
+2. Mount one React tree per container with the React/ReactDOM version supplied by Roam. When using `runExtension`, register the owned container in its `reactRoots` registry so its unload path calls the host-compatible unmount and removes the container.
 3. Observe Roam DOM changes only at the narrowest stable ancestor and deduplicate mounts.
-4. On unload, disconnect observers, unmount every React root, remove owned containers, and clear timers/listeners.
+4. On unload, disconnect observers, unmount every React tree, remove owned containers, clear timers/listeners, and unregister any component registered with `roamAlphaAPI.ui.mainWindow.registerComponent`.
 5. Do not depend on obfuscated Blueprint/Roam implementation classes when a semantic selector or supported observer helper exists.
 
 Keep graph access outside presentational components. Render loading, empty, stale-target, and failure states. Roam is a long-lived single-page host, so a missing cleanup path becomes a duplicate UI or memory leak after extension reload.

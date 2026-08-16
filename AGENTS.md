@@ -15,6 +15,7 @@ This is a pnpm monorepo for public, installable Roam developer-extension artifac
 - Keep prototype code inside `prototypes/<slug>` and shared convention material inside `packages/extension-base`.
 - Import `roamjs-components` directly. `packages/extension-base` is configuration and a template, not a runtime API.
 - Read the relevant guidance under `packages/extension-base/skills` before using Roam graph writes, commands, navigation, or React rendering.
+- For new graph reads, prefer `await window.roamAlphaAPI.data.async.*`. Never use legacy top-level aliases such as `roamAlphaAPI.q`, `roamAlphaAPI.pull`, or `roamAlphaAPI.createBlock`.
 - Keep `runExtension` as the lifecycle wrapper. Dispose observers, listeners, commands, timers, and mounted UI when the extension unloads.
 - Never edit generated `dist` files. Build them with pnpm/SamePage.
 - Keep all browser code and public documentation secret-free. Only `process.env.NODE_ENV` and `process.env.VERSION` are allowed.
