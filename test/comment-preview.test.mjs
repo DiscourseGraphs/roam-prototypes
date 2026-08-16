@@ -1,10 +1,28 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import path from "node:path";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 import {
   PREVIEW_COMMENT_MARKER,
   renderPreviewComment,
   upsertPreviewComment,
 } from "../scripts/comment-preview.mjs";
+
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+
+test("cancels older publishing runs for the same pull request or branch", async () => {
+  const workflow = await readFile(
+    path.join(root, ".github", "workflows", "publish.yml"),
+    "utf8",
+  );
+
+  assert.match(
+    workflow,
+    /group: publish-prototypes-\$\{\{ github\.event\.workflow_run\.pull_requests\[0\]\.number \|\| github\.event\.workflow_run\.head_branch \}\}/,
+  );
+  assert.match(workflow, /cancel-in-progress: true/);
+});
 
 test("renders resolved Roam preview links", () => {
   const body = renderPreviewComment({
