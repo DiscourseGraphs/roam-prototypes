@@ -11,7 +11,7 @@ import {
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
-test("cancels older publishing runs for the same pull request or branch", async () => {
+test("serializes publishing runs without interrupting an active upload", async () => {
   const workflow = await readFile(
     path.join(root, ".github", "workflows", "publish.yml"),
     "utf8",
@@ -21,7 +21,7 @@ test("cancels older publishing runs for the same pull request or branch", async 
     workflow,
     /group: publish-prototypes-\$\{\{ github\.event\.workflow_run\.pull_requests\[0\]\.number \|\| github\.event\.workflow_run\.head_branch \}\}/,
   );
-  assert.match(workflow, /cancel-in-progress: true/);
+  assert.match(workflow, /cancel-in-progress: false/);
 });
 
 test("renders resolved Roam preview links", () => {
