@@ -57,4 +57,6 @@ CI builds without secrets. After it succeeds, the trusted publishing workflow up
 https://discoursegraphs.com/releases/prototypes/previews/<branch-slug>/<prototype>/
 ```
 
-Merging to `main` publishes the stable URL. Preview paths are overwritten by later commits on the same branch.
+The publishing workflow creates a **Roam prototype previews** comment on the pull request with the exact URL to paste into Roam. Later commits on the same branch overwrite the preview and update that comment instead of adding another one.
+
+Merging to `main` publishes the stable URL.
