@@ -33,7 +33,7 @@ jobs:
         run: npm ci --ignore-scripts
 
       - name: Download untrusted build output
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v8
         with:
           name: prototype-artifacts
           path: packaged-artifacts
@@ -64,4 +64,3 @@ jobs:
           --artifacts packaged-artifacts
           --mode "$PUBLISH_MODE"
           --branch "$PUBLISH_BRANCH"
-
