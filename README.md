@@ -56,7 +56,7 @@ pnpm install --ignore-scripts
 pnpm create:prototype -- --name example --title "Example" --description "What the prototype explores."
 ```
 
-Add `--spec path/to/SPEC.md` when a specification is available. The generator validates the slug, renders the canonical starter, declares SamePage directly, updates the pnpm workspace installation, and prints the build commands and release URLs. It also supports `--dry-run`, `--skip-install`, and `--adopt-existing`; see [CONTRIBUTING.md](CONTRIBUTING.md).
+Add `--spec path/to/SPEC.md` when a specification is available. The generator validates the slug, renders the canonical starter, declares the shared esbuild tooling, updates the pnpm workspace installation, and prints the build commands and release URLs. It also supports `--dry-run`, `--skip-install`, and `--adopt-existing`; see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 For an LLM, a sufficient request is: “Create prototype `<name>` using the repository generator.” Give it the title, public description, and specification when available. Repository instructions in [AGENTS.md](AGENTS.md) cover the rest.
 

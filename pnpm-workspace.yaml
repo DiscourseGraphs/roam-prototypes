@@ -3,7 +3,7 @@ packages:
   - "prototypes/*"
 
 catalog:
-  "@samepage/scripts": 0.75.7
+  esbuild: 0.17.14
   jsdom: 30.0.1
   roamjs-components: 0.88.4
   use-sync-external-store: 1.6.0

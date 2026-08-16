@@ -48,7 +48,7 @@ const validateSourceEnvironmentReferences = async (
   }
 };
 
-const allowedBuildOutputs = new Set([...ALLOWED_ARTIFACTS, "package.json"]);
+const allowedBuildOutputs = new Set(ALLOWED_ARTIFACTS);
 
 export const prepareArtifacts = async ({
   repoRoot = scriptRoot,

@@ -43,7 +43,13 @@ test("creates a complete prototype with catalog dependencies", async () => {
       await readFile(path.join(result.destination, "package.json"), "utf8"),
     );
     assert.equal(manifest.name, "sample-prototype");
-    assert.equal(manifest.devDependencies["@samepage/scripts"], "catalog:");
+    assert.equal(
+      manifest.devDependencies["@discoursegraphs/extension-base"],
+      "workspace:*",
+    );
+    assert.equal(manifest.scripts.build, "roam-prototype build");
+    assert.equal(manifest.scripts.start, "roam-prototype dev");
+    assert.equal(manifest.devDependencies["@samepage/scripts"], undefined);
     assert.equal(manifest.dependencies["roamjs-components"], "catalog:");
     assert.equal(manifest.dependencies["use-sync-external-store"], "catalog:");
     assert.match(

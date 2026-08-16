@@ -47,7 +47,7 @@ Only these public files are deployed:
 - `extension.css`
 - `CHANGELOG.md`
 
-Source maps, tests, fixtures, and source files are never deployed by the shared publisher. SamePage may emit build-only `package.json` metadata, which packaging does not publish. Any other unexpected build output fails artifact preparation.
+Source maps, package metadata, tests, fixtures, and source files are never deployed by the shared publisher. Any unexpected build output fails artifact preparation.
 
 ## Pull-request previews
 

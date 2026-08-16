@@ -163,10 +163,6 @@ export const createPrototype = async ({
     __PROTOTYPE_DESCRIPTION_JSON__: JSON.stringify(description.trim()),
     __LOAD_MESSAGE_JSON__: JSON.stringify(`Successfully loaded ${title.trim()}`),
     __CREATED_DATE__: createdDate,
-    __EXTENSION_BASE_PACKAGE__: relativeImportPath({
-      from: destination,
-      to: path.join(extensionBase, "package.json"),
-    }),
     __EXTENSION_BASE_TSCONFIG__: relativeImportPath({
       from: destination,
       to: path.join(extensionBase, "tsconfig.json"),

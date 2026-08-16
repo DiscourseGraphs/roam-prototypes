@@ -34,7 +34,7 @@ const run = (args, cwd) => {
 };
 
 test(
-  "the generated starter resolves SamePage and emits the public contract",
+  "the generated starter resolves the shared esbuild CLI and emits the public contract",
   { timeout: 180_000 },
   async () => {
     const name = `starter-integration-${process.pid}`;
@@ -51,6 +51,11 @@ test(
       for (const file of ["package.json", "tsconfig.json", "tailwind.config.cjs"]) {
         await cp(path.join(sourceRoot, "packages", "extension-base", file), path.join(base, file));
       }
+      await cp(
+        path.join(sourceRoot, "packages", "extension-base", "scripts"),
+        path.join(base, "scripts"),
+        { recursive: true },
+      );
       await cp(
         path.join(sourceRoot, "pnpm-workspace.yaml"),
         path.join(repoRoot, "pnpm-workspace.yaml"),
@@ -104,6 +109,10 @@ test(
       assert.doesNotMatch(
         await readFile(path.join(destination, "dist", "extension.js"), "utf8"),
         /sourceMappingURL/,
+      );
+      assert.doesNotMatch(
+        await readFile(path.join(destination, "dist", "extension.js"), "utf8"),
+        /process\.env\.(?:PACKAGE_NAME|ROAMJS_VERSION|VERSION)/,
       );
     } finally {
       await rm(repoRoot, { recursive: true, force: true });

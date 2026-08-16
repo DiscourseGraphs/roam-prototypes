@@ -16,7 +16,6 @@ const withRepository = async (callback) => {
   await writeFile(path.join(dist, "extension.js"), "export default true;\n", "utf8");
   await writeFile(path.join(dist, "CHANGELOG.md"), "# Changes\n", "utf8");
   await writeFile(path.join(dist, "extension.css"), ".sample {}\n", "utf8");
-  await writeFile(path.join(dist, "package.json"), "{}\n", "utf8");
   await writeFile(path.join(src, "index.ts"), "process.env.NODE_ENV;\n", "utf8");
   try {
     await callback({ root, prototype, dist });
@@ -42,6 +41,9 @@ test("packages only the four public artifact names", async () => {
 test("rejects source maps and unexpected build outputs", async () => {
   await withRepository(async ({ root, dist }) => {
     await writeFile(path.join(dist, "extension.js.map"), "{}", "utf8");
+    await assert.rejects(prepareArtifacts({ repoRoot: root }), /unexpected build output/);
+    await rm(path.join(dist, "extension.js.map"));
+    await writeFile(path.join(dist, "package.json"), "{}", "utf8");
     await assert.rejects(prepareArtifacts({ repoRoot: root }), /unexpected build output/);
   });
 });
