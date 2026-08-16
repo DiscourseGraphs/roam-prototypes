@@ -1,0 +1,8 @@
+node_modules/
+packaged-artifacts/
+prototypes/*/dist/
+*.log
+.env
+.env.*
+!.env.example
+

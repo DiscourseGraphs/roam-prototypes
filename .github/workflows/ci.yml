@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install dependencies without lifecycle scripts
+        run: npm ci --ignore-scripts
+
+      - name: Test deployment contract
+        run: npm test
+
+      - name: Build prototypes
+        run: npm run build
+
+      - name: Prepare public artifacts
+        run: npm run prepare:artifacts
+
+      - name: Upload public artifact bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: prototype-artifacts
+          path: packaged-artifacts
+          if-no-files-found: error
+          retention-days: 7
+

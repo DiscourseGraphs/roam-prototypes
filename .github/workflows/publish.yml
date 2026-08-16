@@ -1,0 +1,67 @@
+name: Publish prototypes
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  publish:
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      (github.event.workflow_run.event == 'pull_request' ||
+       (github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main'))
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out trusted publisher from main
+        uses: actions/checkout@v6
+        with:
+          ref: main
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install trusted publisher dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Download untrusted build output
+        uses: actions/download-artifact@v5
+        with:
+          name: prototype-artifacts
+          path: packaged-artifacts
+          repository: ${{ github.repository }}
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+
+      - name: Select release channel
+        id: release
+        env:
+          EVENT_NAME: ${{ github.event.workflow_run.event }}
+          HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+        run: |
+          if [[ "$EVENT_NAME" == "pull_request" ]]; then
+            echo "mode=preview" >> "$GITHUB_OUTPUT"
+          else
+            echo "mode=stable" >> "$GITHUB_OUTPUT"
+          fi
+          echo "branch=$HEAD_BRANCH" >> "$GITHUB_OUTPUT"
+
+      - name: Validate and publish allowlisted artifacts
+        env:
+          BLOB_READ_WRITE_TOKEN: ${{ secrets.BLOB_READ_WRITE_TOKEN }}
+          PUBLISH_MODE: ${{ steps.release.outputs.mode }}
+          PUBLISH_BRANCH: ${{ steps.release.outputs.branch }}
+        run: >-
+          node scripts/publish.mjs
+          --artifacts packaged-artifacts
+          --mode "$PUBLISH_MODE"
+          --branch "$PUBLISH_BRANCH"
+
