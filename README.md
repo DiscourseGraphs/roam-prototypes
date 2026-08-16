@@ -72,10 +72,4 @@ flowchart LR
 
 The CI workflow never receives deployment credentials. After CI succeeds, `publish.yml` runs from the trusted default branch, treats downloaded build artifacts as untrusted data, validates their names and contents, and uploads only public extension artifacts. It never executes code from the downloaded artifact.
 
-The repository must have a repository-level Actions secret named `BLOB_READ_WRITE_TOKEN`. The token must belong to the existing public Blob store used by `discoursegraphs.com/releases/*`.
-
-```powershell
-gh secret set BLOB_READ_WRITE_TOKEN --repo DiscourseGraphs/roam-prototypes
-```
-
 Do not commit the token or any other credential. See [SECURITY.md](SECURITY.md) and [CONTRIBUTING.md](CONTRIBUTING.md).
