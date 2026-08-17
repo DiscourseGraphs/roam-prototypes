@@ -1,5 +1,13 @@
 # Roam prototypes
 
+Create quick Roam prototype extensions that load from a URL. Examples include:
+
+- Left Sidebar
+- Inbox/Messages
+- Attribute Select
+- Linear Sync
+- etc
+
 ## Start here
 
 You don't need to be a developer to create a prototype.
