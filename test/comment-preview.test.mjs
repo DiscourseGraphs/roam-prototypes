@@ -24,7 +24,7 @@ test("serializes publishing runs without interrupting an active upload", async (
   assert.match(workflow, /cancel-in-progress: false/);
 });
 
-test("renders resolved Roam preview links", () => {
+test("renders resolved Roam preview URLs without link labels", () => {
   const body = renderPreviewComment({
     branch: "agent/stock-prototype",
     prototypes: ["stock-prototype"],
@@ -34,8 +34,9 @@ test("renders resolved Roam preview links", () => {
   assert.match(body, new RegExp(PREVIEW_COMMENT_MARKER));
   assert.match(
     body,
-    /https:\/\/discoursegraphs\.com\/releases\/prototypes\/previews\/agent--stock-prototype\/stock-prototype\//,
+    /- https:\/\/discoursegraphs\.com\/releases\/prototypes\/previews\/agent--stock-prototype\/stock-prototype\//,
   );
+  assert.doesNotMatch(body, /Load `stock-prototype` in Roam/);
   assert.match(body, /Load Developer Extensions from URL/);
   assert.match(body, /actions\/runs\/123/);
 });
