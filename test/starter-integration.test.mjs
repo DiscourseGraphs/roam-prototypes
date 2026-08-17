@@ -75,7 +75,7 @@ test(
         "--lockfile=false",
         "--force",
       ];
-      if (!process.env.CI) installArguments.push("--offline");
+      if (!process.env.CI) installArguments.push("--prefer-offline");
       run(installArguments, repoRoot);
       run(["--dir", destination, "test"], repoRoot);
       const recursiveBuild = run(
@@ -83,6 +83,7 @@ test(
         repoRoot,
       );
       assert.match(recursiveBuild, new RegExp(name));
+      assert.match(recursiveBuild, /Built dist/);
       assert.doesNotMatch(recursiveBuild, /readme-only-placeholder@/);
 
       for (const file of [

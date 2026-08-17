@@ -1,5 +1,5 @@
 import { render as renderToast } from "roamjs-components/components/Toast";
-import runExtension from "roamjs-components/util/runExtension";
+import { runExtension } from "roamjs-components/util";
 import "./styles.css";
 
 export default runExtension(async () => {
