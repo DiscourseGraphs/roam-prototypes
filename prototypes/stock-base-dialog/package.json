@@ -1,0 +1,21 @@
+{
+  "name": "stock-base-dialog",
+  "version": "0.0.0",
+  "private": true,
+  "description": "A stock base prototype that confirms a Roam extension can load a dialog screen.",
+  "type": "module",
+  "scripts": {
+    "start": "roam-prototype dev",
+    "build": "roam-prototype build",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "roamjs-components": "catalog:",
+    "use-sync-external-store": "catalog:"
+  },
+  "devDependencies": {
+    "@discoursegraphs/extension-base": "workspace:*",
+    "jsdom": "catalog:",
+    "vitest": "catalog:"
+  }
+}
