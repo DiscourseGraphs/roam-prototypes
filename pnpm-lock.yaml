@@ -41,10 +41,29 @@ importers:
         version: 30.0.1
       roamjs-components:
         specifier: 'catalog:'
-        version: 0.88.4(bcb98d651d8702d922a465e82d329485)
+        version: 0.88.4(8b3dba144aa4c6a891ee791b6ddc21c2)
       use-sync-external-store:
         specifier: 'catalog:'
         version: 1.6.0(react@17.0.2)
+      vitest:
+        specifier: 'catalog:'
+        version: 4.1.10(@types/node@26.2.0)(jsdom@30.0.1)(vite@8.2.1(@types/node@26.2.0)(esbuild@0.17.14)(jiti@1.21.7)(yaml@2.9.0))
+
+  prototypes/loaded-dialog:
+    dependencies:
+      roamjs-components:
+        specifier: 'catalog:'
+        version: 0.88.4(8b3dba144aa4c6a891ee791b6ddc21c2)
+      use-sync-external-store:
+        specifier: 'catalog:'
+        version: 1.6.0(react@17.0.2)
+    devDependencies:
+      '@discoursegraphs/extension-base':
+        specifier: workspace:*
+        version: link:../../packages/extension-base
+      jsdom:
+        specifier: 'catalog:'
+        version: 30.0.1
       vitest:
         specifier: 'catalog:'
         version: 4.1.10(@types/node@26.2.0)(jsdom@30.0.1)(vite@8.2.1(@types/node@26.2.0)(esbuild@0.17.14)(jiti@1.21.7)(yaml@2.9.0))
@@ -1762,9 +1781,6 @@ packages:
   mz@2.7.0:
     resolution: {integrity: sha512-z81GNO7nnYMEhrGh9LeymoE4+Yr0Wn5McHIZMK5cfQCl+NDX08sCZgUc9/6MHni9IWuFLm1Z3HTCXu2z9fN62Q==}
 
-  nanoid@2.0.4:
-    resolution: {integrity: sha512-sOJnBmY3TJQBVIBqKHoifuwygrocXg3NjS9rZSMnVl05XWSHK7Qxb177AIZQyMDjP86bz+yneozj/h9qsPLcCA==}
-
   nanoid@3.3.18:
     resolution: {integrity: sha512-DTg4MJbGMWkfi6VZFdNt2/caMbQy4Ou+Op/hJQvGEWcnVfoA1QA+xzRKAzw9jD6+GVOOeYr/mIcuDSdug6F6+w==}
     engines: {node: ^10 || ^12 || ^13.7 || ^14 || >=15.0.1}
@@ -2323,9 +2339,6 @@ packages:
 
   tslib@1.13.0:
     resolution: {integrity: sha512-i/6DQjL8Xf3be4K/E6Wgpekn5Qasl1usyw++dAA35Ue5orEn65VIxOA+YvNNl9HV3qv70T7CNwjODHZrLwvd1Q==}
-
-  tslib@2.2.0:
-    resolution: {integrity: sha512-gS9GVHRU+RGn5KQM2rllAlR3dU6m7AcpJKdtH8gFvQiC4Otgk98XnmMU+nZenHt/+VhnBPWwgrJsyrdcw6i23w==}
 
   tslib@2.3.1:
     resolution: {integrity: sha512-77EbyPPpMz+FRFRuAFlWMtmgUWGe9UOG2Z25NqCwiIjRhOf5iKGuzSe5P2w1laq+FkRy4p+PCuVkJSGkzTEKVw==}
@@ -4261,8 +4274,6 @@ snapshots:
       object-assign: 4.1.1
       thenify-all: 1.6.0
 
-  nanoid@2.0.4: {}
-
   nanoid@3.3.18: {}
 
   nice-try@1.0.5: {}
@@ -4571,7 +4582,7 @@ snapshots:
     dependencies:
       glob: 7.2.3
 
-  roamjs-components@0.88.4(bcb98d651d8702d922a465e82d329485):
+  roamjs-components@0.88.4(8b3dba144aa4c6a891ee791b6ddc21c2):
     dependencies:
       '@blueprintjs/core': 3.50.4(react-dom@17.0.2(react@17.0.2))(react@17.0.2)
       '@blueprintjs/datetime': 3.23.14(react-dom@17.0.2(react@17.0.2))(react@17.0.2)
@@ -4601,11 +4612,11 @@ snapshots:
       jszip: 3.10.0
       marked: 4.0.16
       marked-react: 1.1.2(react@17.0.2)
-      nanoid: 2.0.4
+      nanoid: 3.3.18
       react: 17.0.2
       react-dom: 17.0.2(react@17.0.2)
       refractor: 3.6.0
-      tslib: 2.2.0
+      tslib: 2.8.1
       use-sync-external-store: 1.6.0(react@17.0.2)
       xregexp: 5.1.2
     transitivePeerDependencies:
@@ -4865,8 +4876,6 @@ snapshots:
       yn: 3.1.1
 
   tslib@1.13.0: {}
-
-  tslib@2.2.0: {}
 
   tslib@2.3.1: {}
 
