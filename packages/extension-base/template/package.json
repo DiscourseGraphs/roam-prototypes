@@ -5,7 +5,7 @@
   "description": __PROTOTYPE_DESCRIPTION_JSON__,
   "type": "module",
   "scripts": {
-    "start": "roam-prototype dev",
+    "dev": "roam-prototype dev",
     "build": "roam-prototype build",
     "test": "vitest run --passWithNoTests"
   },

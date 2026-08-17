@@ -74,6 +74,19 @@ const copyPublicDocuments = ({ root, outdir }) => ({
   },
 });
 
+export const createDevelopmentNotifier = ({ outdir, log = console.log }) => ({
+  name: "development-build-notifier",
+  setup(build) {
+    let hasBuilt = false;
+    build.onEnd(({ errors }) => {
+      if (errors.length) return;
+      const output = path.relative(process.cwd(), outdir) || "dist";
+      log(hasBuilt ? `Updated ${output}` : `Built ${output}; watching for changes`);
+      hasBuilt = true;
+    });
+  },
+});
+
 const readManifest = async (root) => {
   const source = await readFile(path.join(root, "package.json"), "utf8");
   const manifest = JSON.parse(source);
@@ -116,6 +129,7 @@ const createBuildOptions = async ({ root, production }) => {
     plugins: [
       importAsGlobals(HOST_GLOBALS),
       copyPublicDocuments({ root, outdir }),
+      ...(!production ? [createDevelopmentNotifier({ outdir })] : []),
     ],
   };
 };
@@ -129,17 +143,7 @@ export const buildPrototype = async ({ root = process.cwd() } = {}) => {
   console.log(`Built ${path.relative(process.cwd(), outdir) || "dist"}`);
 };
 
-const parsePort = (args) => {
-  const index = args.indexOf("--port");
-  if (index === -1) return 3000;
-  const port = Number(args[index + 1]);
-  if (!Number.isInteger(port) || port < 1 || port > 65535) {
-    throw new Error("--port must be an integer from 1 to 65535");
-  }
-  return port;
-};
-
-export const developPrototype = async ({ root = process.cwd(), port = 3000 } = {}) => {
+export const developPrototype = async ({ root = process.cwd() } = {}) => {
   const resolvedRoot = path.resolve(root);
   const outdir = path.join(resolvedRoot, "dist");
   await rm(outdir, { recursive: true, force: true });
@@ -149,12 +153,6 @@ export const developPrototype = async ({ root = process.cwd(), port = 3000 } = {
     await createBuildOptions({ root: resolvedRoot, production: false }),
   );
   await context.watch();
-  const server = await context.serve({
-    host: "127.0.0.1",
-    port,
-    servedir: outdir,
-  });
-  console.log(`Developer-extension URL: http://${server.host}:${server.port}/`);
 
   await new Promise((resolve) => {
     let stopping = false;
@@ -170,16 +168,16 @@ export const developPrototype = async ({ root = process.cwd(), port = 3000 } = {
 };
 
 const run = async () => {
-  const [command, ...args] = process.argv.slice(2);
+  const [command] = process.argv.slice(2);
   if (command === "build") {
     await buildPrototype();
     return;
   }
   if (command === "dev") {
-    await developPrototype({ port: parsePort(args) });
+    await developPrototype();
     return;
   }
-  throw new Error("Usage: roam-prototype <build|dev> [--port <number>]");
+  throw new Error("Usage: roam-prototype <build|dev>");
 };
 
 const normalizePath = (value) => {
