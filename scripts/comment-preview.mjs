@@ -39,9 +39,7 @@ export const renderPreviewComment = ({ branch, prototypes, runUrl }) => {
     ? [
         "The preview deployment is ready. Paste a URL below into **Load Developer Extensions from URL** in Roam:",
         "",
-        ...previews.map(
-          ({ prototype, url }) => `- [Load \`${prototype}\` in Roam](${url})`,
-        ),
+        ...previews.map(({ url }) => `- ${url}`),
       ].join("\n")
     : "CI passed, but this branch does not contain an installable prototype yet.";
   const details = runUrl ? `\n\n[View publishing details](${runUrl})` : "";
