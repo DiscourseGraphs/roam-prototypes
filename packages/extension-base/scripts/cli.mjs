@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import * as esbuild from "esbuild";
+import { realpathSync } from "node:fs";
 import { copyFile, mkdir, readFile, rm, stat } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -181,7 +182,24 @@ const run = async () => {
   throw new Error("Usage: roam-prototype <build|dev> [--port <number>]");
 };
 
-const isCli = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+const normalizePath = (value) => {
+  const normalized = path.normalize(value);
+  return process.platform === "win32" ? normalized.toLowerCase() : normalized;
+};
+
+export const pathsReferToSameFile = (left, right) => {
+  if (!left || !right) return false;
+  const resolvedLeft = path.resolve(left);
+  const resolvedRight = path.resolve(right);
+  try {
+    return normalizePath(realpathSync.native(resolvedLeft)) ===
+      normalizePath(realpathSync.native(resolvedRight));
+  } catch {
+    return normalizePath(resolvedLeft) === normalizePath(resolvedRight);
+  }
+};
+
+const isCli = pathsReferToSameFile(process.argv[1], fileURLToPath(import.meta.url));
 if (isCli) {
   run().catch((error) => {
     console.error(error instanceof Error ? error.message : error);

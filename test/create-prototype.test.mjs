@@ -52,9 +52,17 @@ test("creates a complete prototype with catalog dependencies", async () => {
     assert.equal(manifest.devDependencies["@samepage/scripts"], undefined);
     assert.equal(manifest.dependencies["roamjs-components"], "catalog:");
     assert.equal(manifest.dependencies["use-sync-external-store"], "catalog:");
+    const entry = await readFile(
+      path.join(result.destination, "src", "index.ts"),
+      "utf8",
+    );
     assert.match(
-      await readFile(path.join(result.destination, "src", "index.ts"), "utf8"),
-      /runExtension/,
+      entry,
+      /import \{ runExtension \} from "roamjs-components\/util";/,
+    );
+    assert.doesNotMatch(
+      entry,
+      /import runExtension from "roamjs-components\/util\/runExtension";/,
     );
   });
 });
