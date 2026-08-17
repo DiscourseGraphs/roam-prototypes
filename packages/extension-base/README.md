@@ -18,4 +18,10 @@ The shared CLI is modeled on `apps/roam` in the Discourse Graphs monorepo. It bu
 
 `roam-prototype dev` watches the source and serves `dist/` from a local URL. `roam-prototype build` creates a minified production bundle without source maps. README and CHANGELOG files are copied into `dist/`; imported CSS is emitted as `extension.css`.
 
-The starter still uses `roamjs-components/util/runExtension`. Its production error reporting to SamePage is behavior inside `roamjs-components`, independent of which bundler produced `extension.js`; reports include the graph name and extension settings. Never store credentials or sensitive data in extension settings.
+The starter imports the lifecycle wrapper as a named export:
+
+```ts
+import { runExtension } from "roamjs-components/util";
+```
+
+Its production error reporting to SamePage is behavior inside `roamjs-components`, independent of which bundler produced `extension.js`; reports include the graph name and extension settings. Never store credentials or sensitive data in extension settings.
