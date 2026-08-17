@@ -1,5 +1,33 @@
 # Roam prototypes
 
+## Start here
+
+You don't need to be a developer to create a prototype.
+
+1. Clone this repository to your computer. The easiest option is GitHub Desktop: choose **File > Clone repository**, select **URL**, and enter:
+
+   ```text
+   https://github.com/DiscourseGraphs/roam-prototypes
+   ```
+
+   Or clone it from a terminal:
+
+   ```text
+   git clone https://github.com/DiscourseGraphs/roam-prototypes.git
+   ```
+
+2. Open the cloned `roam-prototypes` folder in your LLM coding tool of choice.
+
+3. Ask what you want in plain language. For example:
+
+   > How do I create a prototype?
+
+   or:
+
+   > Can you create me a prototype that does XYZ?
+
+The repository includes instructions for the assistant in [AGENTS.md](AGENTS.md). It should use the prototype generator, keep the work in the right place, and run the required checks. If it reports that Node, pnpm, or another prerequisite is missing, ask it to set up what it needs and continue.
+
 Private source repository for Discourse Graphs' installable Roam developer-extension prototypes.
 
 Each prototype lives in `prototypes/<prototype>/`. Development uses ordinary feature branches and pull requests. Build artifacts are intentionally public so Roam can load them with **Load Developer Extensions from URL**.
