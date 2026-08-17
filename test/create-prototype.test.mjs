@@ -48,7 +48,8 @@ test("creates a complete prototype with catalog dependencies", async () => {
       "workspace:*",
     );
     assert.equal(manifest.scripts.build, "roam-prototype build");
-    assert.equal(manifest.scripts.start, "roam-prototype dev");
+    assert.equal(manifest.scripts.dev, "roam-prototype dev");
+    assert.equal(manifest.scripts.start, undefined);
     assert.equal(manifest.devDependencies["@samepage/scripts"], undefined);
     assert.equal(manifest.dependencies["roamjs-components"], "catalog:");
     assert.equal(manifest.dependencies["use-sync-external-store"], "catalog:");
