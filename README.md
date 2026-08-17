@@ -28,7 +28,7 @@ You don't need to be a developer to create a prototype.
 
 The repository includes instructions for the assistant in [AGENTS.md](AGENTS.md). It should use the prototype generator, keep the work in the right place, and run the required checks. If it reports that Node, pnpm, or another prerequisite is missing, ask it to set up what it needs and continue.
 
-Private source repository for Discourse Graphs' installable Roam developer-extension prototypes.
+Public source repository for Discourse Graphs' installable Roam developer-extension prototypes.
 
 Each prototype lives in `prototypes/<prototype>/`. Development uses ordinary feature branches and pull requests. Build artifacts are intentionally public so Roam can load them with **Load Developer Extensions from URL**.
 
