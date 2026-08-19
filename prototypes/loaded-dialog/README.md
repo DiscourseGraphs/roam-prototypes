@@ -18,3 +18,5 @@ Load this developer-extension URL in Roam:
 ```text
 https://discoursegraphs.com/releases/prototypes/loaded-dialog/
 ```
+
+<!-- Selective-publication smoke test. -->
