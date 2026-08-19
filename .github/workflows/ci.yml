@@ -16,6 +16,8 @@ jobs:
     steps:
       - name: Check out source
         uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
 
       - name: Set up pnpm
         uses: pnpm/action-setup@v6
@@ -38,8 +40,24 @@ jobs:
       - name: Build prototypes
         run: pnpm build
 
+      - name: Select changed prototypes
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: >-
+          git diff --name-only "$BASE_SHA" "$HEAD_SHA" -- prototypes
+          | awk -F/ '$1 == "prototypes" && NF >= 3 { print $2 }'
+          | sort -u
+          > changed-prototypes.txt
+
       - name: Prepare public artifacts
-        run: pnpm prepare:artifacts
+        run: |
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            node scripts/prepare-artifacts.mjs --prototype-list changed-prototypes.txt
+          else
+            pnpm prepare:artifacts
+          fi
 
       - name: Upload public artifact bundle
         uses: actions/upload-artifact@v7

@@ -24,6 +24,14 @@ const withRepository = async (callback) => {
   }
 };
 
+const addPrototype = async ({ root, name }) => {
+  const prototype = path.join(root, "prototypes", name);
+  const dist = path.join(prototype, "dist");
+  await mkdir(dist, { recursive: true });
+  await writeFile(path.join(prototype, "README.md"), `# ${name}\n`, "utf8");
+  await writeFile(path.join(dist, "extension.js"), "export default true;\n", "utf8");
+};
+
 test("prepares an empty manifest when the prototypes directory does not exist", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "roam-empty-artifacts-test-"));
   try {
@@ -49,6 +57,30 @@ test("packages only the four public artifact names", async () => {
       "package.json",
     );
     await assert.rejects(readFile(publishedPackage), /ENOENT/);
+  });
+});
+
+test("packages only selected prototypes", async () => {
+  await withRepository(async ({ root }) => {
+    await addPrototype({ root, name: "another-prototype" });
+
+    const manifest = await prepareArtifacts({
+      repoRoot: root,
+      prototypes: ["sample-prototype"],
+    });
+
+    assert.deepEqual(manifest.prototypes, ["sample-prototype"]);
+    await assert.rejects(
+      readFile(path.join(root, "packaged-artifacts", "another-prototype", "extension.js")),
+      /ENOENT/,
+    );
+  });
+});
+
+test("prepares an empty manifest when no prototypes are selected", async () => {
+  await withRepository(async ({ root }) => {
+    const manifest = await prepareArtifacts({ repoRoot: root, prototypes: [] });
+    assert.deepEqual(manifest.prototypes, []);
   });
 });
 
