@@ -71,7 +71,7 @@ test("creates a complete prototype with catalog dependencies", async () => {
     assert.match(readme, /extensionAPI: undefined/);
     assert.match(readme, /extension\.css\?v=/);
     assert.match(readme, /previousExtension\?\.onunload/);
-    const loader = /```javascript\n([\s\S]*?)\n```/.exec(readme)?.[1];
+    const loader = /```javascript\r?\n([\s\S]*?)\r?\n```/.exec(readme)?.[1];
     assert.ok(loader, "generated README should contain a roam/js loader");
     assert.doesNotThrow(() => new Function(loader));
   });
