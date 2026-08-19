@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.0.4 - 2026-08-19
+
+- Fixed the load failure. `import addStyle from "roamjs-components/dom/addStyle"` compiles to a
+  call on `{ default: fn }`: roamjs-components is CommonJS, and esbuild's ESM output uses
+  Node-interop mode, where a default import of a CommonJS module resolves to the whole module
+  object. The stylesheet is injected by six lines of local code instead. A source-level test now
+  rejects any default import from roamjs-components.
+- The failure reporter no longer depends on the toast succeeding; the console gets the error
+  first and unconditionally.
+
 ## 0.0.3 - 2026-08-19
 
 - Load failures now report themselves. `runExtension` does not log the error in production, and

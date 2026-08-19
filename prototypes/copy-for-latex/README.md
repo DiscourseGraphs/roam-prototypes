@@ -96,5 +96,10 @@ loads an extension from a URL itself. This extension therefore carries its own s
 bundle, so both paths behave the same. Any prototype that ships CSS as a separate file will look
 broken when loaded this way.
 
+Note also that **default imports from `roamjs-components` do not work** in this build. It is a
+CommonJS package, and esbuild's ESM output resolves a default import of a CommonJS module to the
+whole module object, so the value arrives as `{ default: fn }` and calling it throws. Use named
+imports. Unit tests will not catch it, because vitest resolves CommonJS with ordinary interop.
+
 If nothing happens on right-click, open the console. The extension logs how many discourse node
 types it loaded, and warns when it finds none.
