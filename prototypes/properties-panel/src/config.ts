@@ -1,6 +1,6 @@
 import type { ConfigAction } from "~/types";
 
-export const VERSION = "0.5.0";
+export const VERSION = "0.5.1";
 
 export const CONFIG = {
   propertiesTag: ".properties", // page whose #tag marks the block
