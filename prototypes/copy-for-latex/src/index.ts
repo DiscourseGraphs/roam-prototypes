@@ -2,14 +2,19 @@
  *
  * Spec: SPEC.md
  */
+import addStyle from "roamjs-components/dom/addStyle";
 import { runExtension } from "roamjs-components/util";
 import { loadNodeTypes } from "~/graph";
 import { startObserver } from "~/dom";
 import { handleContextMenu, handleKeydown, handlePointer } from "~/contextMenu";
 import { closeMenu } from "~/menu";
-import "./styles.css";
+import { MENU_CSS } from "~/styles";
 
 export default runExtension(async () => {
+  /* Injected here rather than left to a published extension.css, which Roam
+   * only injects on the URL-loading path. See src/styles.ts. */
+  const style = addStyle(MENU_CSS);
+
   await loadNodeTypes();
   const observer = startObserver();
 
@@ -26,6 +31,7 @@ export default runExtension(async () => {
       document.removeEventListener("keydown", handleKeydown);
       observer.disconnect();
       closeMenu();
+      style.remove();
     },
   };
 });

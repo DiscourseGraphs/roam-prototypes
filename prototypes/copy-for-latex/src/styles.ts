@@ -1,4 +1,15 @@
-/* Scoped to this prototype so it cannot restyle the graph. */
+/* The menu's stylesheet, carried in the bundle rather than shipped beside it.
+ *
+ * Roam injects a published `extension.css` when it loads an extension from a
+ * URL, but nothing injects it when the module is pulled in by `import()` from
+ * a `roam/js` block — which is how previews get tested. The menu is
+ * `position: fixed`, so without these rules it renders as a static, unstyled
+ * list at the end of <body>: present, clickable, and invisible in practice.
+ *
+ * Keeping the rules here means the extension looks and behaves the same on
+ * both paths. `addStyle` returns the element so unload can remove it.
+ */
+export const MENU_CSS = `
 .roam-prototype-copy-for-latex.cfl-menu {
   position: fixed;
   z-index: 100;
@@ -53,3 +64,4 @@ body.bp3-dark .roam-prototype-copy-for-latex.cfl-menu {
 body.bp3-dark .roam-prototype-copy-for-latex .cfl-menu-divider {
   border-top-color: rgba(255, 255, 255, 0.15);
 }
+`;

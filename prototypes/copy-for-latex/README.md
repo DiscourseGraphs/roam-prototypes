@@ -61,11 +61,40 @@ nowhere; from a sidebar heading it stays.
 
 ## Install
 
-Load this developer-extension URL in Roam:
+Load this developer-extension URL in Roam, under **Load Developer Extensions from URL**:
 
 ```text
 https://discoursegraphs.com/releases/prototypes/copy-for-latex/
 ```
+
+To try a pull-request preview without touching your settings, put a loader in a `roam/js` block
+instead. The published bundle is an ES module, so it cannot be pasted into a block directly, but it
+can be imported by one:
+
+```js
+(async () => {
+  const url =
+    "https://discoursegraphs.com/releases/prototypes/copy-for-latex/extension.js";
+  const globalKey = "__copyForLatexExtension";
+
+  const previous = window[globalKey];
+  if (previous?.onunload) await previous.onunload();
+
+  const module = await import(`${url}?v=${Date.now()}`);
+  const extension = module.default;
+  if (!extension?.onload) throw new Error("The loaded module is not a Roam extension.");
+
+  await extension.onload({ extensionAPI: undefined, extension: { version: "roam/js" } });
+  window[globalKey] = extension;
+})().catch((error) => console.error("Could not load Copy for LaTeX:", error));
+```
+
+Give each extension its own `globalKey`. Two loaders sharing one key will unload each other.
+
+Note that this path does **not** get a published `extension.css` — Roam only injects that when it
+loads an extension from a URL itself. This extension therefore carries its own styles in the
+bundle, so both paths behave the same. Any prototype that ships CSS as a separate file will look
+broken when loaded this way.
 
 If nothing happens on right-click, open the console. The extension logs how many discourse node
 types it loaded, and warns when it finds none.
