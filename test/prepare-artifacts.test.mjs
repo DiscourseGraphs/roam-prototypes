@@ -84,6 +84,26 @@ test("prepares an empty manifest when no prototypes are selected", async () => {
   });
 });
 
+test("CI selects changed prototypes for pull requests and main pushes", async () => {
+  const workflow = await readFile(
+    new URL("../.github/workflows/ci.yml", import.meta.url),
+    "utf8",
+  );
+
+  assert.ok(
+    workflow.includes(
+      "BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}",
+    ),
+  );
+  assert.ok(
+    workflow.includes(
+      "HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}",
+    ),
+  );
+  assert.ok(workflow.includes("if: github.event_name != 'workflow_dispatch'"));
+  assert.ok(workflow.includes("--prototype-list changed-prototypes.txt"));
+});
+
 test("rejects source maps and unexpected build outputs", async () => {
   await withRepository(async ({ root, dist }) => {
     await writeFile(path.join(dist, "extension.js.map"), "{}", "utf8");
