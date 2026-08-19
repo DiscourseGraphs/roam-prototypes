@@ -84,24 +84,12 @@ test("prepares an empty manifest when no prototypes are selected", async () => {
   });
 });
 
-test("packages all prototypes when shared extension tooling changes", async () => {
-  await withRepository(async ({ root }) => {
-    await addPrototype({ root, name: "another-prototype" });
-
-    const manifest = await prepareArtifacts({
-      repoRoot: root,
-      changedPaths: ["packages/extension-base/scripts/cli.mjs"],
-    });
-
-    assert.deepEqual(manifest.prototypes, ["another-prototype", "sample-prototype"]);
-  });
-});
-
 test("does not publish prototypes for non-prototype repository changes", async () => {
   await withRepository(async ({ root }) => {
     for (const changedPath of [
       ".github/workflows/ci.yml",
       "package.json",
+      "packages/extension-base/scripts/cli.mjs",
       "pnpm-lock.yaml",
       "pnpm-workspace.yaml",
       "scripts/artifact-utils.mjs",

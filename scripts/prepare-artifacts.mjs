@@ -51,14 +51,7 @@ const validateSourceEnvironmentReferences = async (
 
 const allowedBuildOutputs = new Set(ALLOWED_ARTIFACTS);
 
-const affectsAllPrototypes = (changedPath) =>
-  changedPath.startsWith("packages/extension-base/");
-
-export const selectChangedPrototypes = ({ changedPaths, allPrototypes }) => {
-  if (changedPaths.some(affectsAllPrototypes)) {
-    return new Set(allPrototypes.map(assertPrototypeName));
-  }
-
+export const selectChangedPrototypes = ({ changedPaths }) => {
   return new Set(
     changedPaths.flatMap((changedPath) => {
       const match = /^prototypes\/([^/]+)\//.exec(changedPath);
@@ -90,11 +83,8 @@ export const prepareArtifacts = async ({
   const entries = await readDirectoryIfExists(prototypesRoot, {
     withFileTypes: true,
   });
-  const prototypeNames = entries
-    .filter((entry) => entry.isDirectory())
-    .map((entry) => assertPrototypeName(entry.name));
   const selectedPrototypes = changedPaths
-    ? selectChangedPrototypes({ changedPaths, allPrototypes: prototypeNames })
+    ? selectChangedPrototypes({ changedPaths })
     : null;
   const packaged = [];
 
