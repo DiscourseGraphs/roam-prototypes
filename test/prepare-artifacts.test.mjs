@@ -84,16 +84,22 @@ test("prepares an empty manifest when no prototypes are selected", async () => {
   });
 });
 
-test("packages all prototypes when shared extension tooling changes", async () => {
+test("packages all prototypes when shared build inputs change", async () => {
   await withRepository(async ({ root }) => {
     await addPrototype({ root, name: "another-prototype" });
 
-    const manifest = await prepareArtifacts({
-      repoRoot: root,
-      changedPaths: ["packages/extension-base/scripts/cli.mjs"],
-    });
+    for (const changedPath of [
+      "packages/extension-base/scripts/cli.mjs",
+      "pnpm-lock.yaml",
+      "pnpm-workspace.yaml",
+    ]) {
+      const manifest = await prepareArtifacts({
+        repoRoot: root,
+        changedPaths: [changedPath],
+      });
 
-    assert.deepEqual(manifest.prototypes, ["another-prototype", "sample-prototype"]);
+      assert.deepEqual(manifest.prototypes, ["another-prototype", "sample-prototype"]);
+    }
   });
 });
 

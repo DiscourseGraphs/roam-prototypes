@@ -52,6 +52,7 @@ const validateSourceEnvironmentReferences = async (
 const allowedBuildOutputs = new Set(ALLOWED_ARTIFACTS);
 
 const affectsAllPrototypes = (changedPath) =>
+  changedPath === "pnpm-lock.yaml" ||
   changedPath === "pnpm-workspace.yaml" ||
   changedPath.startsWith("packages/extension-base/");
 
