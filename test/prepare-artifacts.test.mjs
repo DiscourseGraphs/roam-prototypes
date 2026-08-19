@@ -60,13 +60,13 @@ test("packages only the four public artifact names", async () => {
   });
 });
 
-test("packages only selected prototypes", async () => {
+test("packages only directly changed prototypes", async () => {
   await withRepository(async ({ root }) => {
     await addPrototype({ root, name: "another-prototype" });
 
     const manifest = await prepareArtifacts({
       repoRoot: root,
-      prototypes: ["sample-prototype"],
+      changedPaths: ["prototypes/sample-prototype/src/index.ts"],
     });
 
     assert.deepEqual(manifest.prototypes, ["sample-prototype"]);
@@ -79,8 +79,21 @@ test("packages only selected prototypes", async () => {
 
 test("prepares an empty manifest when no prototypes are selected", async () => {
   await withRepository(async ({ root }) => {
-    const manifest = await prepareArtifacts({ repoRoot: root, prototypes: [] });
+    const manifest = await prepareArtifacts({ repoRoot: root, changedPaths: [] });
     assert.deepEqual(manifest.prototypes, []);
+  });
+});
+
+test("packages all prototypes when shared extension tooling changes", async () => {
+  await withRepository(async ({ root }) => {
+    await addPrototype({ root, name: "another-prototype" });
+
+    const manifest = await prepareArtifacts({
+      repoRoot: root,
+      changedPaths: ["packages/extension-base/scripts/cli.mjs"],
+    });
+
+    assert.deepEqual(manifest.prototypes, ["another-prototype", "sample-prototype"]);
   });
 });
 
@@ -101,7 +114,10 @@ test("CI selects changed prototypes for pull requests and main pushes", async ()
     ),
   );
   assert.ok(workflow.includes("if: github.event_name != 'workflow_dispatch'"));
-  assert.ok(workflow.includes("--prototype-list changed-prototypes.txt"));
+  assert.ok(workflow.includes('git diff --name-only "$BASE_SHA...$HEAD_SHA"'));
+  assert.ok(workflow.includes('git diff --name-only "$BASE_SHA" "$HEAD_SHA"'));
+  assert.ok(workflow.includes('git cat-file -e "$BASE_SHA^{commit}"'));
+  assert.ok(workflow.includes("--changed-paths changed-paths.txt"));
 });
 
 test("rejects source maps and unexpected build outputs", async () => {

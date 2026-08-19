@@ -51,10 +51,27 @@ const validateSourceEnvironmentReferences = async (
 
 const allowedBuildOutputs = new Set(ALLOWED_ARTIFACTS);
 
+const affectsAllPrototypes = (changedPath) =>
+  changedPath === "pnpm-workspace.yaml" ||
+  changedPath.startsWith("packages/extension-base/");
+
+export const selectChangedPrototypes = ({ changedPaths, allPrototypes }) => {
+  if (changedPaths.some(affectsAllPrototypes)) {
+    return new Set(allPrototypes.map(assertPrototypeName));
+  }
+
+  return new Set(
+    changedPaths.flatMap((changedPath) => {
+      const match = /^prototypes\/([^/]+)\//.exec(changedPath);
+      return match ? [assertPrototypeName(match[1])] : [];
+    }),
+  );
+};
+
 export const prepareArtifacts = async ({
   repoRoot = scriptRoot,
   output = path.join(repoRoot, "packaged-artifacts"),
-  prototypes,
+  changedPaths,
 } = {}) => {
   const resolvedRoot = path.resolve(repoRoot);
   const resolvedOutput = path.resolve(output);
@@ -74,8 +91,11 @@ export const prepareArtifacts = async ({
   const entries = await readDirectoryIfExists(prototypesRoot, {
     withFileTypes: true,
   });
-  const selectedPrototypes = prototypes
-    ? new Set(prototypes.map(assertPrototypeName))
+  const prototypeNames = entries
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => assertPrototypeName(entry.name));
+  const selectedPrototypes = changedPaths
+    ? selectChangedPrototypes({ changedPaths, allPrototypes: prototypeNames })
     : null;
   const packaged = [];
 
@@ -133,14 +153,14 @@ export const prepareArtifacts = async ({
 
 const isCli = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 if (isCli) {
-  const prototypeList = argumentValue("--prototype-list", "");
-  const prototypes = prototypeList
-    ? (await readFile(path.resolve(scriptRoot, prototypeList), "utf8"))
+  const changedPathsFile = argumentValue("--changed-paths", "");
+  const changedPaths = changedPathsFile
+    ? (await readFile(path.resolve(scriptRoot, changedPathsFile), "utf8"))
         .split(/\r?\n/)
         .filter(Boolean)
     : undefined;
   await prepareArtifacts({
     output: path.resolve(scriptRoot, argumentValue("--output", "packaged-artifacts")),
-    prototypes,
+    changedPaths,
   });
 }
