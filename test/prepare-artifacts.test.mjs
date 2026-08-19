@@ -89,9 +89,12 @@ test("packages all prototypes when shared build inputs change", async () => {
     await addPrototype({ root, name: "another-prototype" });
 
     for (const changedPath of [
+      ".github/workflows/ci.yml",
+      "package.json",
       "packages/extension-base/scripts/cli.mjs",
       "pnpm-lock.yaml",
       "pnpm-workspace.yaml",
+      "scripts/artifact-utils.mjs",
     ]) {
       const manifest = await prepareArtifacts({
         repoRoot: root,
