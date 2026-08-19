@@ -1,0 +1,23 @@
+{
+  "name": "properties-panel",
+  "version": "0.5.0",
+  "private": true,
+  "description": "Render a discourse node's #.properties block as a structured, editable panel of typed slots.",
+  "type": "module",
+  "scripts": {
+    "dev": "roam-prototype dev",
+    "build": "roam-prototype build",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "roamjs-components": "catalog:",
+    "use-sync-external-store": "catalog:"
+  },
+  "devDependencies": {
+    "@discoursegraphs/extension-base": "workspace:*",
+    "@types/react": "17.0.39",
+    "@types/react-dom": "17.0.13",
+    "jsdom": "catalog:",
+    "vitest": "catalog:"
+  }
+}
