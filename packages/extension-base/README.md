@@ -26,4 +26,6 @@ import { runExtension } from "roamjs-components/util";
 
 Use the same named-barrel form for every `roamjs-components` import. The package is published as TypeScript-compiled CommonJS, while prototypes are emitted as ESM. A default import from a published subpath can therefore bind the CommonJS export object (`{ default: fn }`) instead of the function. For example, use `import { addStyle } from "roamjs-components/dom"`, not a default import from `roamjs-components/dom/addStyle`. Prototype validation enforces this boundary.
 
+Generated prototypes document two supported loading modes. Roam's developer-extension URL loader supplies `extensionAPI` and manages the release stylesheet. A `roam/js` code block can import the same ESM artifact, but it cannot manufacture Roam's extension-scoped API; its loader passes `extensionAPI: undefined` and manages the stylesheet and replacement lifecycle. Prototype code must treat extension-scoped capabilities as optional when it supports both modes.
+
 Its production error reporting to SamePage is behavior inside `roamjs-components`, independent of which bundler produced `extension.js`; reports include the graph name and extension settings. Never store credentials or sensitive data in extension settings.

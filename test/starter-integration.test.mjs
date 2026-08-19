@@ -157,6 +157,17 @@ extension.onunload();
 if (errorReports) {
   throw new Error("Built artifact reported a lifecycle failure");
 }
+
+const roamJsExtension = (await import("./dist/extension.js?mode=roam-js")).default;
+roamJsExtension.onload({
+  extensionAPI: undefined,
+  extension: { version: "roam/js" },
+});
+await new Promise((resolve) => setTimeout(resolve, 0));
+roamJsExtension.onunload();
+if (errorReports) {
+  throw new Error("Built artifact reported a roam/js lifecycle failure");
+}
 `,
         "utf8",
       );
