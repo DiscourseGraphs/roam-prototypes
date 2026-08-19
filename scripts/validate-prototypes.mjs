@@ -10,6 +10,18 @@ import {
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const defaultPrototypesRoot = path.join(root, "prototypes");
 const sourceExtension = /\.[cm]?[jt]sx?$/;
+const roamJsImport = /\bimport\s+([\s\S]*?)\s+from\s+["'](roamjs-components(?:\/[^"']*)?)["']/g;
+
+export const assertNoRoamJsDefaultImports = (source, label) => {
+  for (const match of source.matchAll(roamJsImport)) {
+    const clause = match[1].trim();
+    if (clause.startsWith("type ")) continue;
+    if (clause.startsWith("{") || clause.startsWith("*")) continue;
+    throw new Error(
+      `${label} default-imports ${match[2]}; use a named export from a roamjs-components barrel`,
+    );
+  }
+};
 
 const isFile = async (target) => {
   try {
@@ -19,27 +31,32 @@ const isFile = async (target) => {
   }
 };
 
-const validateSourceDirectory = async (directory, prototype, prototypesRoot) => {
+const validateSourceDirectory = async (directory, label, sourceRoot = directory) => {
   const entries = await readdir(directory, { withFileTypes: true });
   for (const entry of entries) {
     const target = path.join(directory, entry.name);
     if (entry.isDirectory()) {
-      await validateSourceDirectory(target, prototype, prototypesRoot);
+      await validateSourceDirectory(target, label, sourceRoot);
     } else if (entry.isFile() && sourceExtension.test(entry.name)) {
       const source = await readFile(target, "utf8");
-      assertAllowedEnvironmentReferences(
-        source,
-        `${prototype}/${path.relative(path.join(prototypesRoot, prototype), target)}`,
-      );
+      const sourceLabel = `${label}/${path.relative(sourceRoot, target)}`;
+      assertAllowedEnvironmentReferences(source, sourceLabel);
+      assertNoRoamJsDefaultImports(source, sourceLabel);
     } else if (!entry.isFile()) {
-      throw new Error(`${prototype} source contains a non-file entry: ${entry.name}`);
+      throw new Error(`${label} source contains a non-file entry: ${entry.name}`);
     }
   }
 };
 
 export const validatePrototypes = async ({
   prototypesRoot = defaultPrototypesRoot,
+  templateSourceRoot = path.join(root, "packages", "extension-base", "template", "src"),
 } = {}) => {
+  await validateSourceDirectory(
+    templateSourceRoot,
+    "packages/extension-base/template",
+    templateSourceRoot,
+  );
   const entries = await readDirectoryIfExists(prototypesRoot, {
     withFileTypes: true,
   });
@@ -72,7 +89,7 @@ export const validatePrototypes = async ({
       throw new Error(`${prototype} is missing src/index.ts`);
     }
 
-    await validateSourceDirectory(sourceDirectory, prototype, prototypesRoot);
+    await validateSourceDirectory(sourceDirectory, prototype, sourceDirectory);
     packageCount += 1;
   }
 

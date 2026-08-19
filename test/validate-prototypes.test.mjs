@@ -5,7 +5,10 @@ import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { createPrototype } from "../scripts/create-prototype.mjs";
-import { validatePrototypes } from "../scripts/validate-prototypes.mjs";
+import {
+  assertNoRoamJsDefaultImports,
+  validatePrototypes,
+} from "../scripts/validate-prototypes.mjs";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -39,4 +42,33 @@ test("validates the generated dev script convention", async () => {
   } finally {
     await rm(root, { recursive: true, force: true });
   }
+});
+
+test("rejects default imports from published roamjs-components CommonJS subpaths", () => {
+  assert.throws(
+    () =>
+      assertNoRoamJsDefaultImports(
+        'import addStyle from "roamjs-components/dom/addStyle";',
+        "sample-prototype/src/index.ts",
+      ),
+    /default-imports roamjs-components\/dom\/addStyle/,
+  );
+  assert.throws(
+    () =>
+      assertNoRoamJsDefaultImports(
+        'import Alert, { render } from "roamjs-components/components/Toast";',
+        "sample-prototype/src/index.ts",
+      ),
+    /default-imports roamjs-components\/components\/Toast/,
+  );
+  assert.doesNotThrow(() =>
+    assertNoRoamJsDefaultImports(
+      [
+        'import { addStyle } from "roamjs-components/dom";',
+        'import { runExtension } from "roamjs-components/util";',
+        'import type { OnloadArgs } from "roamjs-components/types";',
+      ].join("\n"),
+      "sample-prototype/src/index.ts",
+    ),
+  );
 });
