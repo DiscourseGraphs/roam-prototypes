@@ -52,11 +52,6 @@ const validateSourceEnvironmentReferences = async (
 const allowedBuildOutputs = new Set(ALLOWED_ARTIFACTS);
 
 const affectsAllPrototypes = (changedPath) =>
-  changedPath === "package.json" ||
-  changedPath === "pnpm-lock.yaml" ||
-  changedPath === "pnpm-workspace.yaml" ||
-  changedPath.startsWith(".github/workflows/") ||
-  changedPath.startsWith("scripts/") ||
   changedPath.startsWith("packages/extension-base/");
 
 export const selectChangedPrototypes = ({ changedPaths, allPrototypes }) => {
