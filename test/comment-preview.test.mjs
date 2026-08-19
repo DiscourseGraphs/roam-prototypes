@@ -24,6 +24,16 @@ test("serializes publishing runs without interrupting an active upload", async (
   assert.match(workflow, /cancel-in-progress: false/);
 });
 
+test("publishes manually dispatched CI runs only from main", async () => {
+  const workflow = await readFile(
+    path.join(root, ".github", "workflows", "publish.yml"),
+    "utf8",
+  );
+
+  assert.match(workflow, /github\.event\.workflow_run\.event == 'workflow_dispatch'/);
+  assert.match(workflow, /github\.event\.workflow_run\.head_branch == 'main'/);
+});
+
 test("renders resolved Roam preview URLs without link labels", () => {
   const body = renderPreviewComment({
     branch: "agent/stock-prototype",

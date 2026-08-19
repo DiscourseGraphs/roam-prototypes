@@ -51,9 +51,19 @@ const validateSourceEnvironmentReferences = async (
 
 const allowedBuildOutputs = new Set(ALLOWED_ARTIFACTS);
 
+export const selectChangedPrototypes = ({ changedPaths }) => {
+  return new Set(
+    changedPaths.flatMap((changedPath) => {
+      const match = /^prototypes\/([^/]+)\//.exec(changedPath);
+      return match ? [assertPrototypeName(match[1])] : [];
+    }),
+  );
+};
+
 export const prepareArtifacts = async ({
   repoRoot = scriptRoot,
   output = path.join(repoRoot, "packaged-artifacts"),
+  changedPaths,
 } = {}) => {
   const resolvedRoot = path.resolve(repoRoot);
   const resolvedOutput = path.resolve(output);
@@ -73,11 +83,15 @@ export const prepareArtifacts = async ({
   const entries = await readDirectoryIfExists(prototypesRoot, {
     withFileTypes: true,
   });
+  const selectedPrototypes = changedPaths
+    ? selectChangedPrototypes({ changedPaths })
+    : null;
   const packaged = [];
 
   for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
     if (!entry.isDirectory()) continue;
     const prototype = assertPrototypeName(entry.name);
+    if (selectedPrototypes && !selectedPrototypes.has(prototype)) continue;
     const source = path.join(prototypesRoot, prototype);
     const dist = path.join(source, "dist");
     const extension = path.join(dist, "extension.js");
@@ -128,7 +142,14 @@ export const prepareArtifacts = async ({
 
 const isCli = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 if (isCli) {
+  const changedPathsFile = argumentValue("--changed-paths", "");
+  const changedPaths = changedPathsFile
+    ? (await readFile(path.resolve(scriptRoot, changedPathsFile), "utf8"))
+        .split(/\r?\n/)
+        .filter(Boolean)
+    : undefined;
   await prepareArtifacts({
     output: path.resolve(scriptRoot, argumentValue("--output", "packaged-artifacts")),
+    changedPaths,
   });
 }
