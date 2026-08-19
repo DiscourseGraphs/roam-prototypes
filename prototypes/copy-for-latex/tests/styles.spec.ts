@@ -87,3 +87,52 @@ describe("onload", () => {
     ).toBe(false);
   });
 });
+
+describe("load failure", () => {
+  /* runExtension's own failure path loses the error: in production it posts to
+   * SamePage and shows a generic toast, and it reads extensionAPI.settings
+   * while doing so — which is undefined when the module is imported from a
+   * roam/js block, so the reporter throws over the top of the real error.
+   * Anything that goes wrong at load has to be caught before it gets there. */
+  it("names the missing capability instead of failing deep in a helper", async () => {
+    const errors: unknown[] = [];
+    vi.spyOn(console, "error").mockImplementation((...a) => void errors.push(a));
+    (window as unknown as Record<string, unknown>).React = {};
+    (window as unknown as Record<string, unknown>).roamAlphaAPI = {
+      graph: { name: "g" },
+      data: {}, // no async.q: an older Roam, or a stubbed one
+    };
+    // runExtension skips onload entirely once its id is in this set
+    delete (window as unknown as Record<string, unknown>).roamjs;
+
+    const extension = (await import("~/index")).default;
+    await extension.onload({
+      extensionAPI: undefined as never,
+      extension: { version: "test" } as never,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(errors.length).toBeGreaterThan(0);
+    // Errors do not survive JSON.stringify, so read the message directly.
+    const messages = errors.flat().map((e) => (e instanceof Error ? e.message : String(e)));
+    expect(messages.join(" ")).toContain("data.async.q");
+  });
+
+  it("does not rethrow, so runExtension's broken reporter is never reached", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    (window as unknown as Record<string, unknown>).React = {};
+    (window as unknown as Record<string, unknown>).roamAlphaAPI = { graph: { name: "g" }, data: {} };
+    delete (window as unknown as Record<string, unknown>).roamjs;
+    const extension = (await import("~/index")).default;
+    // extensionAPI undefined is precisely the case that crashed the reporter
+    await expect(
+      (async () => {
+        extension.onload({
+          extensionAPI: undefined as never,
+          extension: { version: "test" } as never,
+        });
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      })(),
+    ).resolves.toBeUndefined();
+  });
+});

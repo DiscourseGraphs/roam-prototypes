@@ -1,6 +1,6 @@
 {
   "name": "copy-for-latex",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "private": true,
   "description": "Copy a discourse node as LaTeX prose with its citation, or as a hyperlink.",
   "type": "module",

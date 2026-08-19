@@ -74,6 +74,14 @@ export const markRef = (span: Element): void => {
   if (type) span.setAttribute(MARK_ATTR, type);
 };
 
+/* Fire-and-forget from the observer, so a rejection here would surface only
+ * as an unhandled promise rejection with no attribution. Logged instead. */
+export const markHeadingSafely = (h1: Element): void => {
+  void markHeading(h1).catch((error) => {
+    console.error("copy-for-latex: could not resolve a page heading:", error);
+  });
+};
+
 export const markHeading = async (h1: Element): Promise<void> => {
   const uid = pageUidForHeading(h1);
   if (!uid) return;
@@ -101,7 +109,7 @@ export const titleForTarget = (el: Element): string => {
 
 export const scan = (root: ParentNode): void => {
   root.querySelectorAll?.(REF_SELECTOR).forEach(markRef);
-  root.querySelectorAll?.(TITLE_SELECTOR).forEach((h1) => void markHeading(h1));
+  root.querySelectorAll?.(TITLE_SELECTOR).forEach(markHeadingSafely);
 };
 
 export const startObserver = (): MutationObserver => {
@@ -110,7 +118,7 @@ export const startObserver = (): MutationObserver => {
       // Roam rewrites a heading's children in place when you navigate, which
       // adds no new heading element for the addedNodes branch below to catch.
       const heading = (record.target as Element)?.closest?.(TITLE_SELECTOR);
-      if (heading) void markHeading(heading);
+      if (heading) markHeadingSafely(heading);
       record.addedNodes.forEach((n) => {
         if (n.nodeType !== 1) return;
         const el = n as Element;

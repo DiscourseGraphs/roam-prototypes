@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.0.3 - 2026-08-19
+
+- Load failures now report themselves. `runExtension` does not log the error in production, and
+  it reads `extensionAPI.settings` while reporting — which is undefined when the module is
+  imported from a `roam/js` block, so its reporter threw over the top of the real error. Errors
+  are caught before they reach it, and a missing `data.async.q` is named directly.
+
 ## 0.0.2 - 2026-08-19
 
 - The menu's stylesheet is carried in the bundle instead of shipped as a separate
