@@ -3,6 +3,7 @@
 ## 0.1.1 - 2026-08-20
 
 - Chip now appears centered just below the pointer instead of at the reference's right edge, and the figure card anchors to the chip — long node titles no longer force mouse travel to reach the affordance (first live-test feedback).
+- The `[[XXX]] - …` prefix fallback is now always active alongside the graph's configured formats, so near-miss titles (e.g. an EVD ending in a bare dash with no Source, which the plugin's format regex rejects) still get the chip (second live-test finding).
 
 ## 0.1.0 - 2026-08-20
 

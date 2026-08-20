@@ -21,14 +21,24 @@ describe("isEligibleTitle with configured node types", () => {
     ).toBe(true);
     expect(isEligibleTitle("[[CLM]] - graphs help", DG_TYPES, null)).toBe(true);
   });
-  it("rejects ordinary pages, and does NOT use the fallback when types exist", () => {
+  it("rejects ordinary pages", () => {
     expect(isEligibleTitle("Meeting notes", DG_TYPES, null)).toBe(false);
-    // [[ISS]] is not among the configured types above, so it must not match.
-    expect(isEligibleTitle("[[ISS]] - some issue", DG_TYPES, null)).toBe(false);
-  });
-  it("honors format semantics: content is required", () => {
-    expect(isEligibleTitle("[[CLM]] - ", DG_TYPES, null)).toBe(true); // lazy capture allows empty
     expect(isEligibleTitle("[[CLM]]", DG_TYPES, null)).toBe(false);
+  });
+  it("tolerates near-miss titles via the always-on prefix fallback", () => {
+    // The regression that prompted this: an EVD with a trailing dash and no
+    // Source fails the `[[EVD]] - {content} - {Source}` format (no trailing
+    // space after the dash), and the plugin does not see it as a node — but
+    // the presenter still wants its figure.
+    expect(
+      isEligibleTitle(
+        "[[EVD]] - increasing dynein led to perinuclear clustering.  -",
+        [type("Evidence", "[[EVD]] - {content} - {Source}")],
+        null,
+      ),
+    ).toBe(true);
+    // Prefixes not configured as types still count.
+    expect(isEligibleTitle("[[ISS]] - some issue", DG_TYPES, null)).toBe(true);
   });
 });
 
