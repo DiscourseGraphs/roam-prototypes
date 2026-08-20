@@ -14,7 +14,8 @@ export const HKF_CSS = `
 .hkf-chip {
   position: fixed;
   z-index: 10050;
-  transform: translateY(-50%);
+  /* left/top are the pointer position; center the chip under it. */
+  transform: translateX(-50%);
   display: none;
   align-items: center;
   gap: 4px;

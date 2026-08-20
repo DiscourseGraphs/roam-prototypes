@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.1 - 2026-08-20
+
+- Chip now appears centered just below the pointer instead of at the reference's right edge, and the figure card anchors to the chip — long node titles no longer force mouse travel to reach the affordance (first live-test feedback).
+
 ## 0.1.0 - 2026-08-20
 
 - v1 implementation: hover chip on discourse-node references (event delegation, singleton, zero layout shift), pinned figure card, full-viewport lightbox, Esc unwinding.

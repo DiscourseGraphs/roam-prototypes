@@ -43,6 +43,18 @@ export const initHover = (opts: HoverOptions): HoverController => {
   let showTimer: number | undefined;
   let hideTimer: number | undefined;
 
+  /* The pointer's live position. The chip appears just BELOW the cursor, not
+   * at the reference's right edge: discourse-node titles are long, so the
+   * right edge can be a whole line-width of mouse travel away (Matt's first
+   * live-test feedback). mouseover alone is not enough — it fires only on
+   * element boundaries, so inside a long reference its coordinates go stale. */
+  let mouseX = 0;
+  let mouseY = 0;
+  const onMouseMove = (e: MouseEvent) => {
+    mouseX = e.clientX;
+    mouseY = e.clientY;
+  };
+
   const clearTimers = () => {
     window.clearTimeout(showTimer);
     window.clearTimeout(hideTimer);
@@ -58,9 +70,13 @@ export const initHover = (opts: HoverOptions): HoverController => {
   };
 
   const showChipFor = (ref: Element, title: string) => {
-    const rect = ref.getBoundingClientRect();
-    chip.style.left = `${Math.round(rect.right + 6)}px`;
-    chip.style.top = `${Math.round(rect.top + rect.height / 2)}px`;
+    // Centered under the pointer, a few pixels down: the click is a short
+    // downward flick instead of a trek to the end of the title. Clamped so
+    // it never leaves the viewport near an edge.
+    const x = Math.min(Math.max(mouseX, 40), window.innerWidth - 40);
+    const y = Math.min(mouseY + 14, window.innerHeight - 30);
+    chip.style.left = `${Math.round(x)}px`;
+    chip.style.top = `${Math.round(y)}px`;
     chip.classList.add(`${CHIP_CLASS}--visible`);
     chip.classList.remove(`${CHIP_CLASS}--empty`);
     chip.removeAttribute("title");
@@ -115,9 +131,9 @@ export const initHover = (opts: HoverOptions): HoverController => {
     e.preventDefault();
     e.stopPropagation();
     if (!currentTitle) return;
-    const anchor = (currentRef?.getBoundingClientRect() ??
-      chip.getBoundingClientRect()) as DOMRect;
-    opts.onOpen({ title: currentTitle, anchor });
+    // The card anchors to the chip, i.e. to where the pointer already is —
+    // not to the reference, which may be far away for long titles.
+    opts.onOpen({ title: currentTitle, anchor: chip.getBoundingClientRect() });
   };
 
   /* Any scroll invalidates the chip's fixed-position anchor; hiding beats
@@ -127,6 +143,7 @@ export const initHover = (opts: HoverOptions): HoverController => {
   };
 
   document.addEventListener("mouseover", onMouseOver);
+  document.addEventListener("mousemove", onMouseMove, { passive: true });
   chip.addEventListener("click", onChipClick);
   document.addEventListener("scroll", onScroll, { capture: true, passive: true });
 
@@ -135,6 +152,7 @@ export const initHover = (opts: HoverOptions): HoverController => {
     destroy: () => {
       clearTimers();
       document.removeEventListener("mouseover", onMouseOver);
+      document.removeEventListener("mousemove", onMouseMove);
       document.removeEventListener("scroll", onScroll, { capture: true });
       chip.remove();
     },

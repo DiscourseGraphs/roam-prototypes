@@ -26,7 +26,8 @@ Nothing is added to the page at rest. No inline icons, no counts, no layout shif
 
 ### Hover — the affordance
 - Pointer rests on a **discourse-node page reference** (`span.rm-page-ref` in the main article or sidebar) for `hoverDelayMs` (default **150 ms**) → a small floating chip appears adjacent to the reference: `🖼 Figure`.
-- **[WORKING]** The chip is a **singleton** — one DOM element repositioned to whichever eligible ref is hovered — absolutely positioned at the reference's top-right, overlapping nothing (it floats above text in its own stacking context). No per-ref DOM mutation, no layout shift, works with thousands of refs on a page.
+- **[FIRM — revised after first live test, Matt Aug 20]** The chip appears **centered just below the pointer** (14 px down, viewport-clamped), not at the reference's edge: node titles are long, so the right edge can be a line-width of mouse travel away. The click becomes a short downward flick. The figure card then anchors to the chip — the whole interaction stays where the pointer already is.
+- **[WORKING]** The chip is a **singleton** — one DOM element repositioned per hover, floating in its own stacking context. No per-ref DOM mutation, no layout shift, works with thousands of refs on a page.
 - The chip survives the pointer travelling from ref → chip (300 ms grace). Leaving both hides it.
 - **Prefetch:** hover also starts async key-figure resolution for that page (cached). By the time a presenter clicks, the image URL is usually known and the browser has begun fetching the image itself.
 - If resolution completes with **no figure found**, the chip mutes to a disabled state with title "No figure found on this page" **[WORKING]** — the presenter learns instantly that a node lacks a key figure (which is itself the nudge to set one — the write-side flow, DES-362/ENG-2123/2124).

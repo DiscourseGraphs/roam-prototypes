@@ -17,8 +17,14 @@ const makeRef = (title: string): HTMLElement => {
   return ref;
 };
 
-const hover = (el: Element) =>
-  el.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
+const hover = (el: Element, x = 0, y = 0) => {
+  el.dispatchEvent(
+    new MouseEvent("mousemove", { bubbles: true, clientX: x, clientY: y }),
+  );
+  el.dispatchEvent(
+    new MouseEvent("mouseover", { bubbles: true, clientX: x, clientY: y }),
+  );
+};
 
 describe("getRefTitle", () => {
   afterEach(() => {
@@ -75,6 +81,16 @@ describe("initHover", () => {
     vi.advanceTimersByTime(160);
     expect(controller.chip.classList.contains(`${CHIP_CLASS}--visible`)).toBe(true);
     expect(prefetch).toHaveBeenCalledWith(TITLE);
+  });
+
+  it("positions the chip under the pointer, not at the reference edge", () => {
+    // jsdom windows default to 1024x768, so 300/200 is comfortably inside
+    // the clamping margins.
+    const ref = makeRef(TITLE);
+    hover(ref, 300, 200);
+    vi.advanceTimersByTime(160);
+    expect(controller.chip.style.left).toBe("300px");
+    expect(controller.chip.style.top).toBe(`${200 + 14}px`);
   });
 
   it("marks the chip empty when prefetch resolves to no figure", async () => {
