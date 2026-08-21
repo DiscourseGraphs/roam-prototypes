@@ -70,14 +70,31 @@ export const initHover = (opts: HoverOptions): HoverController => {
   };
 
   const showChipFor = (ref: Element, title: string) => {
-    // Centered under the pointer, a few pixels down: the click is a short
-    // downward flick instead of a trek to the end of the title. Clamped so
-    // it never leaves the viewport near an edge.
-    const x = Math.min(Math.max(mouseX, 40), window.innerWidth - 40);
-    const y = Math.min(mouseY + 14, window.innerHeight - 30);
+    /* Horizontally at the pointer (short flick to reach), vertically just
+     * BELOW the link's whole line block — long titles wrap, and a chip
+     * placed at the pointer's own y lands between the wrapped lines, on top
+     * of the text (Matt's second live-test feedback). An inline span's
+     * bounding rect is the union of its line boxes, so rect.bottom clears
+     * every line. Flips above the block when the viewport runs out. */
+    const rect = ref.getBoundingClientRect();
+    chip.classList.add(`${CHIP_CLASS}--visible`);
+    const chipH = chip.offsetHeight || 22;
+    const gap = 4;
+    // Keep x over the link's horizontal extent when we know it (jsdom and
+    // collapsed rects report zero width — fall back to the viewport clamp).
+    const lo = rect.width > 0 ? Math.max(rect.left, 40) : 40;
+    const hi =
+      rect.width > 0
+        ? Math.max(lo, Math.min(rect.right, window.innerWidth - 40))
+        : window.innerWidth - 40;
+    const x = Math.min(Math.max(mouseX, lo), hi);
+    const below = rect.bottom + gap;
+    const y =
+      below + chipH <= window.innerHeight - 8
+        ? below
+        : Math.max(8, rect.top - chipH - gap);
     chip.style.left = `${Math.round(x)}px`;
     chip.style.top = `${Math.round(y)}px`;
-    chip.classList.add(`${CHIP_CLASS}--visible`);
     chip.classList.remove(`${CHIP_CLASS}--empty`);
     chip.removeAttribute("title");
     currentTitle = title;

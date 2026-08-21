@@ -83,14 +83,40 @@ describe("initHover", () => {
     expect(prefetch).toHaveBeenCalledWith(TITLE);
   });
 
-  it("positions the chip under the pointer, not at the reference edge", () => {
-    // jsdom windows default to 1024x768, so 300/200 is comfortably inside
-    // the clamping margins.
+  const stubRect = (el: Element, rect: Partial<DOMRect>) =>
+    Object.defineProperty(el, "getBoundingClientRect", {
+      value: () => ({ x: 0, y: 0, toJSON: () => "", ...rect }) as DOMRect,
+      configurable: true,
+    });
+
+  it("places the chip below the link's whole line block, at the pointer's x", () => {
+    // A three-line wrapped link: the union rect spans top 180 → bottom 250.
+    // The pointer is on the first line (y=190); the chip must clear ALL
+    // lines, not sit between them. jsdom viewport is 1024x768.
     const ref = makeRef(TITLE);
-    hover(ref, 300, 200);
+    stubRect(ref, { left: 100, right: 500, top: 180, bottom: 250, width: 400, height: 70 });
+    hover(ref, 300, 190);
     vi.advanceTimersByTime(160);
     expect(controller.chip.style.left).toBe("300px");
-    expect(controller.chip.style.top).toBe(`${200 + 14}px`);
+    expect(controller.chip.style.top).toBe(`${250 + 4}px`);
+  });
+
+  it("clamps the chip's x to the link's horizontal extent", () => {
+    const ref = makeRef(TITLE);
+    stubRect(ref, { left: 100, right: 500, top: 180, bottom: 250, width: 400, height: 70 });
+    hover(ref, 900, 190); // pointer x reported outside the link's span
+    vi.advanceTimersByTime(160);
+    expect(controller.chip.style.left).toBe("500px");
+  });
+
+  it("flips above the block when the viewport runs out below", () => {
+    const ref = makeRef(TITLE);
+    // bottom at 760 leaves no room below in a 768px-tall jsdom viewport;
+    // chip height falls back to 22 when offsetHeight is 0 (jsdom).
+    stubRect(ref, { left: 100, right: 500, top: 700, bottom: 760, width: 400, height: 60 });
+    hover(ref, 300, 710);
+    vi.advanceTimersByTime(160);
+    expect(controller.chip.style.top).toBe(`${700 - 22 - 4}px`);
   });
 
   it("marks the chip empty when prefetch resolves to no figure", async () => {
