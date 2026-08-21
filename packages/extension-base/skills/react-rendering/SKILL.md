@@ -7,6 +7,13 @@ description: Render React or Roam-aware UI in a prototype while respecting host 
 
 Prefer existing `roamjs-components` primitives for Roam-consistent controls, dialogs, toasts, settings, and observers. Scope prototype CSS under a unique class such as `.roam-prototype-<slug>` so it cannot restyle the graph globally.
 
+Import those primitives as named exports from package barrels. This repository emits ESM, but `roamjs-components` is published as TypeScript-compiled CommonJS; a default import from a published subpath can bind `{ default: fn }` instead of the function. For example:
+
+```ts
+import { addStyle } from "roamjs-components/dom";
+import { runExtension } from "roamjs-components/util";
+```
+
 Roam automatically injects and removes a published `extension.css`. The extension API also automatically cleans up its commands, slash commands, settings panel, and experimental AI tools. DOM nodes, observers, event listeners, intervals, and custom registered components remain the extension's responsibility.
 
 Use the supported Roam renderers when the UI is fundamentally Roam content:

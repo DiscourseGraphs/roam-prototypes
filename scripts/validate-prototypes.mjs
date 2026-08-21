@@ -1,6 +1,7 @@
 import { readFile, readdir, stat } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { init, parse } from "es-module-lexer";
 import {
   assertAllowedEnvironmentReferences,
   assertPrototypeName,
@@ -11,6 +12,39 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const defaultPrototypesRoot = path.join(root, "prototypes");
 const sourceExtension = /\.[cm]?[jt]sx?$/;
 
+await init;
+
+export const assertNoRoamJsDefaultImports = (source, label) => {
+  const [imports] = parse(source);
+  for (const imported of imports) {
+    if (
+      imported.d !== -1 ||
+      !imported.n?.match(/^roamjs-components(?:\/|$)/)
+    ) {
+      continue;
+    }
+    const statement = source.slice(imported.ss, imported.se);
+    const clause = /^\s*import\s+([\s\S]*?)\s+from\s+["']/.exec(statement)?.[1];
+    if (!clause) continue;
+    const normalizedClause = clause
+      .replace(/\/\*[\s\S]*?\*\/|\/\/[^\r\n]*/g, "")
+      .trim();
+    if (normalizedClause.startsWith("type ")) continue;
+    const hasNamedDefault =
+      normalizedClause.startsWith("{") &&
+      /(?:\{|,)\s*default\s+as\b/.test(normalizedClause);
+    if (
+      (normalizedClause.startsWith("{") && !hasNamedDefault) ||
+      normalizedClause.startsWith("*")
+    ) {
+      continue;
+    }
+    throw new Error(
+      `${label} default-imports ${imported.n}; use a named export from a roamjs-components barrel`,
+    );
+  }
+};
+
 const isFile = async (target) => {
   try {
     return (await stat(target)).isFile();
@@ -19,27 +53,32 @@ const isFile = async (target) => {
   }
 };
 
-const validateSourceDirectory = async (directory, prototype, prototypesRoot) => {
+const validateSourceDirectory = async (directory, label, sourceRoot = directory) => {
   const entries = await readdir(directory, { withFileTypes: true });
   for (const entry of entries) {
     const target = path.join(directory, entry.name);
     if (entry.isDirectory()) {
-      await validateSourceDirectory(target, prototype, prototypesRoot);
+      await validateSourceDirectory(target, label, sourceRoot);
     } else if (entry.isFile() && sourceExtension.test(entry.name)) {
       const source = await readFile(target, "utf8");
-      assertAllowedEnvironmentReferences(
-        source,
-        `${prototype}/${path.relative(path.join(prototypesRoot, prototype), target)}`,
-      );
+      const sourceLabel = `${label}/${path.relative(sourceRoot, target)}`;
+      assertAllowedEnvironmentReferences(source, sourceLabel);
+      assertNoRoamJsDefaultImports(source, sourceLabel);
     } else if (!entry.isFile()) {
-      throw new Error(`${prototype} source contains a non-file entry: ${entry.name}`);
+      throw new Error(`${label} source contains a non-file entry: ${entry.name}`);
     }
   }
 };
 
 export const validatePrototypes = async ({
   prototypesRoot = defaultPrototypesRoot,
+  templateSourceRoot = path.join(root, "packages", "extension-base", "template", "src"),
 } = {}) => {
+  await validateSourceDirectory(
+    templateSourceRoot,
+    "packages/extension-base/template",
+    templateSourceRoot,
+  );
   const entries = await readDirectoryIfExists(prototypesRoot, {
     withFileTypes: true,
   });
@@ -72,7 +111,7 @@ export const validatePrototypes = async ({
       throw new Error(`${prototype} is missing src/index.ts`);
     }
 
-    await validateSourceDirectory(sourceDirectory, prototype, prototypesRoot);
+    await validateSourceDirectory(sourceDirectory, prototype, sourceDirectory);
     packageCount += 1;
   }
 

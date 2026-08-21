@@ -107,6 +107,60 @@ test(
         await readFile(path.join(destination, "dist", "extension.js"), "utf8"),
         /process\.env\.(?:PACKAGE_NAME|ROAMJS_VERSION|VERSION)/,
       );
+
+      const smokeTest = path.join(destination, "artifact-smoke.mjs");
+      await writeFile(
+        smokeTest,
+        `import { createRequire } from "node:module";
+
+const require = createRequire(import.meta.url);
+const roamRequire = createRequire(require.resolve("roamjs-components/package.json"));
+const TSLib = roamRequire("tslib");
+
+globalThis.window = globalThis;
+globalThis.HTMLElement = class HTMLElement {};
+const body = new EventTarget();
+const head = { appendChild: () => {} };
+globalThis.document = {
+  body,
+  createElement: () => ({ remove: () => {}, setAttribute: () => {} }),
+  getElementById: () => null,
+  getElementsByTagName: () => [head],
+};
+window.React = {};
+window.ReactDOM = {};
+window.TSLib = TSLib;
+window.Blueprint = { Core: {}, DateTime: {}, Select: {} };
+window.RoamLazy = {};
+window.Nanoid = { nanoid: () => "smoke-test" };
+globalThis.localStorage = { getItem: () => null };
+let errorReports = 0;
+globalThis.fetch = async () => {
+  errorReports += 1;
+  return { ok: true, status: 204 };
+};
+window.roamAlphaAPI = {
+  graph: { name: "artifact-smoke" },
+  ui: { commandPalette: { removeCommand: () => {} } },
+};
+
+const extension = (await import("./dist/extension.js")).default;
+if (typeof extension?.onload !== "function" || typeof extension?.onunload !== "function") {
+  throw new Error("Built artifact does not expose the Roam extension lifecycle");
+}
+extension.onload({
+  extensionAPI: { settings: { getAll: () => ({}) } },
+  extension: { version: "artifact-smoke" },
+});
+await new Promise((resolve) => setTimeout(resolve, 0));
+extension.onunload();
+if (errorReports) {
+  throw new Error("Built artifact reported a lifecycle failure");
+}
+`,
+        "utf8",
+      );
+      run(["--dir", destination, "exec", "node", smokeTest], repoRoot);
     } finally {
       await rm(repoRoot, { recursive: true, force: true });
     }
