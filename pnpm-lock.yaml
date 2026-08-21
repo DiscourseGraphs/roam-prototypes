@@ -49,6 +49,25 @@ importers:
         specifier: 'catalog:'
         version: 4.1.10(@types/node@26.2.0)(jsdom@30.0.1)(vite@8.2.1(@types/node@26.2.0)(esbuild@0.17.14)(jiti@1.21.7)(yaml@2.9.0))
 
+  prototypes/copy-for-latex:
+    dependencies:
+      roamjs-components:
+        specifier: 'catalog:'
+        version: 0.88.4(8b3dba144aa4c6a891ee791b6ddc21c2)
+      use-sync-external-store:
+        specifier: 'catalog:'
+        version: 1.6.0(react@17.0.2)
+    devDependencies:
+      '@discoursegraphs/extension-base':
+        specifier: workspace:*
+        version: link:../../packages/extension-base
+      jsdom:
+        specifier: 'catalog:'
+        version: 30.0.1
+      vitest:
+        specifier: 'catalog:'
+        version: 4.1.10(@types/node@26.2.0)(jsdom@30.0.1)(vite@8.2.1(@types/node@26.2.0)(esbuild@0.17.14)(jiti@1.21.7)(yaml@2.9.0))
+
   prototypes/loaded-dialog:
     dependencies:
       roamjs-components:
