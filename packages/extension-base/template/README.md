@@ -29,39 +29,50 @@ Paste this loader into a `roam/js` code block. To test a pull-request preview, c
   const baseUrl =
     "https://discoursegraphs.com/releases/prototypes/__PROTOTYPE_NAME__";
   const globalKey = "__roamPrototype:__PROTOTYPE_NAME__";
-  const version = Date.now();
+  const loadKey = `${globalKey}:load`;
 
-  const previous = window[globalKey];
-  const previousExtension = previous?.extension ?? previous;
+  const previousLoad = window[loadKey] ?? Promise.resolve();
+  const currentLoad = previousLoad.catch(() => {}).then(async () => {
+    const version = Date.now();
+    const previous = window[globalKey];
+    const previousExtension = previous?.extension ?? previous;
 
-  // Import and validate the replacement before unloading a working copy.
-  const module = await import(`${baseUrl}/extension.js?v=${version}`);
-  const extension = module.default;
-  if (!extension?.onload || !extension?.onunload) {
-    throw new Error("The loaded module is not a Roam extension.");
-  }
+    // Import and validate the replacement before unloading a working copy.
+    const module = await import(`${baseUrl}/extension.js?v=${version}`);
+    const extension = module.default;
+    if (!extension?.onload || !extension?.onunload) {
+      throw new Error("The loaded module is not a Roam extension.");
+    }
 
-  if (previousExtension?.onunload) {
-    await previousExtension.onunload();
-  }
-  previous?.stylesheet?.remove();
-  delete window[globalKey];
+    if (previousExtension?.onunload) {
+      await previousExtension.onunload();
+    }
+    previous?.stylesheet?.remove();
+    delete window[globalKey];
 
-  const stylesheet = document.createElement("link");
-  stylesheet.rel = "stylesheet";
-  stylesheet.href = `${baseUrl}/extension.css?v=${version}`;
-  stylesheet.dataset.roamPrototype = "__PROTOTYPE_NAME__";
+    const stylesheet = document.createElement("link");
+    stylesheet.rel = "stylesheet";
+    stylesheet.href = `${baseUrl}/extension.css?v=${version}`;
+    stylesheet.dataset.roamPrototype = "__PROTOTYPE_NAME__";
 
+    try {
+      document.head.appendChild(stylesheet);
+      await extension.onload({
+        extensionAPI: undefined,
+        extension: { version: "roam/js" },
+      });
+      window[globalKey] = { extension, stylesheet };
+    } catch (error) {
+      stylesheet.remove();
+      throw error;
+    }
+  });
+
+  window[loadKey] = currentLoad;
   try {
-    document.head.appendChild(stylesheet);
-    await extension.onload({
-      extensionAPI: undefined,
-      extension: { version: "roam/js" },
-    });
-    window[globalKey] = { extension, stylesheet };
-  } catch (error) {
-    stylesheet.remove();
-    throw error;
+    await currentLoad;
+  } finally {
+    if (window[loadKey] === currentLoad) delete window[loadKey];
   }
 })().catch((error) => {
   console.error("Could not load __PROTOTYPE_TITLE__:", error);
