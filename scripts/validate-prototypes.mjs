@@ -10,13 +10,15 @@ import {
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const defaultPrototypesRoot = path.join(root, "prototypes");
 const sourceExtension = /\.[cm]?[jt]sx?$/;
-const roamJsImport = /\bimport\s+([\s\S]*?)\s+from\s+["'](roamjs-components(?:\/[^"']*)?)["']/g;
+const roamJsImport = /\bimport\s+([^"';]*?)\s+from\s+["'](roamjs-components(?:\/[^"']*)?)["']/g;
 
 export const assertNoRoamJsDefaultImports = (source, label) => {
   for (const match of source.matchAll(roamJsImport)) {
     const clause = match[1].trim();
     if (clause.startsWith("type ")) continue;
-    if (clause.startsWith("{") || clause.startsWith("*")) continue;
+    const hasNamedDefault =
+      clause.startsWith("{") && /(?:\{|,)\s*default\s+as\b/.test(clause);
+    if ((clause.startsWith("{") && !hasNamedDefault) || clause.startsWith("*")) continue;
     throw new Error(
       `${label} default-imports ${match[2]}; use a named export from a roamjs-components barrel`,
     );
