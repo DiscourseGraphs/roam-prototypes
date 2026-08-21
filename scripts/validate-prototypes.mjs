@@ -1,6 +1,7 @@
 import { readFile, readdir, stat } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { init, parse } from "es-module-lexer";
 import {
   assertAllowedEnvironmentReferences,
   assertPrototypeName,
@@ -10,64 +11,36 @@ import {
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const defaultPrototypesRoot = path.join(root, "prototypes");
 const sourceExtension = /\.[cm]?[jt]sx?$/;
-const roamJsImport = /\bimport\s+([^"';]*?)\s+from\s+["'](roamjs-components(?:\/[^"']*)?)["']/g;
 
-const maskCommentsAndStrings = (source) => {
-  const masked = source.split("");
-  let state = "code";
-  const mask = (index) => {
-    if (masked[index] !== "\n" && masked[index] !== "\r") masked[index] = " ";
-  };
-
-  for (let index = 0; index < source.length; index += 1) {
-    const character = source[index];
-    const next = source[index + 1];
-    if (state === "code") {
-      if (character === "'" || character === '"' || character === "`") {
-        state = character;
-        mask(index);
-      } else if (character === "/" && next === "/") {
-        state = "line-comment";
-        mask(index);
-        mask(++index);
-      } else if (character === "/" && next === "*") {
-        state = "block-comment";
-        mask(index);
-        mask(++index);
-      }
-    } else if (state === "line-comment") {
-      if (character === "\n" || character === "\r") state = "code";
-      else mask(index);
-    } else if (state === "block-comment") {
-      mask(index);
-      if (character === "*" && next === "/") {
-        mask(++index);
-        state = "code";
-      }
-    } else {
-      mask(index);
-      if (character === "\\") {
-        if (next !== undefined) mask(++index);
-      } else if (character === state) {
-        state = "code";
-      }
-    }
-  }
-
-  return masked.join("");
-};
+await init;
 
 export const assertNoRoamJsDefaultImports = (source, label) => {
-  const codeMask = maskCommentsAndStrings(source);
-  for (const match of source.matchAll(roamJsImport)) {
-    if (codeMask.slice(match.index, match.index + 6) !== "import") continue;
-    const clause = match[1].trim();
-    if (clause.startsWith("type ")) continue;
+  const [imports] = parse(source);
+  for (const imported of imports) {
+    if (
+      imported.d !== -1 ||
+      !imported.n?.match(/^roamjs-components(?:\/|$)/)
+    ) {
+      continue;
+    }
+    const statement = source.slice(imported.ss, imported.se);
+    const clause = /^\s*import\s+([\s\S]*?)\s+from\s+["']/.exec(statement)?.[1];
+    if (!clause) continue;
+    const normalizedClause = clause
+      .replace(/\/\*[\s\S]*?\*\/|\/\/[^\r\n]*/g, "")
+      .trim();
+    if (normalizedClause.startsWith("type ")) continue;
     const hasNamedDefault =
-      clause.startsWith("{") && /(?:\{|,)\s*default\s+as\b/.test(clause);
-    if ((clause.startsWith("{") && !hasNamedDefault) || clause.startsWith("*")) continue;
+      normalizedClause.startsWith("{") &&
+      /(?:\{|,)\s*default\s+as\b/.test(normalizedClause);
+    if (
+      (normalizedClause.startsWith("{") && !hasNamedDefault) ||
+      normalizedClause.startsWith("*")
+    ) {
+      continue;
+    }
     throw new Error(
-      `${label} default-imports ${match[2]}; use a named export from a roamjs-components barrel`,
+      `${label} default-imports ${imported.n}; use a named export from a roamjs-components barrel`,
     );
   }
 };

@@ -56,6 +56,17 @@ test("rejects default imports from published roamjs-components CommonJS subpaths
   assert.throws(
     () =>
       assertNoRoamJsDefaultImports(
+        [
+          "const quotes = /['\"]/;",
+          'import addStyle from "roamjs-components/dom/addStyle";',
+        ].join("\n"),
+        "sample-prototype/src/index.ts",
+      ),
+    /default-imports roamjs-components\/dom\/addStyle/,
+  );
+  assert.throws(
+    () =>
+      assertNoRoamJsDefaultImports(
         'import Alert, { render } from "roamjs-components/components/Toast";',
         "sample-prototype/src/index.ts",
       ),
