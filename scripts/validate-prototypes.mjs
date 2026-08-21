@@ -12,8 +12,55 @@ const defaultPrototypesRoot = path.join(root, "prototypes");
 const sourceExtension = /\.[cm]?[jt]sx?$/;
 const roamJsImport = /\bimport\s+([^"';]*?)\s+from\s+["'](roamjs-components(?:\/[^"']*)?)["']/g;
 
+const maskCommentsAndStrings = (source) => {
+  const masked = source.split("");
+  let state = "code";
+  const mask = (index) => {
+    if (masked[index] !== "\n" && masked[index] !== "\r") masked[index] = " ";
+  };
+
+  for (let index = 0; index < source.length; index += 1) {
+    const character = source[index];
+    const next = source[index + 1];
+    if (state === "code") {
+      if (character === "'" || character === '"' || character === "`") {
+        state = character;
+        mask(index);
+      } else if (character === "/" && next === "/") {
+        state = "line-comment";
+        mask(index);
+        mask(++index);
+      } else if (character === "/" && next === "*") {
+        state = "block-comment";
+        mask(index);
+        mask(++index);
+      }
+    } else if (state === "line-comment") {
+      if (character === "\n" || character === "\r") state = "code";
+      else mask(index);
+    } else if (state === "block-comment") {
+      mask(index);
+      if (character === "*" && next === "/") {
+        mask(++index);
+        state = "code";
+      }
+    } else {
+      mask(index);
+      if (character === "\\") {
+        if (next !== undefined) mask(++index);
+      } else if (character === state) {
+        state = "code";
+      }
+    }
+  }
+
+  return masked.join("");
+};
+
 export const assertNoRoamJsDefaultImports = (source, label) => {
+  const codeMask = maskCommentsAndStrings(source);
   for (const match of source.matchAll(roamJsImport)) {
+    if (codeMask.slice(match.index, match.index + 6) !== "import") continue;
     const clause = match[1].trim();
     if (clause.startsWith("type ")) continue;
     const hasNamedDefault =
