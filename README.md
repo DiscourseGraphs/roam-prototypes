@@ -38,7 +38,7 @@ The repository includes instructions for the assistant in [AGENTS.md](AGENTS.md)
 
 Public source repository for Discourse Graphs' installable Roam developer-extension prototypes.
 
-Each prototype lives in `prototypes/<prototype>/`. Development uses ordinary feature branches and pull requests. Build artifacts are intentionally public so Roam can load them with **Load Developer Extensions from URL**.
+Each prototype lives in `prototypes/<prototype>/`. Development uses ordinary feature branches and pull requests. Build artifacts are intentionally public so Roam can load them either with **Load Developer Extensions from URL** or from a `roam/js` code block. Each prototype README documents both methods.
 
 ## Release URLs
 
@@ -67,6 +67,8 @@ It may also contain:
 
 - `extension.css`
 - `CHANGELOG.md`
+
+URL loading is the full developer-extension environment: Roam supplies `extensionAPI`, loads `extension.css`, and owns unloading. The documented `roam/js` loader imports the same `extension.js`, supplies no `extensionAPI`, and therefore handles cache busting, stylesheet loading, and replacement unloading itself. Prototype behavior that depends on extension settings or other `extensionAPI` capabilities must feature-detect them; global `window.roamAlphaAPI` capabilities remain available in both modes.
 
 ## Repository layout
 

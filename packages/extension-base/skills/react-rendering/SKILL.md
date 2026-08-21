@@ -14,7 +14,7 @@ import { addStyle } from "roamjs-components/dom";
 import { runExtension } from "roamjs-components/util";
 ```
 
-Roam automatically injects and removes a published `extension.css`. The extension API also automatically cleans up its commands, slash commands, settings panel, and experimental AI tools. DOM nodes, observers, event listeners, intervals, and custom registered components remain the extension's responsibility.
+With URL loading, Roam automatically injects and removes a published `extension.css`. The extension API also automatically cleans up its commands, slash commands, settings panel, and experimental AI tools. The documented `roam/js` loader manages `extension.css`, but has no extension API, so feature-detect extension-scoped capabilities and explicitly clean up any fallback registrations. DOM nodes, observers, event listeners, intervals, and custom registered components remain the extension's responsibility in both modes.
 
 Use the supported Roam renderers when the UI is fundamentally Roam content:
 
