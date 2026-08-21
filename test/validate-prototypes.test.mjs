@@ -61,9 +61,29 @@ test("rejects default imports from published roamjs-components CommonJS subpaths
       ),
     /default-imports roamjs-components\/components\/Toast/,
   );
+  assert.throws(
+    () =>
+      assertNoRoamJsDefaultImports(
+        'import { default as addStyle } from "roamjs-components/dom/addStyle";',
+        "sample-prototype/src/index.ts",
+      ),
+    /default-imports roamjs-components\/dom\/addStyle/,
+  );
+  assert.throws(
+    () =>
+      assertNoRoamJsDefaultImports(
+        [
+          'import { map } from "lodash";',
+          'import addStyle from "roamjs-components/dom/addStyle";',
+        ].join("\n"),
+        "sample-prototype/src/index.ts",
+      ),
+    /default-imports roamjs-components\/dom\/addStyle/,
+  );
   assert.doesNotThrow(() =>
     assertNoRoamJsDefaultImports(
       [
+        'import React from "react";',
         'import { addStyle } from "roamjs-components/dom";',
         'import { runExtension } from "roamjs-components/util";',
         'import type { OnloadArgs } from "roamjs-components/types";',
