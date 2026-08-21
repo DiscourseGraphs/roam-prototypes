@@ -14,7 +14,7 @@ const waitFor = async (predicate) => {
   throw new Error("Timed out waiting for the loader state");
 };
 
-test("serializes overlapping roam/js loader executions", async () => {
+const readInstrumentedLoader = async () => {
   const readme = await readFile(
     path.join(repoRoot, "packages", "extension-base", "template", "README.md"),
     "utf8",
@@ -29,6 +29,11 @@ test("serializes overlapping roam/js loader executions", async () => {
     "const module = await window.__importPrototype(`${baseUrl}/extension.js?v=${version}`);",
   );
   assert.notEqual(instrumentedLoader, loader, "test should instrument the loader import");
+  return instrumentedLoader;
+};
+
+test("serializes overlapping roam/js loader executions", async () => {
+  const instrumentedLoader = await readInstrumentedLoader();
 
   const events = [];
   let importCount = 0;
@@ -84,6 +89,61 @@ test("serializes overlapping roam/js loader executions", async () => {
     ]);
     assert.equal(window["__roamPrototype:__PROTOTYPE_NAME__:load"], undefined);
   } finally {
+    if (originalWindow === undefined) delete globalThis.window;
+    else globalThis.window = originalWindow;
+    if (originalDocument === undefined) delete globalThis.document;
+    else globalThis.document = originalDocument;
+  }
+});
+
+test("cleans up an extension whose roam/js onload rejects", async () => {
+  const instrumentedLoader = await readInstrumentedLoader();
+  const events = [];
+  const errors = [];
+  let stylesheetRemoved = false;
+  const originalWindow = globalThis.window;
+  const originalDocument = globalThis.document;
+  const originalConsoleError = console.error;
+
+  globalThis.window = {
+    __importPrototype: async () => ({
+      default: {
+        onload: async () => {
+          events.push("onload");
+          throw new Error("load failed");
+        },
+        onunload: async () => {
+          events.push("onunload");
+        },
+      },
+    }),
+  };
+  globalThis.document = {
+    createElement: () => ({
+      dataset: {},
+      remove: () => {
+        stylesheetRemoved = true;
+      },
+    }),
+    head: { appendChild: () => {} },
+  };
+  console.error = (...args) => errors.push(args);
+
+  try {
+    new Function(instrumentedLoader)();
+    await waitFor(
+      () =>
+        events.includes("onunload") &&
+        window["__roamPrototype:__PROTOTYPE_NAME__:load"] === undefined,
+    );
+
+    assert.deepEqual(events, ["onload", "onunload"]);
+    assert.equal(stylesheetRemoved, true);
+    assert.equal(window["__roamPrototype:__PROTOTYPE_NAME__"], undefined);
+    assert.equal(errors.length, 1);
+    assert.match(errors[0][0], /Could not load __PROTOTYPE_TITLE__/);
+  } finally {
+    console.error = originalConsoleError;
     if (originalWindow === undefined) delete globalThis.window;
     else globalThis.window = originalWindow;
     if (originalDocument === undefined) delete globalThis.document;

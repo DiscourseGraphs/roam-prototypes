@@ -63,6 +63,14 @@ Paste this loader into a `roam/js` code block. To test a pull-request preview, c
       });
       window[globalKey] = { extension, stylesheet };
     } catch (error) {
+      try {
+        await extension.onunload();
+      } catch (cleanupError) {
+        console.error(
+          "Could not clean up the failed __PROTOTYPE_TITLE__ load:",
+          cleanupError,
+        );
+      }
       stylesheet.remove();
       throw error;
     }
