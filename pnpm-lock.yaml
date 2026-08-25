@@ -75,7 +75,7 @@ importers:
     dependencies:
       roamjs-components:
         specifier: 'catalog:'
-        version: 0.88.4(8b3dba144aa4c6a891ee791b6ddc21c2)
+        version: 0.89.0(8b3dba144aa4c6a891ee791b6ddc21c2)
       use-sync-external-store:
         specifier: 'catalog:'
         version: 1.6.0(react@17.0.2)
