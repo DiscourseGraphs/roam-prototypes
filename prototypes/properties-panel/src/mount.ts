@@ -46,7 +46,13 @@ export const registerAction = (spec: ActionSpec): (() => void) => {
 
 let mounting = false;
 
-export const mountForCurrentPage = async (): Promise<void> => {
+/**
+ * Idempotent mount pass. With `force`, an already-mounted panel is torn down
+ * and remounted with fresh data — this is what `dgPropsPanel.refresh()` does
+ * for programmatic callers (routine external edits don't need it: the pull
+ * watch in PanelRoot reloads the snapshot in place).
+ */
+export const mountForCurrentPage = async (force = false): Promise<void> => {
   if (!CONFIG.defaultOn) return;
   if (mounting) return; // poll can fire while a previous pass still awaits
   mounting = true;
@@ -71,7 +77,7 @@ export const mountForCurrentPage = async (): Promise<void> => {
       refs.panelHost &&
       document.contains(refs.panelHost) &&
       refs.panelHost.nextElementSibling === container;
-    if (alreadyMounted) return;
+    if (alreadyMounted && !force) return;
     unmountAll();
 
     const registry = await loadRegistry();

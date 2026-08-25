@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.5.2 - 2026-08-19
+
+- The panel now updates when someone ELSE writes the properties block — a
+  pull watch on the block reloads the snapshot (debounced) on any change, so
+  issuesync's "Send to Linear" writeback fills the `Linear::` chip without
+  navigating away. Works for any writer: other extensions, agents, and edits
+  made in "view as blocks".
+- `window.dgPropsPanel.refresh()` now forces a fresh remount when the panel
+  is already mounted, instead of returning early.
+
 ## 0.5.1 - 2026-08-19
 
 - Fixed the load failure on the roam/js `import()` path — the same pair of

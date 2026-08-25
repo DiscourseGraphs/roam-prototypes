@@ -97,9 +97,12 @@ export default runExtension(async () => {
      * Roam only injects on the URL-loading path. See src/styles.ts. */
     const style = injectStyle(PANEL_CSS);
 
-    const onNav = () => setTimeout(mountForCurrentPage, 120);
+    // Explicit no-arg lambdas: mountForCurrentPage takes a `force` flag, and
+    // a stray truthy first argument from a callback API would remount the
+    // panel on every tick.
+    const onNav = () => setTimeout(() => mountForCurrentPage(), 120);
     window.addEventListener("hashchange", onNav);
-    const pollTimer = window.setInterval(mountForCurrentPage, CONFIG.pollMs);
+    const pollTimer = window.setInterval(() => mountForCurrentPage(), CONFIG.pollMs);
     onNav();
 
     // The public surface other extensions build on (the Linear-Roam sync
@@ -109,7 +112,10 @@ export default runExtension(async () => {
       VERSION,
       _core: coreModule,
       config: CONFIG,
-      refresh: mountForCurrentPage,
+      // Programmatic "make the panel current NOW": forces a remount with
+      // fresh data even when already mounted. Routine external edits don't
+      // need it — the pull watch reloads the snapshot in place.
+      refresh: () => mountForCurrentPage(true),
       registerAction,
       unload: () => {
         window.removeEventListener("hashchange", onNav);

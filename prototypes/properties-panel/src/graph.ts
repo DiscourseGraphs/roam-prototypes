@@ -275,6 +275,34 @@ export const loadSnapshot = async (pageUid: string, type: NodeType): Promise<Sna
   return { blockUid: block.uid, duplicates, parsed, templateOrder, refTexts };
 };
 
+/**
+ * Watch a block's subtree and fire on ANY change to it — the panel's own
+ * writes, another extension's (issuesync's `Linear::` writeback), an agent's,
+ * or a collaborator's. Returns an unwatch function. Feature-detected: on a
+ * Roam build without pull watches the panel still works, it just refreshes
+ * only on navigation and its own edits.
+ */
+export const watchBlock = (uid: string, onChange: () => void): (() => void) => {
+  const a = api();
+  if (typeof a?.data?.addPullWatch !== "function") return () => {};
+  const pattern = "[:block/string :block/order {:block/children ...}]";
+  const eid = `[:block/uid "${uid}"]`;
+  const handler = () => onChange();
+  try {
+    a.data.addPullWatch(pattern, eid, handler);
+  } catch (e) {
+    console.warn("properties-panel: could not watch the properties block", e);
+    return () => {};
+  }
+  return () => {
+    try {
+      a.data.removePullWatch(pattern, eid, handler);
+    } catch (e) {
+      /* watch already gone */
+    }
+  };
+};
+
 export const currentPageContext = async (): Promise<{
   pageUid: string;
   pageTitle: string;

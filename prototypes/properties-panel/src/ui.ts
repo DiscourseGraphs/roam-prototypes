@@ -29,6 +29,7 @@ import {
   pageUidByTitle,
   resolveDynamicOptions,
   titleAutocomplete,
+  watchBlock,
   type Snapshot,
 } from "~/graph";
 import { applyOps } from "~/writes";
@@ -848,7 +849,12 @@ const Panel = ({
   );
 };
 
-/** Loads the Snapshot and re-loads it after every write. */
+/**
+ * Loads the Snapshot, re-loads it after every panel write, and — via a pull
+ * watch on the properties block — after anyone ELSE's write too (issuesync's
+ * `Linear::` writeback, MCP agents, collaborators, edits made in "view as
+ * blocks"). Without the watch the panel only refreshed on navigation.
+ */
 export const PanelRoot = ({
   pageUid,
   type,
@@ -871,6 +877,25 @@ export const PanelRoot = ({
     const s = await loadSnapshot(pageUid, type);
     if (alive.current) setSnap(s);
   }, [pageUid, type]);
+  // One watch per properties block. Fires are debounced: a single action can
+  // touch the block several times (issuesync updates the parent line, multi
+  // writes create several children), and one reload at the end is enough.
+  const blockUid = snap ? snap.blockUid : null;
+  React.useEffect(() => {
+    if (!blockUid) return;
+    let timer: number | null = null;
+    const unwatch = watchBlock(blockUid, () => {
+      if (timer != null) window.clearTimeout(timer);
+      timer = window.setTimeout(() => {
+        timer = null;
+        void reload();
+      }, 200);
+    });
+    return () => {
+      if (timer != null) window.clearTimeout(timer);
+      unwatch();
+    };
+  }, [blockUid, reload]);
   if (!snap) return null;
   return h(Panel, { snap, registry, reload });
 };
