@@ -65,6 +65,17 @@ test("creates a complete prototype with catalog dependencies", async () => {
       entry,
       /import runExtension from "roamjs-components\/util\/runExtension";/,
     );
+    assert.match(entry, /if \(args\.extensionAPI\) throw error;/);
+    const readme = await readFile(path.join(result.destination, "README.md"), "utf8");
+    assert.match(readme, /Load Developer Extensions from URL/);
+    assert.match(readme, /extensionAPI: undefined/);
+    assert.match(readme, /extension\.css\?v=/);
+    assert.match(readme, /previousExtension\?\.onunload/);
+    assert.match(readme, /const loadKey = `\$\{globalKey\}:load`/);
+    assert.match(readme, /window\[loadKey\] = currentLoad/);
+    const loader = /```javascript\r?\n([\s\S]*?)\r?\n```/.exec(readme)?.[1];
+    assert.ok(loader, "generated README should contain a roam/js loader");
+    assert.doesNotThrow(() => new Function(loader));
   });
 });
 

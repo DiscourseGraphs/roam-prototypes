@@ -24,6 +24,14 @@ const withRepository = async (callback) => {
   }
 };
 
+const addPrototype = async ({ root, name }) => {
+  const prototype = path.join(root, "prototypes", name);
+  const dist = path.join(prototype, "dist");
+  await mkdir(dist, { recursive: true });
+  await writeFile(path.join(prototype, "README.md"), `# ${name}\n`, "utf8");
+  await writeFile(path.join(dist, "extension.js"), "export default true;\n", "utf8");
+};
+
 test("prepares an empty manifest when the prototypes directory does not exist", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "roam-empty-artifacts-test-"));
   try {
@@ -50,6 +58,73 @@ test("packages only the four public artifact names", async () => {
     );
     await assert.rejects(readFile(publishedPackage), /ENOENT/);
   });
+});
+
+test("packages only directly changed prototypes", async () => {
+  await withRepository(async ({ root }) => {
+    await addPrototype({ root, name: "another-prototype" });
+
+    const manifest = await prepareArtifacts({
+      repoRoot: root,
+      changedPaths: ["prototypes/sample-prototype/src/index.ts"],
+    });
+
+    assert.deepEqual(manifest.prototypes, ["sample-prototype"]);
+    await assert.rejects(
+      readFile(path.join(root, "packaged-artifacts", "another-prototype", "extension.js")),
+      /ENOENT/,
+    );
+  });
+});
+
+test("prepares an empty manifest when no prototypes are selected", async () => {
+  await withRepository(async ({ root }) => {
+    const manifest = await prepareArtifacts({ repoRoot: root, changedPaths: [] });
+    assert.deepEqual(manifest.prototypes, []);
+  });
+});
+
+test("does not publish prototypes for non-prototype repository changes", async () => {
+  await withRepository(async ({ root }) => {
+    for (const changedPath of [
+      ".github/workflows/ci.yml",
+      "package.json",
+      "packages/extension-base/scripts/cli.mjs",
+      "pnpm-lock.yaml",
+      "pnpm-workspace.yaml",
+      "scripts/artifact-utils.mjs",
+    ]) {
+      const manifest = await prepareArtifacts({
+        repoRoot: root,
+        changedPaths: [changedPath],
+      });
+
+      assert.deepEqual(manifest.prototypes, []);
+    }
+  });
+});
+
+test("CI selects changed prototypes for pull requests and main pushes", async () => {
+  const workflow = await readFile(
+    new URL("../.github/workflows/ci.yml", import.meta.url),
+    "utf8",
+  );
+
+  assert.ok(
+    workflow.includes(
+      "BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}",
+    ),
+  );
+  assert.ok(
+    workflow.includes(
+      "HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}",
+    ),
+  );
+  assert.ok(workflow.includes("if: github.event_name != 'workflow_dispatch'"));
+  assert.ok(workflow.includes('git diff --name-only "$BASE_SHA...$HEAD_SHA"'));
+  assert.ok(workflow.includes('git diff --name-only "$BASE_SHA" "$HEAD_SHA"'));
+  assert.ok(workflow.includes('git cat-file -e "$BASE_SHA^{commit}"'));
+  assert.ok(workflow.includes("--changed-paths changed-paths.txt"));
 });
 
 test("rejects source maps and unexpected build outputs", async () => {

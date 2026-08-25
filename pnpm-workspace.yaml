@@ -5,6 +5,6 @@ packages:
 catalog:
   esbuild: 0.17.14
   jsdom: 30.0.1
-  roamjs-components: 0.88.4
+  roamjs-components: 0.89.0
   use-sync-external-store: 1.6.0
   vitest: 4.1.10
