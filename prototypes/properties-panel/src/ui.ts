@@ -663,9 +663,6 @@ const Panel = ({
   const [showRaw, setShowRaw] = React.useState(false);
 
   const { slots, extras, anomalies } = snap.parsed;
-  const buttons = extras.filter((e) => e.type === "button") as (Extra & {
-    type: "button";
-  })[];
   // Single-colon statics (`Linear: [alias](url)`) render as read-only rows
   // with live inline links — same grid as everything else (PRO-207: no
   // standalone portal buttons; the row IS the portal).
@@ -818,18 +815,6 @@ const Panel = ({
           ),
         ]),
       ),
-    buttons.length > 0 &&
-      h(
-        "div",
-        { className: "dgpp-btnrow" },
-        buttons.map((b) =>
-          h(
-            "span",
-            { key: b.uid, className: "dgpp-abtn", onClick: () => runButton(b) },
-            "🖼 " + b.label,
-          ),
-        ),
-      ),
     (anomalies.length > 0 || snap.duplicates > 0) &&
       h(
         "div",
@@ -896,6 +881,12 @@ export const PanelRoot = ({
       unwatch();
     };
   }, [blockUid, reload]);
+  React.useEffect(() => {
+    setContentButtons(
+      snap ? (snap.parsed.extras.filter((e) => e.type === "button") as ButtonExtra[]) : [],
+    );
+  }, [snap]);
+  React.useEffect(() => () => setContentButtons([]), []);
   if (!snap) return null;
   return h(Panel, { snap, registry, reload });
 };
@@ -908,6 +899,25 @@ export type ActionSpec = {
 };
 
 export const actionRegistry = new Map<string, ActionSpec>();
+
+type ButtonExtra = Extra & { type: "button" };
+
+/**
+ * Buttons parsed from the CURRENT properties block, appended to the title
+ * actions row. Fed by PanelRoot on every snapshot, so the pull watch keeps
+ * them fresh — the convert button deletes its own block when clicked and
+ * the cancel path re-creates it (a stale row would aim runButton's
+ * fallback at a dead uid). NOT registered actions: no actionRegistry
+ * entries, no slot keys (spec, 2026-08-25).
+ */
+const buttonsStore = {
+  list: [] as ButtonExtra[],
+  listeners: new Set<() => void>(),
+};
+export const setContentButtons = (list: ButtonExtra[]): void => {
+  buttonsStore.list = list;
+  for (const fn of buttonsStore.listeners) fn();
+};
 
 const SlotHost = ({ action, ctx }: { action: ActionSpec; ctx: unknown }) => {
   const ref = React.useRef<HTMLElement | null>(null);
@@ -966,8 +976,18 @@ const StubAction = ({ a }: { a: { key: string; label: string; enabled: boolean; 
     a.badge && h("span", { className: "xbadge" }, a.badge),
   );
 
-export const TitleActions = ({ ctx }: { ctx: unknown }) =>
-  h(
+export const TitleActions = ({ ctx }: { ctx: unknown }) => {
+  // Re-render when the content-declared buttons change; PanelRoot feeds the
+  // store on every snapshot reload (external writes arrive via the pull
+  // watch, so this row updates without registerAction firing).
+  const [, bump] = React.useReducer((x: number) => x + 1, 0);
+  React.useEffect(() => {
+    buttonsStore.listeners.add(bump);
+    return () => {
+      buttonsStore.listeners.delete(bump);
+    };
+  }, []);
+  return h(
     "div",
     {
       id: "dg-props-actions-inner",
@@ -982,4 +1002,13 @@ export const TitleActions = ({ ctx }: { ctx: unknown }) =>
           })
         : h(StubAction, { key: slot.key, a: (slot as any).action }),
     ),
+    buttonsStore.list.map((b) =>
+      h(
+        "span",
+        { key: b.uid, className: "dgpp-abtn", onClick: () => runButton(b) },
+        b.icon && h("span", { className: `bp3-icon bp3-icon-${b.icon}` }),
+        b.label,
+      ),
+    ),
   );
+};

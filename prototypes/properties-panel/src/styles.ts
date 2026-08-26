@@ -48,7 +48,6 @@ export const PANEL_CSS = `
 .dgpp-anom { margin-top:8px; font-size:11.5px; color:#BF7326; }
 .dgpp-static { font-size:13px; color:#202B33; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .dgpp-static a { color:#106BA3; cursor:pointer; text-decoration:none; }
-.dgpp-btnrow { display:flex; gap:8px; margin-top:10px; }
 .dgpp-numin { border:1px solid #D8DEE4; border-radius:3px; background:transparent; color:inherit; }
 .dgpp-raw-note { font-size:11.5px; color:#8A9BA8; margin:2px 0 6px; }
 #dg-props-actions { display:flex; gap:8px; margin:6px 0 2px; }
