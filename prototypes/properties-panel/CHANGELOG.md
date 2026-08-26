@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.6.1 - 2026-08-25
+
+- Action-row buttons no longer get crushed when the row runs out of width
+  next to the page title: each button keeps its natural single-line size
+  (`flex:none`, `white-space:nowrap`) and the row wraps onto more lines
+  instead. Before, flex shrink squeezed every button to min-content and
+  labels broke mid-word — with the vertically centered icon landing beside
+  the middle line, "Convert this Issue…" read as scrambled.
+
 ## 0.6.0 - 2026-08-25
 
 - SmartBlock buttons declared in the properties block now render in the

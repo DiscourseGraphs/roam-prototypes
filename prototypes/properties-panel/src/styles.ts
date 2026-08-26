@@ -51,9 +51,9 @@ export const PANEL_CSS = `
 .dgpp-numin { border:1px solid #D8DEE4; border-radius:3px; background:transparent; color:inherit; }
 .dgpp-raw-note { font-size:11.5px; color:#8A9BA8; margin:2px 0 6px; }
 #dg-props-actions { display:flex; gap:8px; margin:6px 0 2px; }
-.dgpp-slot { display:inline-flex; align-items:center; }
+.dgpp-slot { display:inline-flex; align-items:center; flex:none; }
 .dgpp-slot .bp3-button { min-height:24px; padding:2px 10px; }
-.dgpp-abtn { display:inline-flex; align-items:center; gap:6px; border:1px solid #D8DEE4; background:#fff; border-radius:4px; padding:2px 10px; font-size:12.5px; color:#394B59; cursor:pointer; }
+.dgpp-abtn { display:inline-flex; align-items:center; gap:6px; flex:none; white-space:nowrap; border:1px solid #D8DEE4; background:#fff; border-radius:4px; padding:2px 10px; font-size:12.5px; color:#394B59; cursor:pointer; }
 .dgpp-abtn.stub { color:#9AA5B1; cursor:default; }
 .dgpp-abtn .xbadge { font-size:9.5px; letter-spacing:.05em; text-transform:uppercase; color:#BF7326; border:1px solid #EAC9A4; border-radius:3px; padding:0 3px; }
 .rm-dark .dgpp, html.rs-dark .dgpp { background:#252A31; border-color:#383E47; color:#DCE0E5; }

@@ -991,7 +991,9 @@ export const TitleActions = ({ ctx }: { ctx: unknown }) => {
     "div",
     {
       id: "dg-props-actions-inner",
-      style: { display: "flex", gap: "8px", alignItems: "center" },
+      // wrap: the row shares the title line's leftover width; without it,
+      // flex shrinks every button to min-content and labels break mid-word.
+      style: { display: "flex", flexWrap: "wrap", gap: "8px", alignItems: "center" },
     },
     coreActionSlots(CONFIG.actions, Array.from(actionRegistry.keys())).map((slot) =>
       slot.registered
