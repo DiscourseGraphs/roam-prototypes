@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.6.0 - 2026-08-25
+
+- SmartBlock buttons declared in the properties block now render in the
+  title-level actions row — after the configured/registered action slots,
+  in block order — instead of at the bottom of the property grid (workflow
+  verbs at the title, the grid stays nouns; PRO-207). The row stays fresh
+  through the existing pull watch, so a self-consuming button (the
+  node-convert flow deletes its own block; its cancel path re-creates it)
+  disappears and returns with the snapshot.
+- A button's declared Blueprint icon (`{{…:SmartBlock:…:Icon=exchange}}`)
+  renders before its label, the way SmartBlocks' native button does; the
+  hardcoded 🖼 prefix is gone. A button without `Icon=` shows its label
+  only — the panel never invents an icon.
+
 ## 0.5.2 - 2026-08-19
 
 - The panel now updates when someone ELSE writes the properties block — a
