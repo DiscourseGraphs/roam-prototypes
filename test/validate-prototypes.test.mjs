@@ -109,3 +109,40 @@ test("rejects default imports from published roamjs-components CommonJS subpaths
     ),
   );
 });
+
+test("validates imports in JSX/TSX sources that es-module-lexer cannot lex directly", () => {
+  const jsxPreamble = [
+    "const Widget = ({ label }) => <div title={label}>{label}</div>;",
+    "export const App = () => <Widget label=\"ok\" />;",
+  ];
+  assert.throws(
+    () =>
+      assertNoRoamJsDefaultImports(
+        [
+          'import addStyle from "roamjs-components/dom/addStyle";',
+          ...jsxPreamble,
+        ].join("\n"),
+        "sample-prototype/src/index.tsx",
+      ),
+    /default-imports roamjs-components\/dom\/addStyle/,
+  );
+  assert.doesNotThrow(() =>
+    assertNoRoamJsDefaultImports(
+      [
+        'import { addStyle } from "roamjs-components/dom";',
+        'import type { OnloadArgs } from "roamjs-components/types";',
+        "type Props = { label: string };",
+        ...jsxPreamble,
+      ].join("\n"),
+      "sample-prototype/src/index.tsx",
+    ),
+  );
+  assert.throws(
+    () =>
+      assertNoRoamJsDefaultImports(
+        'import addStyle from "roamjs-components/dom/addStyle";\nconst a = <div title={label}>{;',
+        "sample-prototype/src/index.tsx",
+      ),
+    /could not be parsed for import validation/,
+  );
+});
