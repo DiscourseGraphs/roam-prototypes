@@ -1,0 +1,48 @@
+{
+  "name": "zotero-roam-mcp",
+  "version": "0.7.29-mcp.0",
+  "private": true,
+  "description": "Fork of the zoteroRoam extension adding experimental headless AI tools for Roam MCP: search Zotero items, import item metadata, and import notes into citekey pages without the UI.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite build --config dev/vite.config.mts --watch",
+    "build": "vite build --config dev/vite.config.mts",
+    "test": "vitest run --config ./dev/vite.config.mts"
+  },
+  "dependencies": {
+    "@blueprintjs/core": "^3.54.0",
+    "@blueprintjs/datetime": "^3.24.1",
+    "@blueprintjs/icons": "^3.33.0",
+    "@blueprintjs/popover2": "^0.14.0",
+    "@blueprintjs/select": "^3.19.1",
+    "@tanstack/query-core": "^4.36.1",
+    "@tanstack/query-persist-client-core": "^4.36.1",
+    "@tanstack/react-query": "^4.36.1",
+    "@tanstack/react-query-persist-client": "^4.36.1",
+    "axios": "^1.8.2",
+    "axios-retry": "^4.5.0",
+    "idb": "^6.1.5",
+    "react": "^17.0.2",
+    "react-dom": "^17.0.2",
+    "scite-badge": "github:scitedotai/scite-badge#v8.0.6-prod",
+    "tributejs": "^5.1.3"
+  },
+  "devDependencies": {
+    "@storybook/test": "^8.3.2",
+    "@swc/core": "^1.7.26",
+    "@testing-library/dom": "^8.20.1",
+    "@testing-library/react": "^12.1.5",
+    "@testing-library/react-hooks": "^8.0.1",
+    "@vitejs/plugin-react-swc": "^3.7.0",
+    "fake-indexeddb": "^4.0.2",
+    "jsdom": "26.0.0",
+    "msw": "^2.4.9",
+    "sass": "^1.79.3",
+    "typescript": "^4.9.5",
+    "vite": "^5.4.19",
+    "vite-plugin-externals": "^0.6.2",
+    "vitest": "^2.1.1",
+    "vitest-mock-extended": "^2.0.2"
+  }
+}
