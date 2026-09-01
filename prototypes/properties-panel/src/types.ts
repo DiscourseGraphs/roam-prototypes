@@ -28,7 +28,7 @@ export type Slot = {
 
 export type Extra =
   | { type: "static"; uid: string; key: string; valueRaw: string }
-  | { type: "button"; uid: string; label: string; workflow: string };
+  | { type: "button"; uid: string; label: string; workflow: string; icon: string | null };
 
 export type Anomaly =
   | { type: "duplicate-key"; uid: string; key: string }

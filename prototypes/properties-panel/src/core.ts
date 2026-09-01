@@ -159,6 +159,41 @@ export const optionsFromSmartblockResults = (
       return { title, raw, kind: v.kind === "page" ? "page" : "text", label };
     });
 
+/**
+ * A SmartBlock button's trailing options (BUTTON_RE group 3):
+ * ":Icon=exchange" or ":RemoveButton=false,Icon=add". Strip the leading
+ * colon, split on commas, keep key=value pairs verbatim; a segment without
+ * "=" (SmartBlocks variables) is skipped.
+ */
+export const parseButtonOptions = (
+  tail: string | null | undefined,
+): Record<string, string> => {
+  const s = (tail || "").replace(/^:/, "").trim();
+  const out: Record<string, string> = {};
+  if (!s) return out;
+  for (const part of s.split(",")) {
+    const i = part.indexOf("=");
+    if (i <= 0) continue;
+    const key = part.slice(0, i).trim();
+    if (key) out[key] = part.slice(i + 1).trim();
+  }
+  return out;
+};
+
+/**
+ * The button's declared Blueprint icon, or null — the panel never invents
+ * one. The value becomes part of a class attribute (bp3-icon-<name>), so
+ * anything that doesn't look like an icon name is dropped, not escaped.
+ */
+export const buttonIcon = (options: Record<string, string>): string | null => {
+  for (const k of Object.keys(options)) {
+    if (k.toLowerCase() !== "icon") continue;
+    const v = options[k].toLowerCase();
+    return /^[a-z][a-z0-9-]*$/.test(v) ? v : null;
+  }
+  return null;
+};
+
 const ATTR_RE = /^([^:\n]+):: ?(.*)$/s;
 // Single-colon `Key: value` lines are DELIBERATE on some pages (e.g.
 // `Linear: [alias](url)` renders as a clean link instead of creating an
@@ -207,6 +242,7 @@ export const parsePropertiesTree = (tree: Tree): ParsedProps => {
         uid: child.uid,
         label: b[1].trim(),
         workflow: b[2].trim(),
+        icon: buttonIcon(parseButtonOptions(b[3])),
       });
       continue;
     }
