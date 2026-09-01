@@ -1,3 +1,4 @@
+import { getItemYear } from "../../api/helpers";
 import { parseDOI } from "../../utils";
 
 import { ZItemTop } from "Types/transforms";
@@ -22,18 +23,11 @@ type SimplifiedItem = {
 	year: string
 };
 
-/** Removes the `@` prefix from a citekey, if present */
-function normalizeCitekey(citekey: string) {
-	return citekey.trim().replace(/^@/, "");
-}
-
-/** Extracts an item's year of publication, if available */
-function extractYear(item: ZItemTop) {
-	return !item.meta.parsedDate
-		? ""
-		: isNaN(Number(new Date(item.meta.parsedDate)))
-			? ""
-			: (new Date(item.meta.parsedDate)).getUTCFullYear().toString();
+/** Normalizes an agent-provided citekey: coerces to string, trims, and removes the `@` prefix.
+ * Handler arguments are only schema-validated when the call comes through Roam's MCP server, so they are coerced here rather than assumed.
+ */
+function normalizeCitekey(citekey: unknown) {
+	return String(citekey ?? "").trim().replace(/^@/, "");
 }
 
 /** Formats a Zotero item into a compact summary for agents */
@@ -48,15 +42,15 @@ function simplifyItemForAgent(item: ZItemTop, { inGraph }: { inGraph: string | f
 		key: item.data.key,
 		library: item.library.type + "s/" + item.library.id,
 		title: item.data.title || "",
-		year: extractYear(item)
+		year: getItemYear(item)
 	};
 }
 
 /** Matches Zotero items against a search string - by citekey, Zotero key, DOI, or title substring.
  * @returns The matching items, with exact citekey/key/DOI matches sorted before title matches
  */
-function matchItems(items: ZItemTop[], query: string): ZItemTop[] {
-	const trimmed = query.trim();
+function matchItems(items: ZItemTop[], query: unknown): ZItemTop[] {
+	const trimmed = String(query ?? "").trim();
 	const lowercased = trimmed.toLowerCase();
 	const citekey = normalizeCitekey(trimmed).toLowerCase();
 	const doi = parseDOI(trimmed);
@@ -65,9 +59,11 @@ function matchItems(items: ZItemTop[], query: string): ZItemTop[] {
 	const partial: ZItemTop[] = [];
 
 	items.forEach(item => {
-		if (item.key.toLowerCase() == citekey || item.data.key.toLowerCase() == lowercased || (doi && parseDOI(item.data.DOI) == doi)) {
+		const itemKey = item.key.toLowerCase();
+
+		if (itemKey == citekey || item.data.key.toLowerCase() == lowercased || (doi && parseDOI(item.data.DOI) == doi)) {
 			exact.push(item);
-		} else if (item.key.toLowerCase().includes(citekey) || (item.data.title || "").toLowerCase().includes(lowercased)) {
+		} else if (itemKey.includes(citekey) || (item.data.title || "").toLowerCase().includes(lowercased)) {
 			partial.push(item);
 		}
 	});
