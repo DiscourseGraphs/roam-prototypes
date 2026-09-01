@@ -1,6 +1,7 @@
 import { readFile, readdir, stat } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { transformSync } from "esbuild";
 import { init, parse } from "es-module-lexer";
 import {
   assertAllowedEnvironmentReferences,
@@ -14,8 +15,38 @@ const sourceExtension = /\.[cm]?[jt]sx?$/;
 
 await init;
 
+// es-module-lexer only understands plain JavaScript. JSX/TypeScript syntax it
+// cannot lex is transformed with esbuild first - which strips types but keeps
+// every real import statement - and the transformed code is lexed instead.
+const lexImports = (source, label) => {
+  try {
+    return { code: source, imports: parse(source)[0] };
+  } catch {
+    try {
+      const { code } = transformSync(source, {
+        loader: "tsx",
+        // Keep every import clause that is not explicitly `import type`, even
+        // when its binding looks unused - the lex below must see all of them.
+        // (This pairing is what verbatimModuleSyntax replaced; esbuild 0.17
+        // ignores the newer flag.)
+        tsconfigRaw: {
+          compilerOptions: {
+            importsNotUsedAsValues: "preserve",
+            preserveValueImports: true,
+          },
+        },
+      });
+      return { code, imports: parse(code)[0] };
+    } catch (error) {
+      throw new Error(
+        `${label} could not be parsed for import validation: ${error.message}`,
+      );
+    }
+  }
+};
+
 export const assertNoRoamJsDefaultImports = (source, label) => {
-  const [imports] = parse(source);
+  const { code, imports } = lexImports(source, label);
   for (const imported of imports) {
     if (
       imported.d !== -1 ||
@@ -23,7 +54,7 @@ export const assertNoRoamJsDefaultImports = (source, label) => {
     ) {
       continue;
     }
-    const statement = source.slice(imported.ss, imported.se);
+    const statement = code.slice(imported.ss, imported.se);
     const clause = /^\s*import\s+([\s\S]*?)\s+from\s+["']/.exec(statement)?.[1];
     if (!clause) continue;
     const normalizedClause = clause
