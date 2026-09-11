@@ -1,0 +1,24 @@
+{
+  "name": "roam-inbox",
+  "version": "0.6.0",
+  "private": true,
+  "description": "In-graph messaging for Roam: a /message command that addresses a block to a person, and a topbar inbox badge that counts what is new since you last looked.",
+  "type": "module",
+  "scripts": {
+    "dev": "roam-prototype dev",
+    "build": "roam-prototype build",
+    "test": "vitest run --passWithNoTests",
+    "typecheck": "tsc -p tsconfig.check.json"
+  },
+  "dependencies": {
+    "roamjs-components": "catalog:",
+    "use-sync-external-store": "catalog:"
+  },
+  "devDependencies": {
+    "@discoursegraphs/extension-base": "workspace:*",
+    "@types/node": "^22.0.0",
+    "jsdom": "catalog:",
+    "typescript": "^5.9.0",
+    "vitest": "catalog:"
+  }
+}
