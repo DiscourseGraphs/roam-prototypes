@@ -1,0 +1,21 @@
+{
+  "name": "copy-for-latex",
+  "version": "0.0.4",
+  "private": true,
+  "description": "Copy a discourse node as LaTeX prose with its citation, or as a hyperlink.",
+  "type": "module",
+  "scripts": {
+    "dev": "roam-prototype dev",
+    "build": "roam-prototype build",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "roamjs-components": "catalog:",
+    "use-sync-external-store": "catalog:"
+  },
+  "devDependencies": {
+    "@discoursegraphs/extension-base": "workspace:*",
+    "jsdom": "catalog:",
+    "vitest": "catalog:"
+  }
+}
