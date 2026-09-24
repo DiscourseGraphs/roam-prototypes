@@ -6,10 +6,10 @@ import { Roam } from "@services/roam";
 import { analyzeUserRequests, setupInitialSettings } from "../../setup";
 import ZoteroRoam from "../../api";
 
-import { aiTools, registerAiTools } from ".";
+import { aiTools, registerAiTools, unregisterAiTools } from ".";
 
 import { apiKeys, items, libraries, sampleAnnot, sampleNote, samplePDF } from "Mocks";
-import { existing_page_uid, existing_page_with_content_uid, findRoamPage, importItemMetadata, importItemNotes } from "Mocks/roam";
+import { existing_page_uid, existing_page_with_content_uid, findRoamPage, getCitekeyPages, importItemMetadata, importItemNotes } from "Mocks/roam";
 
 
 const { userLibrary, groupLibrary } = libraries;
@@ -25,27 +25,12 @@ const initSettings = setupInitialSettings({});
 const blochItem = items.find(it => it.key == "blochImplementingSocialInterventions2021")!;
 const pintoItem = items.find(it => it.key == "pintoExploringDifferentMethods2021")!;
 
-/** Creates a fake `extensionAPI`, with an in-memory settings store and spies for the AI tools API */
-const makeExtensionAPI = (settings: Record<string, unknown> = {}, { withAI = true } = {}): Roam.ExtensionAPI => ({
-	settings: {
-		get: <T>(key: string) => settings[key] as T | undefined,
-		getAll: () => settings,
-		set: (key, value) => {
-			settings[key] = value;
-		},
-		panel: {
-			create: () => {}
-		}
-	},
-	ui: {
-		commandPalette: {
-			addCommand: async () => {},
-			removeCommand: async () => {}
-		}
-	},
-	...(withAI
-		? { ai: { addTool: vi.fn(() => null), removeTool: vi.fn(() => null) } }
-		: {})
+/** Creates a fake `extensionAPI` exposing what the AI tools use: the settings store, and the AI tools API */
+const makeExtensionAPI = ({ settings = {}, withAI = true }: { settings?: Record<string, unknown>, withAI?: boolean } = {}) => mock<Roam.ExtensionAPI>({
+	settings: { getAll: () => settings },
+	ai: withAI
+		? { addTool: vi.fn(() => null), removeTool: vi.fn(() => null) }
+		: undefined
 });
 
 const getTool = (extensionAPI: Roam.ExtensionAPI, name: string) => {
@@ -81,9 +66,53 @@ describe("registerAiTools", () => {
 	});
 
 	it("no-ops on Roam builds without extension AI tools", () => {
-		const extensionAPI = makeExtensionAPI({}, { withAI: false });
+		const extensionAPI = makeExtensionAPI({ withAI: false });
 
 		expect(registerAiTools({ extensionAPI })).toBe(false);
+	});
+});
+
+describe("unregisterAiTools", () => {
+	it("removes every registered tool", () => {
+		const extensionAPI = makeExtensionAPI();
+		registerAiTools({ extensionAPI });
+
+		unregisterAiTools();
+
+		expect(vi.mocked(extensionAPI.ai!.removeTool).mock.calls.map(([{ name }]) => name)).toEqual([
+			"zotero-search-items",
+			"zotero-import-metadata",
+			"zotero-import-notes"
+		]);
+	});
+
+	it("removes each tool only once, however often it is called", () => {
+		const extensionAPI = makeExtensionAPI();
+		registerAiTools({ extensionAPI });
+
+		unregisterAiTools();
+		unregisterAiTools();
+
+		expect(extensionAPI.ai!.removeTool).toHaveBeenCalledTimes(3);
+	});
+
+	it("does not reach a stale API after a failed registration", () => {
+		const registered = makeExtensionAPI();
+		registerAiTools({ extensionAPI: registered });
+		registerAiTools({ extensionAPI: makeExtensionAPI({ withAI: false }) });
+
+		unregisterAiTools();
+
+		// The failed registration cleared the stored handle, so the earlier API is not touched
+		expect(registered.ai!.removeTool).not.toHaveBeenCalled();
+	});
+
+	it("replaces the tools of a previous registration", () => {
+		const first = makeExtensionAPI();
+		registerAiTools({ extensionAPI: first });
+		registerAiTools({ extensionAPI: makeExtensionAPI() });
+
+		expect(first.ai!.removeTool).toHaveBeenCalledTimes(3);
 	});
 });
 
@@ -94,6 +123,7 @@ describe("AI tool handlers", () => {
 	beforeEach(() => {
 		// The Mocks/roam spies come from @storybook/test's `fn`, which vitest's `clearMocks` doesn't cover
 		findRoamPage.mockClear();
+		getCitekeyPages.mockClear();
 		importItemMetadata.mockClear();
 		importItemNotes.mockClear();
 
@@ -134,6 +164,17 @@ describe("AI tool handlers", () => {
 			});
 		});
 
+		it("reports the uid of an item's Roam page, with a single lookup for all matches", () => {
+			getCitekeyPages.mockReturnValueOnce(new Map([["@blochImplementingSocialInterventions2021", existing_page_uid]]));
+			const tool = getTool(extensionAPI, "zotero-search-items");
+
+			const output = tool.handler({ query: "" }, toolContext()) as { items: { citekey: string, inGraph: string | false }[] };
+
+			expect(getCitekeyPages).toHaveBeenCalledTimes(1);
+			expect(output.items.find(it => it.citekey == "@blochImplementingSocialInterventions2021")?.inGraph).toBe(existing_page_uid);
+			expect(output.items.find(it => it.citekey == "@pintoExploringDifferentMethods2021")?.inGraph).toBe(false);
+		});
+
 		it("caps the number of returned items to the limit", () => {
 			const tool = getTool(extensionAPI, "zotero-search-items");
 
@@ -141,6 +182,42 @@ describe("AI tool handlers", () => {
 
 			expect(output.total).toBe(items.length);
 			expect(output.items.length).toBe(1);
+		});
+
+		it("pages through matches with the offset", () => {
+			const tool = getTool(extensionAPI, "zotero-search-items");
+
+			const firstPage = tool.handler({ query: "", limit: 1 }, toolContext()) as { items: { key: string }[] };
+			const secondPage = tool.handler({ query: "", limit: 1, offset: 1 }, toolContext()) as { total: number, items: { key: string }[] };
+
+			expect(secondPage.total).toBe(items.length);
+			expect(secondPage.items.length).toBe(1);
+			expect(secondPage.items[0].key).not.toBe(firstPage.items[0].key);
+		});
+
+		// Handlers are callable directly from JS, where Roam's schema validation doesn't apply
+		it.each([
+			["no query", {}],
+			["a null query", { query: null }],
+			["a non-string query", { query: 2021 }],
+			["a null limit", { query: "", limit: null }],
+			["a negative limit", { query: "", limit: -1 }]
+		])("survives %s", (_label, args) => {
+			const tool = getTool(extensionAPI, "zotero-search-items");
+
+			const output = tool.handler(args, toolContext()) as { total: number, items: unknown[] };
+
+			expect(output.total).toBeGreaterThanOrEqual(0);
+			expect(Array.isArray(output.items)).toBe(true);
+		});
+
+		it("lists every loaded item for an empty query", () => {
+			const tool = getTool(extensionAPI, "zotero-search-items");
+
+			const output = tool.handler({ query: "" }, toolContext()) as { total: number, items: unknown[] };
+
+			expect(output.total).toBe(items.length);
+			expect(output.items.length).toBe(items.length);
 		});
 	});
 
@@ -198,6 +275,58 @@ describe("AI tool handlers", () => {
 			await expect(tool.handler({ citekey: "@noSuchCitekey2099" }, toolContext()))
 				.rejects.toThrow(/No Zotero item found for citekey "@noSuchCitekey2099"/);
 			expect(importItemMetadata).not.toHaveBeenCalled();
+		});
+
+		it("resolves the citekey regardless of casing", async () => {
+			const tool = getTool(extensionAPI, "zotero-import-metadata");
+
+			await tool.handler({ citekey: "@BLOCHImplementingSocialInterventions2021" }, toolContext());
+
+			expect(importItemMetadata).toHaveBeenCalledWith(
+				expect.objectContaining({ item: blochItem }),
+				expect.anything(), expect.anything(), expect.anything(), expect.anything(), expect.anything()
+			);
+		});
+
+		it("surfaces the error when the import fails", async () => {
+			importItemMetadata.mockResolvedValueOnce({
+				args: { blocks: [], uid: existing_page_uid },
+				error: new Error("Roam rejected the write"),
+				page: { new: true, title: "@blochImplementingSocialInterventions2021", uid: existing_page_uid },
+				success: false
+			});
+			const tool = getTool(extensionAPI, "zotero-import-metadata");
+
+			await expect(tool.handler({ citekey: "@blochImplementingSocialInterventions2021" }, toolContext()))
+				.rejects.toThrow("Roam rejected the write");
+		});
+
+		it("surfaces a non-Error failure reason", async () => {
+			importItemMetadata.mockResolvedValueOnce({
+				args: { blocks: [], uid: existing_page_uid },
+				error: "a custom function threw a string",
+				page: { new: true, title: "@blochImplementingSocialInterventions2021", uid: existing_page_uid },
+				success: false
+			});
+			const tool = getTool(extensionAPI, "zotero-import-metadata");
+
+			await expect(tool.handler({ citekey: "@blochImplementingSocialInterventions2021" }, toolContext()))
+				.rejects.toThrow(/Metadata import failed: a custom function threw a string/);
+		});
+
+		// `addBlocksArray` resolves with `success: null` when the formatted output is empty,
+		// which leaves an empty page behind - an agent can't see that, so it must be an error
+		it("fails when the import wrote nothing", async () => {
+			importItemMetadata.mockResolvedValueOnce({
+				args: { blocks: [], uid: existing_page_uid },
+				error: null,
+				page: { new: true, title: "@blochImplementingSocialInterventions2021", uid: existing_page_uid },
+				success: null
+			});
+			const tool = getTool(extensionAPI, "zotero-import-metadata");
+
+			await expect(tool.handler({ citekey: "@blochImplementingSocialInterventions2021" }, toolContext()))
+				.rejects.toThrow(/nothing was written/);
 		});
 	});
 
