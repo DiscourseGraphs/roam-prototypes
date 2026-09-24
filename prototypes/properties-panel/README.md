@@ -33,7 +33,10 @@ repository's installable developer-extension form.
 - Out-of-vocabulary values are flagged (⚠) with a one-click fix suggestion —
   drift is surfaced, never auto-repaired.
 - Single-colon `Key: value` lines render as read-only rows with live links;
-  `{{…:SmartBlock:…}}` buttons keep working inside the panel.
+  `{{…:SmartBlock:…}}` buttons keep working inside the panel — rendered in
+  the title actions row with their declared Blueprint icon
+  (`…:Icon=exchange`), so node types declare their workflow verbs in their
+  template's properties block.
 - A title-level actions row with an extension point: other extensions call
   `window.dgPropsPanel.registerAction({ key, mount })` (re-registering on
   each `dgpp:ready` document event) to replace the built-in stubs — the
