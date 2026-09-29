@@ -27,15 +27,17 @@ A widget is placed with `{{roam/render: ((uid))}}`, where `uid` is the page's sh
    cannot bury the first section. Tasks outside any meeting are labeled "inbox".
 
 **Meeting mode** (inside a dated meeting block, such as a "last meeting" template slot): the first
-section shows only the previous meeting's next actions, and the collapsed section shows older open
-items.
+section shows the next actions of the most recent earlier meeting that has any, with a link to that
+meeting. The collapsed section shows open items from older meetings. Meetings dated on or after the
+host meeting are ignored.
 
-The mode is detected from the widget's position. Force it with a `page` or `meeting` argument.
+The mode is detected from the widget's position. A `page` argument shows page mode inside a meeting.
 
 In both modes:
 
 - Checkboxes write `{{[[TODO]]}}` / `{{[[DONE]]}}` back to the task's own block. A task often shows
   in two widgets at once; checking it in one updates the other.
+- Items are listed newest meeting first, and in outline order within a meeting.
 - A DONE item stays visible for 14 days, then ages out.
 - Clicking an item opens it. Shift-click opens it in the right sidebar.
 - Only meetings from the last 120 days are read. A footer says how many older meetings were left
@@ -46,7 +48,7 @@ In both modes:
 | argument | effect |
 | --- | --- |
 | a bare number, e.g. `365` | look back that many days instead of 120 |
-| `page` / `meeting` | force a mode |
+| `page` | show page mode even inside a meeting |
 | `debug` | show a diagnostic line, including how long the widget took to load |
 
 Example: `{{roam/render: ((uid)) 365 debug}}`.
@@ -56,15 +58,17 @@ Example: `{{roam/render: ((uid)) 365 debug}}`.
 - **Meeting**: a block on the page that references a daily-note page, such as
   `[[September 22nd, 2026]] #.sticky`. When any meeting on the page is tagged `#.sticky`, only tagged
   blocks count, which keeps prose that mentions a date from counting as a meeting.
-- **Next-actions header**: a block one or two levels under a meeting that either references the
-  `ℹ` tooltip block `ANCHOR_UID` in `src/config.ts` (dg-team's `yuAIplpov`), or is worded like a
-  header: "next actions", "Actions", "Action items/for next time", "next steps", and close variants.
-  The depth limit keeps prose such as "next steps for X" out of the results.
-- **Task**: a block with a `{{[[TODO]]}}` or `{{[[DONE]]}}` marker. An item under a header that only
-  wraps a block reference, `((uid))`, stands for the block it references, and the checkbox writes
-  there. Chains of wrappers are followed up to 4 hops.
+- **Next-actions header**: a block one or two levels under a meeting that either references one of
+  the `ℹ` tooltip blocks in `ANCHOR_UIDS` (`src/config.ts`), or is worded like a header: "next
+  actions", "Actions", "Action items/for next time", "next steps", "Proposed next step", and close
+  variants. The depth limit keeps prose such as "next steps for X" out of the results.
+- **Task**: a block with a `{{[[TODO]]}}` or `{{[[DONE]]}}` marker. An item under a header that
+  starts with a block reference, `((uid))`, and has no marker of its own stands for the block it
+  references: the checkbox writes there, and the row shows the item's own text, including any note
+  after the reference. Chains of wrappers are followed up to 4 hops.
 
-`ANCHOR_UID` is specific to dg-team. On another graph the wording rules still apply.
+`ANCHOR_UIDS` lists dg-team's anchor and akamatsulab's two "Proposed next step" anchors. Block uids
+are unique per graph, so one list serves every graph.
 
 ## Installing on a graph
 
@@ -145,7 +149,17 @@ and the same footers.
 Behavior is kept on purpose. These differ:
 
 - The "From last meeting" label no longer shows the date's link brackets (`[[September 22nd, 2026]]`
-  is now `September 22nd, 2026`).
+  is now `September 22nd, 2026`), and the date links to the meeting.
+- Meeting mode looks only at earlier meetings. Before, a task listed under last meeting's next
+  actions and carried into this meeting's next actions dropped out of "From last meeting", and tasks
+  from this meeting and newer ones were listed as "older open items".
+- "Last meeting" is the most recent earlier meeting with at least one task under its next actions.
+  Before, a meeting whose next-actions header was left empty was chosen, and the section was hidden.
+- Within a meeting, items follow outline order. Before, they were sorted by edit time, so checking
+  a box moved the item to the top on the next load.
+- An item like `((uid)) --> by Friday` shows the note after the reference. Before, the note was lost.
+- Item text drops tooltips, buttons, videos, and other `{{components}}`; a labelled block reference
+  `[label](((uid)))` shows its label; `mailto:` links show their text.
 - Block references inside item text are resolved through chains (a reference to a block that is
   itself a reference). The old component resolved one level and showed the inner `((uid))`.
 - A wrapper that points to another wrapper is followed to the task. The old component dropped it.

@@ -7,7 +7,16 @@ import { act } from "react-dom/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mount, unmountAll } from "~/mount";
 import { forgetReads } from "~/roam";
-import { buildGraph, installFakeRoam, OTHER_PAGE, PAGE, U, type FakeApi, type FakeGraph } from "./fixtures";
+import {
+  buildGraph,
+  dnpUid,
+  installFakeRoam,
+  OTHER_PAGE,
+  PAGE,
+  U,
+  type FakeApi,
+  type FakeGraph,
+} from "./fixtures";
 
 let graph: FakeGraph;
 let api: FakeApi;
@@ -47,6 +56,14 @@ const openSecondary = async (el: HTMLElement) => {
 };
 
 const host = (uid = "host") => ({ "block-uid": U(uid) });
+
+const primaryRow = (el: Element, text: RegExp): Element =>
+  [...el.querySelectorAll('[data-section="primary"] .rmt-row')].find((r) => text.test(r.textContent ?? ""))!;
+
+const clickBox = (row: Element) =>
+  act(async () => {
+    (row.querySelector("input") as HTMLInputElement).click();
+  });
 
 describe("page mode", () => {
   it("finds every carried-over next action, across header wordings and wrappers", async () => {
@@ -138,29 +155,55 @@ describe("meeting mode (mounted inside the newest meeting)", () => {
     return render([host("hostInM1")]);
   };
 
-  it("headlines the previous meeting's next actions", async () => {
+  it("headlines the previous meeting's next actions, in outline order", async () => {
     const el = await mountInM1();
-    expect(texts(el, "primary")).toEqual(["MG to take a look at backlog count over time"]);
+    // The Trang Doan task is also carried into this meeting's next actions.
+    // It still belongs under "From last meeting": the old component let the
+    // host meeting claim it, and it dropped out.
+    expect(texts(el, "primary")).toEqual([
+      "MG to take a look at backlog count over time",
+      "#Trang Doan send team the next-step items",
+    ]);
   });
 
-  it("labels the section with the meeting's date text, without brackets", async () => {
+  it("labels the section with a link to that meeting, without brackets", async () => {
     const el = await mountInM1();
     const headings = [...el.querySelectorAll(".rmt-heading")].map((h) => h.textContent);
     expect(headings[0]).toBe("From last meeting · Meeting two");
+    expect(el.querySelector(".rmt-meeting")?.getAttribute("href")).toMatch(new RegExp(`/page/${U("m2")}$`));
+  });
+
+  it("shows page mode instead when given the page flag", async () => {
+    graph.add("hostInM1", "{{roam/render: ((CODE)) page}}");
+    graph.blocks.get(U("m1"))!.children.unshift(U("hostInM1"));
+    const el = await render([host("hostInM1"), "page"]);
+    expect(el.querySelector(".rmt-heading")?.textContent).toBe("Carried over from past next actions");
+  });
+
+  it("skips a later meeting whose next actions are empty", async () => {
+    graph.add("m15", "[[Meeting one and a half]] #.sticky", ["m15na"], { dates: [dnpUid(10, graph.now)] });
+    graph.add("m15na", "next actions", ["m15note"]);
+    graph.add("m15note", "just a note, not a task");
+    const el = await mountInM1();
+    expect(el.querySelector(".rmt-heading")?.textContent).toBe("From last meeting · Meeting two");
+  });
+
+  it("does not list this meeting's own tasks as older open items", async () => {
+    const el = await mountInM1();
+    await openSecondary(el);
+    const secondary = texts(el, "secondary").join(" | ");
+    expect(secondary).not.toMatch(/buried task under discussion/); // under m1, the host
+    expect(secondary).toMatch(/not under a next-actions header/); // under m2
   });
 });
 
 describe("write-back", () => {
   it("writes {{[[DONE]]}} to the real task block, never to a ((ref)) wrapper", async () => {
     const el = await render([host()]);
-    const row = [...el.querySelectorAll('[data-section="primary"] .rmt-row')].find((r) =>
-      /Trang Doan/.test(r.textContent ?? ""),
-    )!;
+    const row = primaryRow(el, /Trang Doan/);
     const box = row.querySelector("input") as HTMLInputElement;
     expect(box.checked).toBe(false);
-    await act(async () => {
-      box.click();
-    });
+    await clickBox(row);
     expect(api.data.block.update).toHaveBeenCalledTimes(1);
     const { block } = api.data.block.update.mock.calls[0][0];
     expect(block.uid).toBe(U("t1"));
@@ -172,12 +215,8 @@ describe("write-back", () => {
 
   it("writes through a wrapper to an off-page target", async () => {
     const el = await render([host()]);
-    const row = [...el.querySelectorAll('[data-section="primary"] .rmt-row')].find((r) =>
-      /Sid: create documentation/.test(r.textContent ?? ""),
-    )!;
-    await act(async () => {
-      (row.querySelector("input") as HTMLInputElement).click();
-    });
+    const row = primaryRow(el, /Sid: create documentation/);
+    await clickBox(row);
     const { block } = api.data.block.update.mock.calls[0][0];
     expect(block.uid).toBe(U("t3off"));
     expect(block.string).toBe("next: {{[[TODO]]}} Sid: create documentation");
@@ -200,14 +239,8 @@ describe("write-back", () => {
   it("updates every widget showing the same task", async () => {
     const a = await render([host()]);
     const b = await render([host()]);
-    const rowIn = (el: HTMLElement) =>
-      [...el.querySelectorAll('[data-section="primary"] .rmt-row')].find((r) =>
-        /Trang Doan/.test(r.textContent ?? ""),
-      )!;
-    await act(async () => {
-      (rowIn(a).querySelector("input") as HTMLInputElement).click();
-    });
-    expect((rowIn(b).querySelector("input") as HTMLInputElement).checked).toBe(true);
+    await clickBox(primaryRow(a, /Trang Doan/));
+    expect((primaryRow(b, /Trang Doan/).querySelector("input") as HTMLInputElement).checked).toBe(true);
   });
 });
 
@@ -231,6 +264,31 @@ describe("shift-click", () => {
       window: { type: "block", "block-uid": uid },
     });
     expect(api.ui.rightSidebar.open).toHaveBeenCalled();
+  });
+});
+
+describe("ordering and wrappers", () => {
+  it("lists a meeting's next actions in outline order, not by edit time", async () => {
+    const el = await render([host()]);
+    expect(texts(el, "primary")).toEqual([
+      "#Trang Doan send team the next-step items",
+      "#Karola Kirsanow track OKR 1 items",
+      "next: Sid: create documentation",
+      "MG to take a look at backlog count over time",
+      "old open item from three meetings ago",
+    ]);
+  });
+
+  it("shows a wrapper's own note, and still writes to the task it wraps", async () => {
+    graph.add("annot", `((${U("t4")})) --> by Friday`);
+    graph.blocks.get(U("m1na"))!.children.push(U("annot"));
+    const el = await render([host()]);
+    const row = primaryRow(el, /by Friday/);
+    expect(row.querySelector(".rmt-text")?.textContent).toBe(
+      "MG to take a look at backlog count over time --> by Friday",
+    );
+    await clickBox(row);
+    expect(api.data.block.update.mock.calls[0][0].block.uid).toBe(U("t4"));
   });
 });
 

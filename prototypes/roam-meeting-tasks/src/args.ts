@@ -1,18 +1,18 @@
 /* The render arguments a widget was invoked with:
  *
- *   {{roam/render: ((code-uid))}}               defaults
- *   {{roam/render: ((code-uid)) 365}}           look back 365 days
- *   {{roam/render: ((code-uid)) meeting debug}} force a mode, show diagnostics
+ *   {{roam/render: ((code-uid))}}             defaults
+ *   {{roam/render: ((code-uid)) 365}}         look back 365 days
+ *   {{roam/render: ((code-uid)) page debug}}  page mode inside a meeting, diagnostics
  */
 import { LOOKBACK_DAYS } from "~/config";
-
-export type Mode = "page" | "meeting";
 
 export type WidgetArgs = {
   hostUid: string | null;
   lookbackDays: number;
   debug: boolean;
-  forcedMode: Mode | null;
+  /* Show page mode even inside a meeting. (Meeting mode needs a meeting, so
+   * there is nothing to force the other way; `meeting` overrides `page`.) */
+  forcePage: boolean;
 };
 
 /* Roam passes the host block as an object somewhere in the list: first on
@@ -35,6 +35,6 @@ export const parseArgs = (argv: readonly unknown[]): WidgetArgs => {
     hostUid,
     lookbackDays: lookback !== null && lookback > 0 ? lookback : LOOKBACK_DAYS,
     debug: flags.includes("debug"),
-    forcedMode: flags.includes("meeting") ? "meeting" : flags.includes("page") ? "page" : null,
+    forcePage: flags.includes("page") && !flags.includes("meeting"),
   };
 };

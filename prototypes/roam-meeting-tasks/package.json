@@ -1,6 +1,6 @@
 {
   "name": "roam-meeting-tasks",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "Carried-over next actions and open tasks for a recurring-meeting page, rendered inline where the page's roam/render widget sits.",
   "type": "module",

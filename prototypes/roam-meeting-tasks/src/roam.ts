@@ -13,11 +13,12 @@
  */
 import { SHARE_MS } from "~/config";
 import type { Block, MeetingRow, PageTask, TreeNode } from "~/model";
+import { isSticky } from "~/text";
 
 type Pulled = Record<string, unknown>;
 
-const api = () => window.roamAlphaAPI as unknown as RoamApi;
-
+// roamjs-components declares these too, but types pull_many ids as uid pairs
+// only, and entity ids are what makes refsOnPage cheap.
 type RoamApi = {
   graph?: { name?: string };
   data: {
@@ -36,10 +37,24 @@ type RoamApi = {
   };
 };
 
+const api = () => window.roamAlphaAPI as unknown as RoamApi;
+
 const str = (v: unknown): string => (typeof v === "string" ? v : "");
 const num = (v: unknown): number => (typeof v === "number" ? v : 0);
 const list = (v: unknown): Pulled[] => (Array.isArray(v) ? (v as Pulled[]) : []);
+const uidOf = (v: unknown): string => str((v as Pulled | undefined)?.[":block/uid"]);
 const byUid = (uid: string) => [":block/uid", uid];
+
+const toBlock = (b: Pulled): Block => ({
+  uid: uidOf(b),
+  string: str(b[":block/string"]),
+  time: num(b[":edit/time"]),
+});
+
+const pullMany = async (pattern: string, eids: readonly unknown[]): Promise<Pulled[]> =>
+  eids.length
+    ? (await api().data.async.pull_many(pattern, [...eids])).filter((b): b is Pulled => !!b)
+    : [];
 
 /* ── sharing ───────────────────────────────────────────────────────────── */
 
@@ -51,12 +66,21 @@ const fresh = (key: string): Entry | undefined => {
   return hit && Date.now() - hit.at < SHARE_MS ? hit : undefined;
 };
 
+/* Entries leave the map when they expire or fail, so a session of browsing
+ * does not keep every page's trees alive. */
+const put = (key: string, value: Promise<unknown>): void => {
+  const entry = { at: Date.now(), value };
+  shared.set(key, entry);
+  const drop = () => shared.get(key) === entry && shared.delete(key);
+  value.catch(drop);
+  window.setTimeout(drop, SHARE_MS);
+};
+
 const share = <T>(key: string, load: () => Promise<T>): Promise<T> => {
   const hit = fresh(key);
   if (hit) return hit.value as Promise<T>;
   const value = load();
-  shared.set(key, { at: Date.now(), value });
-  value.catch(() => shared.delete(key));
+  put(key, value);
   return value;
 };
 
@@ -67,23 +91,21 @@ const shareMany = async <T>(
   uids: readonly string[],
   load: (uids: string[]) => Promise<Map<string, T>>,
 ): Promise<Map<string, T>> => {
-  const missing = [...new Set(uids)].filter((u) => !fresh(prefix + u));
+  const entries = new Map(uids.map((u) => [u, fresh(prefix + u)?.value]));
+  const missing = [...entries].filter(([, v]) => !v).map(([u]) => u);
   if (missing.length) {
     const batch = load(missing);
-    const at = Date.now();
     for (const u of missing) {
       const value = batch.then((m) => m.get(u));
-      shared.set(prefix + u, { at, value });
-      value.catch(() => shared.delete(prefix + u));
+      put(prefix + u, value);
+      entries.set(u, value);
     }
   }
   const out = new Map<string, T>();
-  await Promise.all(
-    uids.map(async (u) => {
-      const v = (await shared.get(prefix + u)?.value) as T | undefined;
-      if (v !== undefined) out.set(u, v);
-    }),
-  );
+  for (const [u, value] of entries) {
+    const v = (await value) as T | undefined;
+    if (v !== undefined) out.set(u, v);
+  }
   return out;
 };
 
@@ -102,129 +124,107 @@ export const readHost = async (
     "[{:block/page [:block/uid]} {:block/parents [:block/uid]}]",
     byUid(uid),
   );
-  const pageUid = str((b?.[":block/page"] as Pulled | undefined)?.[":block/uid"]);
+  const pageUid = uidOf(b?.[":block/page"]);
   if (!pageUid) return null;
-  return { pageUid, ancestorUids: list(b?.[":block/parents"]).map((p) => str(p[":block/uid"])) };
+  return { pageUid, ancestorUids: list(b?.[":block/parents"]).map(uidOf) };
+};
+
+/* Blocks on one page that reference the page titled `title`, pulled with
+ * `pattern`. Starts from the title's reverse references, an index read, and
+ * compares entity ids, so only the blocks on this page are pulled in full.
+ * On dg-team this is 3-6x cheaper than pulling every reference by uid. */
+const refsOnPage = async (title: string, pageUid: string, pattern: string): Promise<Pulled[]> => {
+  const [page, target] = await Promise.all([
+    share(`page:${pageUid}`, () => api().data.async.pull("[:db/id]", byUid(pageUid))),
+    api().data.async.pull("[{(:block/_refs :limit nil) [:db/id :block/page]}]", [":node/title", title]),
+  ]);
+  const pageEid = page?.[":db/id"];
+  if (pageEid === undefined) return [];
+  const eids = list(target?.[":block/_refs"])
+    .filter((b) => (b[":block/page"] as Pulled | undefined)?.[":db/id"] === pageEid)
+    .map((b) => b[":db/id"]);
+  return pullMany(pattern, eids);
 };
 
 /* Blocks on the page that reference a daily-note page.
  *
- * Fast path: start from the `.sticky` tag's reverse references (~2,300 blocks
- * graph-wide in dg-team, ~35 ms) instead of scanning every block on the page
- * (~170 ms on All Hands). model.selectMeetings only keeps #.sticky meetings
- * when any exist, so this returns the same meetings. A page with no #.sticky
- * meetings falls back to the page scan. */
+ * Fast path: start from the `.sticky` tag's reverse references instead of
+ * scanning every block on the page (~170 ms on All Hands). selectMeetings
+ * keeps only #.sticky meetings when any exist, so when this finds some it has
+ * found every meeting that counts. A page with none falls back to the scan. */
 export const readMeetingRows = (pageUid: string): Promise<MeetingRow[]> =>
   share(`meetings:${pageUid}`, async () => {
-    const tag = await api().data.async.pull(
-      "[{(:block/_refs :limit nil) [:block/uid :block/string {:block/page [:block/uid]} {:block/refs [:block/uid :log/id]}]}]",
-      [":node/title", ".sticky"],
-    );
-    const sticky = list(tag?.[":block/_refs"])
-      .filter((b) => str((b[":block/page"] as Pulled | undefined)?.[":block/uid"]) === pageUid)
-      .flatMap((b) =>
-        list(b[":block/refs"])
-          .filter((r) => r[":log/id"] !== undefined)
-          .map((r) => ({
-            uid: str(b[":block/uid"]),
-            string: str(b[":block/string"]),
-            dailyNoteUid: str(r[":block/uid"]),
-            sticky: true,
-          })),
-      );
-    if (sticky.length) return sticky;
-
-    // Tuple order: [meeting uid, meeting string, daily-note uid]
-    const rows = await api().data.async.q(
-      `[:find ?mu ?ms ?du :in $ ?pgu :where
-        [?pg :block/uid ?pgu] [?m :block/page ?pg]
-        [?m :block/refs ?d] [?d :log/id _] [?d :block/uid ?du]
-        [?m :block/uid ?mu] [?m :block/string ?ms]]`,
+    const tagged = await refsOnPage(
+      ".sticky",
       pageUid,
+      "[:block/uid :block/string {:block/refs [:block/uid :log/id]}]",
     );
-    return rows.map(([uid, string, dailyNoteUid]) => ({
+    const rows = tagged.flatMap((b) =>
+      list(b[":block/refs"])
+        .filter((r) => r[":log/id"] !== undefined)
+        .map((r) => [uidOf(b), str(b[":block/string"]), uidOf(r)]),
+    );
+    const found = rows.length
+      ? rows
+      : // Tuple order: [meeting uid, meeting string, daily-note uid]
+        await api().data.async.q(
+          `[:find ?mu ?ms ?du :in $ ?pgu :where
+            [?pg :block/uid ?pgu] [?m :block/page ?pg]
+            [?m :block/refs ?d] [?d :log/id _] [?d :block/uid ?du]
+            [?m :block/uid ?mu] [?m :block/string ?ms]]`,
+          pageUid,
+        );
+    return found.map(([uid, string, dailyNoteUid]) => ({
       uid: str(uid),
       string: str(string),
       dailyNoteUid: str(dailyNoteUid),
-      sticky: str(string).includes(".sticky"),
+      sticky: isSticky(str(string)),
     }));
   });
 
+// Pulled children come back in no particular order; :block/order is the
+// outline position.
 const toTree = (b: Pulled): TreeNode => ({
-  uid: str(b[":block/uid"]),
-  string: str(b[":block/string"]),
-  time: num(b[":edit/time"]),
-  children: list(b[":block/children"]).map(toTree),
+  ...toBlock(b),
+  children: list(b[":block/children"])
+    .sort((x, y) => num(x[":block/order"]) - num(y[":block/order"]))
+    .map(toTree),
 });
 
-/* Whole subtrees of the given meeting blocks, in one pull_many. On All Hands
- * the 18 meetings in a 120-day window are ~2,200 blocks and ~45 ms. */
-export const readTrees = async (uids: readonly string[]): Promise<TreeNode[]> => {
-  const got = await shareMany("tree:", uids, async (missing) => {
-    const pulled = await api().data.async.pull_many(
-      "[:block/uid :block/string :edit/time {:block/children ...}]",
+/* Blocks with their descendants, `depth` levels deep (all of them when
+ * omitted), in one pull_many. Meetings are read two levels deep, which is
+ * where headers live; only the headers are then read in full. */
+export const readTrees = async (uids: readonly string[], depth?: number): Promise<TreeNode[]> => {
+  const levels = depth ?? "...";
+  const got = await shareMany(`tree${levels}:`, uids, async (missing) => {
+    const pulled = await pullMany(
+      `[:block/uid :block/string :block/order :edit/time {:block/children ${levels}}]`,
       missing.map(byUid),
     );
-    return new Map(pulled.filter((b): b is Pulled => !!b).map((b) => [str(b[":block/uid"]), toTree(b)]));
+    return new Map(pulled.map((b) => [uidOf(b), toTree(b)]));
   });
   return uids.map((u) => got.get(u)).filter((t): t is TreeNode => !!t);
 };
 
-/* Every TODO/DONE block on the page, with its ancestors.
- *
- * Starts from the TODO and DONE pages' reverse references, since every
- * checkbox references one of them, and keeps the ones on this page. Then one
- * pull_many for their text and ancestors, which replaces a query that joined
- * every task against every meeting. */
+/* Every TODO/DONE block on the page, with its ancestors. Every checkbox
+ * references the TODO or DONE page, so this is two refsOnPage reads. */
 export const readPageTasks = (pageUid: string): Promise<PageTask[]> =>
   share(`tasks:${pageUid}`, async () => {
-    const markers = await Promise.all(
-      ["TODO", "DONE"].map((title) =>
-        api().data.async.pull(
-          "[{(:block/_refs :limit nil) [:block/uid {:block/page [:block/uid]}]}]",
-          [":node/title", title],
-        ),
-      ),
+    const pattern = "[:block/uid :block/string :edit/time {:block/parents [:block/uid]}]";
+    const [todo, done] = await Promise.all(
+      ["TODO", "DONE"].map((title) => refsOnPage(title, pageUid, pattern)),
     );
-    const uids = [
-      ...new Set(
-        markers.flatMap((m) =>
-          list(m?.[":block/_refs"])
-            .filter((b) => str((b[":block/page"] as Pulled | undefined)?.[":block/uid"]) === pageUid)
-            .map((b) => str(b[":block/uid"])),
-        ),
-      ),
-    ];
-    if (!uids.length) return [];
-    const pulled = await api().data.async.pull_many(
-      "[:block/uid :block/string :edit/time {:block/parents [:block/uid]}]",
-      uids.map(byUid),
-    );
-    return pulled
-      .filter((b): b is Pulled => !!b)
-      .map((b) => ({
-        uid: str(b[":block/uid"]),
-        string: str(b[":block/string"]),
-        time: num(b[":edit/time"]),
-        parentUids: list(b[":block/parents"]).map((p) => str(p[":block/uid"])),
-      }));
+    return todo.concat(done).map((b) => ({
+      ...toBlock(b),
+      parentUids: list(b[":block/parents"]).map(uidOf),
+    }));
   });
 
 /* Text of the given blocks, for resolving ((refs)). One pull_many per call. */
 export const readBlocks = (uids: readonly string[]): Promise<Map<string, Block>> =>
   shareMany("block:", uids, async (missing) => {
-    const pulled = await api().data.async.pull_many(
-      "[:block/uid :block/string :edit/time]",
-      missing.map(byUid),
-    );
-    return new Map(
-      pulled
-        .filter((b): b is Pulled => !!b)
-        .map((b) => [
-          str(b[":block/uid"]),
-          { uid: str(b[":block/uid"]), string: str(b[":block/string"]), time: num(b[":edit/time"]) },
-        ]),
-    );
+    const pulled = await pullMany("[:block/uid :block/string :edit/time]", missing.map(byUid));
+    return new Map(pulled.map((b) => [uidOf(b), toBlock(b)]));
   });
 
 /* ── writes ────────────────────────────────────────────────────────────── */

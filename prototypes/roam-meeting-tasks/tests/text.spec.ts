@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { parseArgs } from "~/args";
-import { dailyNoteTime, displayText, headerKind, withDone } from "~/text";
+import { dailyNoteTime, displayText, headerKind, meetingTitle, withDone } from "~/text";
 
 describe("headerKind", () => {
-  const ANCHOR = "yuAIplpov";
+  const ANCHOR = ["yuAIplpov"];
   it.each([
     "next actions",
     "**next actions**",
@@ -16,6 +16,9 @@ describe("headerKind", () => {
     "## next actions",
     "next actions by Friday",
     "next actions this week",
+    "Proposed next step",
+    "**Proposed next steps** [ℹ️](((6-tIoP1wk)))",
+    "next actions [ℹ](((abcdefghi)))",
   ])("treats %j as a header", (s) => {
     expect(headerKind(s, ANCHOR)).toBe("wording");
   });
@@ -31,6 +34,17 @@ describe("headerKind", () => {
 
   it("prefers the anchor ref over wording, even on novel wording", () => {
     expect(headerKind("To do before we meet again [ℹ](((yuAIplpov)))", ANCHOR)).toBe("anchor");
+  });
+});
+
+describe("meetingTitle", () => {
+  it("keeps only the date text", () => {
+    expect(meetingTitle("[[September 22nd, 2026]] #.sticky")).toBe("September 22nd, 2026");
+    expect(
+      meetingTitle(
+        "### [[September 24th, 2026]]  {{Add my entry:SmartBlock:Add meeting entry:RemoveButton=false}} [ℹ]([[Tutorial/Group meetings]])#.sticky ",
+      ),
+    ).toBe("September 24th, 2026");
   });
 });
 
@@ -63,6 +77,18 @@ describe("displayText", () => {
     expect(displayText("((loopxxxxx))", lookup, 4)).toContain("again");
   });
 
+  it("shows a labelled block reference as its label, and drops tooltips", () => {
+    expect(displayText("{{[[TODO]]}} see [the plan](((bbbbbbbbb))) [ℹ️](((aaaaaaaaa)))", lookup, 4)).toBe(
+      "see the plan",
+    );
+  });
+
+  it("drops components such as buttons and videos, and unwraps mailto links", () => {
+    expect(
+      displayText("ask {{Reply:SmartBlock:Reply}} [Sid](mailto:sid@example.org) {{[[video]]: https://x.y}}", lookup, 4),
+    ).toBe("ask Sid");
+  });
+
   it("removes embeds, images, and alias targets", () => {
     expect(
       displayText("{{[[TODO]]}} read [the doc](https://x.y) ![](https://img) {{[[embed]]: ((aaaaaaaaa))}}", lookup, 4),
@@ -79,12 +105,13 @@ describe("dailyNoteTime", () => {
 
 describe("parseArgs", () => {
   it("finds the host block wherever Roam puts it, and reads flags and the window", () => {
-    expect(parseArgs(["debug", { "block-uid": "abc" }, "365", "Meeting"])).toEqual({
+    expect(parseArgs(["debug", { "block-uid": "abc" }, "365", "Page"])).toEqual({
       hostUid: "abc",
       lookbackDays: 365,
       debug: true,
-      forcedMode: "meeting",
+      forcePage: true,
     });
+    expect(parseArgs(["page", "meeting"]).forcePage).toBe(false);
     expect(parseArgs([]).lookbackDays).toBe(120);
     expect(parseArgs([0]).lookbackDays).toBe(120);
   });

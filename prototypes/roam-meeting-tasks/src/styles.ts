@@ -4,7 +4,7 @@
  * restyle the graph. The look matches the roam/render component it replaces. */
 import { FALLBACK_CLASS, STYLE_ID } from "~/config";
 
-export const CSS = `
+const CSS = `
   /* The shim's "waiting for the extension" note. Hidden whenever this
      stylesheet is present, which is exactly when the extension is loaded. */
   .${FALLBACK_CLASS} { display: none; }
@@ -27,6 +27,7 @@ export const CSS = `
   .rmt-date[data-inbox="true"] { opacity: 0.45; }
   /* Two classes deep so Roam's and Blueprint's own link colors lose. */
   .rmt .rmt-text { flex: 1 1 auto; color: inherit; text-decoration: none; }
+  .rmt .rmt-meeting { color: inherit; text-decoration: underline dotted; }
   .rmt-footer { font-size: 11px; opacity: 0.5; margin-top: 6px; }
   .rmt-debug { font-size: 11px; opacity: 0.6; margin-top: 6px; }
 `;

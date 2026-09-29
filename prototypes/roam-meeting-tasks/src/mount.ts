@@ -11,7 +11,7 @@ import React from "react";
 import ReactDOM from "react-dom";
 import * as ReactDOMClient from "react-dom/client";
 import { parseArgs } from "~/args";
-import { logError } from "~/config";
+import { logError, SWEEP_MS } from "~/config";
 import { MeetingTasks } from "~/view";
 
 type Root = { render: (node: React.ReactElement) => void; unmount: () => void };
@@ -31,29 +31,42 @@ const createRoot = (el: Element): Root => {
   };
 };
 
-const roots = new Map<Element, Root>();
+const mounted = new Map<Element, { root: Root; key: string }>();
+
+// Roam can remove a block's DOM without the shim hearing about it, so a
+// sweep unmounts roots whose host has left the page. It runs only while
+// something is mounted.
+let sweepTimer: number | null = null;
 
 const unmountHost = (el: Element): void => {
   try {
-    roots.get(el)?.unmount();
+    mounted.get(el)?.root.unmount();
   } catch (error) {
     logError("could not unmount a widget", error);
   }
-  roots.delete(el);
+  mounted.delete(el);
+  if (!mounted.size && sweepTimer !== null) {
+    window.clearInterval(sweepTimer);
+    sweepTimer = null;
+  }
 };
 
-/* Render (or re-render in place) the widget into a host element. Roam calls
- * the shim again whenever it re-renders the block; rendering into the same
- * root updates it, so state such as an opened section and the loaded data
- * survive. */
+const sweep = (): void => {
+  for (const el of [...mounted.keys()]) if (!el.isConnected) unmountHost(el);
+};
+
+/* Render the widget into a host element. Roam runs the shim again whenever it
+ * re-renders the block; with the same arguments that is a no-op, so the
+ * widget keeps its state and loaded data and does not redraw. */
 export const mount = (el: Element, argv: unknown): void => {
   const args = parseArgs(Array.isArray(argv) ? argv : []);
-  let root = roots.get(el);
-  if (!root) {
-    root = createRoot(el);
-    roots.set(el, root);
-  }
+  const key = JSON.stringify(args);
+  const existing = mounted.get(el);
+  if (existing?.key === key) return;
+  const root = existing?.root ?? createRoot(el);
+  mounted.set(el, { root, key });
   root.render(React.createElement(MeetingTasks, { args }));
+  sweepTimer ??= window.setInterval(sweep, SWEEP_MS);
 };
 
 /* The shim lets go of a host. It may be re-attaching the same element on its
@@ -65,13 +78,8 @@ export const release = (el: Element): void => {
   }, 0);
 };
 
-/* Roam can remove a block's DOM without the shim hearing about it. */
-export const sweep = (): void => {
-  for (const el of [...roots.keys()]) if (!el.isConnected) unmountHost(el);
-};
-
 export const unmountAll = (): void => {
-  for (const el of [...roots.keys()]) unmountHost(el);
+  for (const el of [...mounted.keys()]) unmountHost(el);
 };
 
-export const mountedCount = (): number => roots.size;
+export const mountedCount = (): number => mounted.size;

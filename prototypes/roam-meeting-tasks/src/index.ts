@@ -18,15 +18,15 @@ import { load, unload } from "~/lifecycle";
 /* What this extension needs from Roam, checked before anything else so a
  * missing capability reports itself by name instead of as a TypeError deep
  * in a helper. */
-const missingCapability = (): string => {
-  const api = window.roamAlphaAPI as unknown as Record<string, unknown> | undefined;
-  if (!api) return "window.roamAlphaAPI is not available";
-  const data = api.data as { async?: { pull_many?: unknown } } | undefined;
-  if (typeof data?.async?.pull_many !== "function")
-    return "window.roamAlphaAPI.data.async.pull_many is not available in this Roam build";
-  const w = window as unknown as { React?: unknown; ReactDOM?: unknown };
-  if (!w.React || !w.ReactDOM) return "window.React / window.ReactDOM are not available";
-  return "";
+const requireCapabilities = (): void => {
+  const w = window as unknown as {
+    roamAlphaAPI?: { data?: { async?: { pull_many?: unknown } } };
+    React?: unknown;
+    ReactDOM?: unknown;
+  };
+  if (typeof w.roamAlphaAPI?.data?.async?.pull_many !== "function")
+    throw new Error("window.roamAlphaAPI.data.async.pull_many is not available in this Roam build");
+  if (!w.React || !w.ReactDOM) throw new Error("window.React / window.ReactDOM are not available");
 };
 
 /* Report a load failure loudly, and never lose the cause.
@@ -54,8 +54,7 @@ const reportLoadFailure = (error: unknown): void => {
 
 export default runExtension(async () => {
   try {
-    const missing = missingCapability();
-    if (missing) throw new Error(missing);
+    requireCapabilities();
     load();
     return { unload };
   } catch (error) {

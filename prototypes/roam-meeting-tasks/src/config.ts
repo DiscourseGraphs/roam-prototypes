@@ -3,7 +3,7 @@
 // Injected by the shared esbuild CLI from package.json; "0.0.0" under vitest.
 export const VERSION = process.env.VERSION || "0.0.0";
 
-export const LOG = "[meeting-tasks]";
+const LOG = "[meeting-tasks]";
 export const logError = (what: string, error: unknown): void =>
   console.error(`${LOG} ${what}`, error);
 
@@ -19,10 +19,15 @@ export const STYLE_ID = "roam-meeting-tasks-style";
 export const HOST_CLASS = "roam-meeting-tasks-host";
 export const FALLBACK_CLASS = "roam-meeting-tasks-fallback";
 
-// The ℹ tooltip block that every "next actions" header in dg-team references.
-// When a header carries it, that beats matching on wording, which drifts
-// across meetings and eras. dg-team specific: see README "Graph conventions".
-export const ANCHOR_UID = "yuAIplpov";
+// The ℹ tooltip blocks that "next actions" headers reference. When a header
+// carries one, that beats matching on wording, which drifts across meetings
+// and eras. Uids are unique per graph, so listing several graphs' anchors is
+// safe. See README "Graph conventions".
+export const ANCHOR_UIDS: readonly string[] = [
+  "yuAIplpov", // dg-team: next actions
+  "6-tIoP1wk", // akamatsulab: 1:1 "Proposed next step"
+  "VGiKqwasD", // akamatsulab: group meeting "Proposed next step"
+];
 
 // A DONE item stays visible this long so recent wins are seen, then ages out.
 export const CELEBRATE_DAYS = 14;

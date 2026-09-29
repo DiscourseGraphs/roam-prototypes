@@ -18,8 +18,9 @@
  * uses, and counts calls so tests can assert that reads are shared.
  */
 import { vi } from "vitest";
+import { DAY_MS } from "~/config";
+import { hasMarker, isDone } from "~/text";
 
-export const DAY = 86400000;
 export const PAGE = "PAGE1xxxx";
 export const OTHER_PAGE = "PAGE2xxxx";
 
@@ -35,8 +36,8 @@ type FakeBlock = {
 // Real Roam uids are 9 characters; the ref regex requires 6 or more.
 export const U = (n: string): string => (n + "xxxxxxxxx").slice(0, 9);
 
-const dnpUid = (daysAgo: number, now: number): string => {
-  const d = new Date(now - daysAgo * DAY);
+export const dnpUid = (daysAgo: number, now: number): string => {
+  const d = new Date(now - daysAgo * DAY_MS);
   const p2 = (x: number) => String(x).padStart(2, "0");
   return `${p2(d.getMonth() + 1)}-${p2(d.getDate())}-${d.getFullYear()}`;
 };
@@ -56,7 +57,7 @@ export const buildGraph = (now = Date.now()) => {
       string,
       children: children.map(U),
       page: opts.page ?? PAGE,
-      time: now - (opts.ageDays ?? 0) * DAY,
+      time: now - (opts.ageDays ?? 0) * DAY_MS,
       dates: opts.dates ?? [],
     });
   };
@@ -104,12 +105,10 @@ export const buildGraph = (now = Date.now()) => {
   add("prose", "PRs including UX work: aiming for [[a date]]", [], { dates: [PROSE] });
   add("inbox", "{{[[TODO]]}} page-level inbox task, under no meeting", [], { ageDays: 7 });
 
-  return { blocks, add, now, dates: { M1, M2, M3, M4 } };
+  return { blocks, add, now };
 };
 
 /* ── the fake API ────────────────────────────────────────────────────────── */
-
-const MARKED = /\{\{\[\[(TODO|DONE)\]\]\}\}|\{\{(TODO|DONE)\}\}/;
 
 export const installFakeRoam = (graph: FakeGraph) => {
   const { blocks } = graph;
@@ -129,21 +128,38 @@ export const installFakeRoam = (graph: FakeGraph) => {
     if (b.string.includes("#.sticky")) out.push({ ":block/uid": "stickyxxx" });
     return out;
   };
-  const markerTitle = (s: string): string | null => {
-    const m = MARKED.exec(s);
-    return m ? (m[1] ?? m[2]) : null;
+  const markerTitle = (s: string): string | null => (isDone(s) ? "DONE" : hasMarker(s) ? "TODO" : null);
+  // Entity ids, handed out on first sight. Pages get them too.
+  const eids = new Map<string, number>();
+  const eidOf = (uid: string): number => {
+    if (!eids.has(uid)) eids.set(uid, eids.size + 1);
+    return eids.get(uid)!;
   };
+  const uidOfEid = (eid: number) => [...eids].find(([, e]) => e === eid)?.[0];
 
-  const view = (b: FakeBlock, pattern: string): Record<string, unknown> => {
+  const view = (b: FakeBlock, pattern: string, depth?: number): Record<string, unknown> => {
     const out: Record<string, unknown> = { ":block/uid": b.uid };
+    if (pattern.includes(":db/id")) out[":db/id"] = eidOf(b.uid);
+    if (/:block\/page[\s\]]/.test(pattern)) out[":block/page"] = { ":db/id": eidOf(b.page) };
     if (pattern.includes(":block/string")) out[":block/string"] = b.string;
     if (pattern.includes(":edit/time")) out[":edit/time"] = b.time;
     if (pattern.includes("{:block/page")) out[":block/page"] = { ":block/uid": b.page };
     if (pattern.includes("{:block/parents"))
       out[":block/parents"] = ancestors(b.uid).map((u) => ({ ":block/uid": u }));
     if (pattern.includes("{:block/refs")) out[":block/refs"] = refsOf(b);
-    if (pattern.includes("{:block/children ...}") && b.children.length)
-      out[":block/children"] = b.children.map((c) => view(blocks.get(c)!, pattern));
+    if (pattern.includes(":block/order")) {
+      const parent = parentOf().get(b.uid);
+      out[":block/order"] = parent ? blocks.get(parent)!.children.indexOf(b.uid) : 0;
+    }
+    // Reversed on purpose: Roam returns children in no particular order, so
+    // the code must sort them by :block/order itself.
+    // Recursion: `...` for all levels, or a number of levels.
+    const levels = depth ?? /\{:block\/children (\.\.\.|\d+)\}/.exec(pattern)?.[1];
+    const left = levels === "..." || levels === undefined ? levels : Number(levels);
+    if (left !== undefined && left !== 0 && b.children.length)
+      out[":block/children"] = [...b.children]
+        .reverse()
+        .map((c) => view(blocks.get(c)!, pattern, left === "..." ? undefined : (left as number) - 1));
     return out;
   };
 
@@ -155,6 +171,7 @@ export const installFakeRoam = (graph: FakeGraph) => {
 
   const pull = vi.fn(async (pattern: string, eid: [string, string]) => {
     const [attr, value] = eid;
+    if (pattern === "[:db/id]") return { ":db/id": eidOf(value) };
     if (attr === ":node/title") {
       if (!pattern.includes("(:block/_refs :limit nil)"))
         throw new Error(`fake pull: unexpected title pattern ${pattern}`);
@@ -164,9 +181,10 @@ export const installFakeRoam = (graph: FakeGraph) => {
     const b = blocks.get(value);
     return b ? view(b, pattern) : null;
   });
-  const pull_many = vi.fn(async (pattern: string, eids: [string, string][]) =>
-    eids.map(([, uid]) => {
-      const b = blocks.get(uid);
+  // Takes lookup refs ([":block/uid", uid]) or entity ids.
+  const pull_many = vi.fn(async (pattern: string, ids: ([string, string] | number)[]) =>
+    ids.map((id) => {
+      const b = blocks.get(typeof id === "number" ? (uidOfEid(id) ?? "") : id[1]);
       return b ? view(b, pattern) : null;
     }),
   );
