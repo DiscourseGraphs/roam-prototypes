@@ -129,20 +129,23 @@ Measured on `dg-team`'s `Sync / All Hands` (26,728 blocks, 120 meetings, 18 in t
 | | roam/render component | this extension |
 | --- | --- | --- |
 | when reads run | during Roam's render, synchronously | after the widget has rendered |
-| cost per widget | 1.6 to 2.0 s (9 queries) | first widget on the page about 390 ms; the others reuse its reads (24 ms for a third widget) |
+| cost per widget | 1.6 to 2.0 s (9 queries) | 90 to 320 ms for the first widget on a page; widgets that reuse its reads, 2 to 3 ms |
 | collapsed section | built on every render | read and rendered only when opened |
 | block references in item text | one query per reference | one batched read, only for visible rows |
 
 Most of the old cost came from four Datalog queries that bind a variable from a list, such as
 `:in $ [?mu ...]` followed by `[?m :block/uid ?mu]`. DataScript answers those by scanning the whole
 attribute rather than looking each value up, so each took 230 to 360 ms however few rows it
-returned. They are now `pull_many` calls (about 70 ms together). The page-wide scans for meetings
-and for TODO/DONE blocks start from the `.sticky`, `TODO`, and `DONE` pages' reverse references
-instead, which are direct index reads.
+returned. They are now `pull_many` calls. The page-wide scans for meetings and for TODO/DONE blocks
+start from the `.sticky`, `TODO`, and `DONE` pages' reverse references instead, which are index
+reads. Those references are compared by entity id first, so only the blocks on this page are pulled
+in full. Meetings are read two levels deep, and only the next-actions headers in full.
 
-Output was checked against the old component on all 20 widgets on the three dg-team sync pages
-(`All Hands`, `Roam Product`, `Protocol Product`): the same items in both sections, the same counts,
-and the same footers.
+Output was compared with the old component on all 20 widgets on the three dg-team sync pages
+(`All Hands`, `Roam Product`, `Protocol Product`). Version 0.1.0 matched on every widget. In 0.2.0,
+4 widgets match and the rest differ only by the two meeting-mode fixes listed below: 15 no longer
+list the host meeting's or newer meetings' tasks as "older open items", and 1 now shows "From last
+meeting" where the old component showed nothing.
 
 ## Changes from the roam/render component
 
