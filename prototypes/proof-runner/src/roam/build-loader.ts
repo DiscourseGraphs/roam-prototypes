@@ -11,6 +11,8 @@ export const DG_REPO = "DiscourseGraphs/discourse-graph";
 
 export type LoadedBuild = {
   branch: string;
+  // The PR the page named, when it named one.
+  pr: number | null;
   commit: string | null;
   // The PR head when the page names a PR, to say whether CI has caught up.
   prHead: string | null;
@@ -219,6 +221,7 @@ const CSS_ID = "proof-dg-build-css";
 
 export const loadBuild = async ({
   branch,
+  pr = null,
   graph,
   palette,
   head,
@@ -226,6 +229,7 @@ export const loadBuild = async ({
   timeout = 60_000,
 }: {
   branch: string;
+  pr?: number | null;
   graph: string;
   palette: PaletteRegistry;
   head: string | null;
@@ -249,14 +253,6 @@ export const loadBuild = async ({
   const css = await fetch(`${url}extension.css?proof=${Date.now()}`, { cache: "no-store" })
     .then((reply) => (reply.ok ? reply.text() : ""))
     .catch(() => "");
-  document.getElementById(CSS_ID)?.remove();
-  if (css) {
-    const style = document.createElement("style");
-    style.id = CSS_ID;
-    style.textContent = css;
-    document.head.append(style);
-  }
-  palette.watchRoam();
   // Importing the text that was checked, through a blob: URL, so the code
   // that runs is the commit the panel names.
   const moduleUrl = URL.createObjectURL(new Blob([source], { type: "text/javascript" }));
@@ -269,29 +265,38 @@ export const loadBuild = async ({
     throw new Error(`${url}extension.js has no default export with onload.`);
   }
   const api = extensionAPIForDg({ graph, palette, extensionAPI });
-  await extension.onload({
-    extensionAPI: api,
-    extension: { version: commit ? `${branch}@${commit.slice(0, 7)}` : branch },
-  });
-  const deadline = Date.now() + timeout;
-  while (!dgReady()) {
-    if (Date.now() > deadline) throw new Error(`The build from ${branch} ran but DG didn't report ready in ${timeout / 1000}s.`);
-    await sleep(200);
-  }
-  return {
-    branch,
-    commit,
-    prHead: head,
-    url,
-    loadedAt: Date.now(),
-    unload: async () => {
-      try {
-        await extension.onunload?.();
-      } finally {
-        await api.removeCommands();
-        palette.stopWatching();
-        document.getElementById(CSS_ID)?.remove();
-      }
-    },
+  // Whatever the build managed to set up before failing or being unloaded:
+  // its own registrations, the commands added for it, the stylesheet.
+  const cleanUp = async (): Promise<void> => {
+    try {
+      await extension.onunload?.();
+    } finally {
+      await api.removeCommands();
+      palette.stopWatching();
+      document.getElementById(CSS_ID)?.remove();
+    }
   };
+  try {
+    document.getElementById(CSS_ID)?.remove();
+    if (css) {
+      const style = document.createElement("style");
+      style.id = CSS_ID;
+      style.textContent = css;
+      document.head.append(style);
+    }
+    palette.watchRoam();
+    await extension.onload({
+      extensionAPI: api,
+      extension: { version: commit ? `${branch}@${commit.slice(0, 7)}` : branch },
+    });
+    const deadline = Date.now() + timeout;
+    while (!dgReady()) {
+      if (Date.now() > deadline) throw new Error(`The build from ${branch} ran but DG didn't report ready in ${timeout / 1000}s.`);
+      await sleep(200);
+    }
+  } catch (error) {
+    await cleanUp().catch(() => undefined);
+    throw error;
+  }
+  return { branch, pr, commit, prHead: head, url, loadedAt: Date.now(), unload: cleanUp };
 };

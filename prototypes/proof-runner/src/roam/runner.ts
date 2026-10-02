@@ -28,6 +28,7 @@ export type SetupPlan = {
   rootUid: string;
   kit: string;
   branch: string;
+  pr: number | null;
   head: string | null;
   apply: Fixture[];
   // Fixtures that need a key this browser doesn't have; they're skipped.
@@ -155,6 +156,71 @@ export const applyBeforeLoad = async (
   return outcomes;
 };
 
+// After Set up and load, the fixtures that failed, as a plan to retry; null
+// when they all held. A before-load fixture that failed leaves DG's startup
+// state wrong, so the build doesn't load until they hold.
+export const retryPlan = (plan: SetupPlan, outcomes: FixtureOutcome[]): SetupPlan | null => {
+  const failed = new Set(outcomes.filter((item) => item.outcome === "failed").map((item) => item.id));
+  return failed.size ? { ...plan, apply: plan.apply.filter((fixture) => failed.has(fixture.id)) } : null;
+};
+
+export type BuildStatus = {
+  // The branch (or "PR #n" before it's resolved) the page asks for.
+  wanted: string | null;
+  // Why the loaded build isn't the page's, offering a reload.
+  mismatch: string | null;
+  // Why Run is off; null when the kit can run.
+  blocked: string | null;
+};
+
+// Whether a kit can run on what this tab loaded. A kit that names a build
+// (build:: or pr::) only runs on that build, loaded for it: running it on
+// another kit's build, or on none, would write a proof that isn't one.
+export const buildStatus = ({
+  config,
+  loaded,
+  mine,
+  setup,
+  loading,
+  buildError,
+}: {
+  config: { build: string | null; pr: number | null };
+  loaded: Pick<LoadedBuild, "branch" | "pr" | "commit" | "prHead"> | null;
+  mine: boolean;
+  setup: boolean;
+  loading: boolean;
+  buildError: string | null;
+}): BuildStatus => {
+  const requested = Boolean(config.build || config.pr);
+  const matches = Boolean(
+    loaded && (config.build ? loaded.branch === config.build : config.pr ? mine || loaded.pr === config.pr : true),
+  );
+  const wanted = config.build ?? (config.pr ? (loaded && matches ? loaded.branch : `PR #${config.pr}`) : null);
+  if (!requested) return { wanted, mismatch: null, blocked: null };
+  if (loading) return { wanted, mismatch: null, blocked: "The build is still loading." };
+  if (setup) return { wanted, mismatch: null, blocked: "Set up and load the build first." };
+  if (loaded && !matches) {
+    return { wanted, mismatch: `this page wants ${wanted}`, blocked: `This tab has ${loaded.branch}; reload on this page to load ${wanted}.` };
+  }
+  if (!loaded) {
+    return {
+      wanted,
+      mismatch: buildError ? null : "reload to load it",
+      blocked: buildError ? "The page's build didn't load (see above)." : `${wanted} isn't loaded in this tab.`,
+    };
+  }
+  const behind = loaded.prHead && loaded.commit && !loaded.prHead.startsWith(loaded.commit.slice(0, 7));
+  return { wanted, mismatch: behind ? `PR head is ${loaded.prHead?.slice(0, 7)}; CI may still be building it` : null, blocked: null };
+};
+
+// A saved partial run only resumes on the kit and the commit it started on;
+// verdicts from another commit can't stand for this one.
+export const recordFits = (
+  record: { kitHash: string; commit: string | null } | null,
+  kitHash: string,
+  commit: string | null,
+): boolean => Boolean(record && record.kitHash === kitHash && record.commit === commit);
+
 export const fixturesFor = (kit: Kit, env: RunnerEnv): Fixture[] => {
   const baseline = kit.baseline ? env.baselines.get(kit.baseline) : null;
   if (kit.baseline && !baseline) throw new Error(`This runner has no baseline ${kit.baseline}.`);
@@ -188,7 +254,7 @@ export class ProofRun {
   private readRecord(): RunRecord | null {
     try {
       const record = JSON.parse(localStorage.getItem(this.storageKey) ?? "null") as RunRecord | null;
-      return record && this.kit && record.kitHash === hash(this.kit.kit) ? record : null;
+      return this.kit && recordFits(record, hash(this.kit.kit), this.env.build?.commit ?? null) ? record : null;
     } catch {
       return null;
     }
@@ -248,18 +314,23 @@ export class ProofRun {
     return notes;
   }
 
+  private buildStatus(): BuildStatus {
+    const config = this.tree ? rootConfig(this.tree) : { build: null, pr: null, kit: null };
+    return buildStatus({
+      config,
+      loaded: this.env.build,
+      mine: this.env.buildFor === this.rootUid,
+      setup: this.env.setup?.rootUid === this.rootUid,
+      loading: this.env.loading,
+      buildError: this.env.buildError,
+    });
+  }
+
   view(): PanelView {
     const config = this.tree ? rootConfig(this.tree) : { build: null, pr: null, kit: null };
     const loaded = this.env.build;
-    const mine = this.env.buildFor === this.rootUid;
-    const wanted = config.build ?? (config.pr && loaded && mine ? loaded.branch : null);
     const setup = this.env.setup?.rootUid === this.rootUid ? this.env.setup : null;
-    let mismatch: string | null = null;
-    if (wanted && loaded && loaded.branch !== wanted) mismatch = `this page wants ${wanted}`;
-    else if ((wanted || config.pr) && !loaded && !this.env.buildError && !this.env.loading && !setup) mismatch = "reload to load it";
-    else if (loaded?.prHead && loaded.commit && !loaded.prHead.startsWith(loaded.commit.slice(0, 7))) {
-      mismatch = `PR head is ${loaded.prHead.slice(0, 7)}; CI may still be building it`;
-    }
+    const status = this.buildStatus();
     const record = this.state ? null : this.readRecord();
     const merged = this.state
       ? {
@@ -286,13 +357,14 @@ export class ProofRun {
       title: this.kit?.kit.title ?? this.kit?.kit.name ?? config.kit ?? "Proof kit",
       kitName: this.kit?.kit.name ?? null,
       build: {
-        wanted: wanted ?? (config.pr ? `PR #${config.pr}` : null),
+        wanted: status.wanted,
         loaded: loaded?.branch ?? null,
         commit: loaded?.commit ?? null,
         pr: config.pr,
-        mismatch,
+        mismatch: status.mismatch,
         loading: this.env.loading,
       },
+      blocked: status.blocked,
       setup: setup
         ? {
             branch: setup.branch,
@@ -403,7 +475,8 @@ export class ProofRun {
     if (this.running) return "A run is already going.";
     await this.refresh();
     if (!this.kit) return this.error ?? "This page has no kit.";
-    if (this.env.setup?.rootUid === this.rootUid) return "Set up and load the build first.";
+    const blocked = this.buildStatus().blocked;
+    if (blocked) return blocked;
     const source = this.kit.kit;
     const kit: Kit = JSON.parse(JSON.stringify(source)) as Kit;
     const record = from > 0 ? this.readRecord() : null;

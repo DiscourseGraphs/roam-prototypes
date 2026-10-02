@@ -31,6 +31,8 @@ export type PanelView = {
   kitName: string | null;
   build: BuildInfo;
   setup: SetupView | null;
+  // Why Run is off (the build isn't this kit's, or isn't loaded); null to run.
+  blocked: string | null;
   // Kit or page problems that stop a run, e.g. a block the parser can't read.
   error: string | null;
   // Things to know before running: skipped fixtures, needs this tab can't meet.
@@ -442,8 +444,11 @@ export class ProofPanel {
     if (view.setup) box.append(button("Set up and load", "load", { className: "primary", title: "Apply the setup above, then load the build" }));
     if (view.build.mismatch) box.append(button("Reload with this build", "reload", { className: "primary" }));
     if (!live) {
-      const run = button(state ? "Run again" : "Run", "run", { className: view.setup ? "" : "primary", title: "Run every case on this page" });
-      run.disabled = Boolean(view.error) || Boolean(view.setup) || Boolean(view.build.loading);
+      const run = button(state ? "Run again" : "Run", "run", {
+        className: view.setup || view.blocked ? "" : "primary",
+        title: view.blocked ?? "Run every case on this page",
+      });
+      run.disabled = Boolean(view.error) || Boolean(view.blocked);
       box.append(run);
       if (view.resumable && !state) box.append(button(`Resume from case ${view.resumable.caseIndex + 1}`, "resume"));
       if (state || view.resumable) box.append(button("Reset", "reset", { title: "Forget this tab's run of the kit" }));

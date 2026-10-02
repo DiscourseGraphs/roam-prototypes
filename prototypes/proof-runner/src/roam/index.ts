@@ -25,6 +25,7 @@ import {
   contextFor,
   fixturesFor,
   planBeforeLoad,
+  retryPlan,
   type RunnerEnv,
   type SetupPlan,
 } from "./runner";
@@ -233,27 +234,33 @@ class ProofRunner {
       this.trace(`the kit didn't parse, so no fixtures run: ${describe(error)}`);
     }
     const context = contextFor(kit?.name ?? "kit", this.env, "load");
-    const plan = kit ? await planBeforeLoad(fixturesFor(kit, this.env), context) : { apply: [], skip: [], kept: [] };
+    const found = kit ? await planBeforeLoad(fixturesFor(kit, this.env), context) : { apply: [], skip: [], kept: [] };
+    const plan: SetupPlan = { rootUid: root.uid, kit: kit?.name ?? "kit", branch: branch as string, pr: config.pr, head, ...found };
     if (plan.apply.length) {
-      this.env.setup = { rootUid: root.uid, kit: kit?.name ?? "kit", branch: branch as string, head, ...plan };
+      this.env.setup = plan;
       this.trace(`waiting for Set up and load: ${plan.apply.map((fixture) => fixture.id).join(", ")}`);
       return;
     }
-    await this.finishLoad(branch as string, head, plan, context);
+    await this.finishLoad(plan, context);
   }
 
-  private async finishLoad(
-    branch: string,
-    head: string | null,
-    plan: Pick<SetupPlan, "apply" | "skip" | "kept">,
-    context: TemplateContext,
-  ): Promise<void> {
+  private async finishLoad(plan: SetupPlan, context: TemplateContext): Promise<void> {
     this.env.beforeLoad = await applyBeforeLoad(plan, context);
     this.trace(`before-load fixtures: ${this.env.beforeLoad.map((item) => `${item.id} ${item.outcome}`).join(", ") || "none"}`);
+    const retry = retryPlan(plan, this.env.beforeLoad);
+    if (retry) {
+      const failed = this.env.beforeLoad.filter((item) => item.outcome === "failed");
+      this.env.setup = retry;
+      this.env.buildError = `Setup didn't take, so the build wasn't loaded: ${failed.map((item) => `${item.id} (${item.detail})`).join("; ")}. Fix it, then press Set up and load again.`;
+      this.trace(`stopped: ${failed.map((item) => item.id).join(", ")} failed`);
+      return;
+    }
+    const { branch, head } = plan;
     try {
       this.trace(`loading ${branch}`);
       this.env.build = await loadBuild({
         branch,
+        pr: plan.pr,
         graph: this.env.graph,
         palette: this.env.palette,
         head,
@@ -270,10 +277,11 @@ class ProofRunner {
     const setup = this.env.setup;
     if (!setup) return;
     this.env.setup = null;
+    this.env.buildError = null;
     this.env.loading = true;
     this.refreshAll();
     try {
-      await this.finishLoad(setup.branch, setup.head, setup, contextFor(setup.kit, this.env, "load"));
+      await this.finishLoad(setup, contextFor(setup.kit, this.env, "load"));
     } finally {
       this.env.loading = false;
       this.refreshAll();
