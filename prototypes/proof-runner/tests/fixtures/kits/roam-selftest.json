@@ -1,0 +1,71 @@
+{
+  "name": "roam-selftest",
+  "title": "The in-Roam runner drives a build it loaded itself",
+  "claim": "A proof page loads its build, runs palette commands, keys, recipes and fixtures from inside Roam, and takes a person's verdict.",
+  "given": "Sync and node sharing are off, so the build stays off the hosted database.",
+  "prepare": [
+    {
+      "id": "no-hosted-sync",
+      "why": "sync and node sharing are off, so the build doesn't connect this graph to the hosted database",
+      "phase": "before-load",
+      "check": {
+        "js": "!proof.flags.get('Suggestive mode overlay enabled') && !proof.flags.get('Enable node sharing')"
+      },
+      "apply": {
+        "js": "(async () => { await proof.flags.set('Suggestive mode overlay enabled', false); await proof.flags.set('Enable node sharing', false); })()"
+      }
+    },
+    {
+      "id": "scratch-page",
+      "why": "a scratch page to open",
+      "phase": "in-session",
+      "check": { "js": "proof.page.exists('proof/runner scratch')" },
+      "apply": { "js": "proof.page.ensure('proof/runner scratch', ['A page the runner self-test opens. Leave it in place.'])" }
+    }
+  ],
+  "cases": [
+    {
+      "id": "build-ready",
+      "title": "The page's build loaded and DG is ready",
+      "checks": "queryBuilder.runQuery and getDiscourseNodes exist",
+      "expect": {
+        "js": "proof.assert(typeof window.roamjs?.extension?.queryBuilder?.runQuery === 'function' && typeof window.roamjs.extension.queryBuilder.getDiscourseNodes === 'function', 'DG did not finish loading.')"
+      }
+    },
+    {
+      "id": "settings-open",
+      "title": "Discourse settings open from the command palette",
+      "steps": [
+        { "do": { "command_palette": "DG: Open - Discourse settings" }, "why": "open the settings the way a user would" },
+        { "do": { "wait_for": ".bp3-dialog:visible" }, "why": "wait for the dialog" }
+      ],
+      "checks": "a dialog is open",
+      "expect": { "js": "proof.assert(proof.dialogs().length > 0, 'The settings dialog did not open.')" }
+    },
+    {
+      "id": "escape-closes",
+      "title": "Escape closes the settings dialog",
+      "steps": [
+        { "do": { "press": "Escape" }, "why": "press Escape, as Blueprint expects it" },
+        { "do": { "pause": 0.6 }, "why": "let the dialog close" }
+      ],
+      "checks": "no dialog is left open",
+      "expect": { "js": "proof.assert(proof.dialogs().length === 0, 'A dialog is still open after Escape.')" }
+    },
+    {
+      "id": "page-opens",
+      "title": "A recipe opens the scratch page",
+      "steps": [
+        { "use": "page.open", "with": { "title": "proof/runner scratch" }, "why": "open the scratch page" }
+      ],
+      "checks": "its title shows in the main window",
+      "expect": { "js": "proof.assert(Array.from(document.querySelectorAll('.roam-article .rm-title-display')).some((el) => el.innerText.trim() === 'proof/runner scratch'), 'The scratch page is not open.')" }
+    },
+    {
+      "id": "by-hand",
+      "title": "A case a person does and judges",
+      "intent": "Look at the panel in the right sidebar: it shows this case as done by hand. Press Done.",
+      "expect": { "text": "The panel showed this case with a Done button, and kept its place in the sidebar." }
+    }
+  ]
+}

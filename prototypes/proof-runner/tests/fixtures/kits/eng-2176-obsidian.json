@@ -1,0 +1,71 @@
+{
+  "name": "eng-2176-obsidian",
+  "title": "Escape regex metacharacters in discourse node format expressions (Obsidian)",
+  "target": {
+    "app": "obsidian",
+    "cdp": "http://127.0.0.1:9223",
+    "vault": "/path/to/vault",
+    "pr": 1508,
+    "viewport": {
+      "width": 1280,
+      "height": 720
+    }
+  },
+  "needs": [
+    "supabase",
+    "embed-stub"
+  ],
+  "prepare": [
+    {
+      "id": "draft-claim",
+      "why": "a Draft Claim node type whose format has parentheses, and a note in that format",
+      "phase": "in-session",
+      "apply": {
+        "js": "(async () => { await proof.obsidian.closeModals(); const plugin = proof.obsidian.plugin(); const now = Date.now(); if (!proof.obsidian.nodeType('Draft Claim')) { plugin.settings.nodeTypes.push({ id: 'pk-2176-draft-claim', name: 'Draft Claim', format: 'Claim (draft) - {content}', color: '#8B5CF6', created: now, modified: now }); await plugin.saveSettings(); } await proof.obsidian.write('Claim (draft) - Sleep improves memory.md', '---\\nnodeTypeId: pk-2176-draft-claim\\n---\\nA Draft Claim note.\\n'); })()"
+      }
+    }
+  ],
+  "cases": [
+    {
+      "id": "content-line-reads-the-content",
+      "title": "The Content line extracts the content from a format with parentheses",
+      "caption": "In Obsidian, the Draft Claim format has parentheses too. The discourse context now reads the content, Sleep improves memory, instead of the word inside the parentheses.",
+      "steps": [
+        {
+          "do": {
+            "js": "proof.obsidian.open('Claim (draft) - Sleep improves memory.md')"
+          },
+          "why": "open the Draft Claim note"
+        },
+        {
+          "do": {
+            "when": {
+              "js": "window.app.workspace.getLeavesOfType('discourse-context-view').length === 0",
+              "do": [
+                {
+                  "command_palette": "Toggle discourse context"
+                }
+              ]
+            }
+          },
+          "why": "show the discourse context, if it isn't open"
+        },
+        {
+          "do": {
+            "wait_for": "[data-type=\"discourse-context-view\"] :text(\"Content:\")"
+          },
+          "why": "wait for the Content line"
+        },
+        {
+          "do": {
+            "pause": 2.5
+          },
+          "why": "hold on the context"
+        }
+      ],
+      "expect": {
+        "js": "proof.waitFor(() => { const view = document.querySelector('[data-type=\"discourse-context-view\"]'); return view && /Content:\\s*Sleep improves memory/.test(view.innerText); }, { what: 'Content: Sleep improves memory in the discourse context' })"
+      }
+    }
+  ]
+}

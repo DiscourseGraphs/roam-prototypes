@@ -1,0 +1,137 @@
+{
+  "name": "eng-2195",
+  "title": "Normalize imported node type formats for Obsidian filenames",
+  "target": {
+    "app": "obsidian",
+    "cdp": "http://127.0.0.1:9223",
+    "vault": "/path/to/vault",
+    "pr": 1507,
+    "viewport": {
+      "width": 1280,
+      "height": 720
+    }
+  },
+  "needs": [
+    "supabase",
+    "embed-stub"
+  ],
+  "prepare": [
+    {
+      "id": "roam-bracket-format",
+      "why": "the dev graph published a PK Note node type with Roam's bracketed format [[PKN]] - {content}, and one node, to the eng-2329-demo group",
+      "phase": "outside",
+      "apply": {
+        "publish": {
+          "space": 66566,
+          "author": 3,
+          "group": "eng-2329-demo",
+          "types": [
+            {
+              "id": "pk-2195-note",
+              "label": "PK Note",
+              "format": "[[PKN]] - {content}"
+            }
+          ],
+          "nodes": [
+            {
+              "id": "pk-2195-roam-note",
+              "type": "pk-2195-note",
+              "title": "Sleep improves memory",
+              "body": "- Shared from Roam."
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "no-earlier-import",
+      "why": "the vault has no PK Note type or note from an earlier import",
+      "phase": "in-session",
+      "apply": {
+        "js": "(async () => { await proof.obsidian.closeModals(); await proof.obsidian.removeFiles(proof.obsidian.importedFiles(['pk-2195-roam-note'])); await proof.obsidian.removeNodeTypes(['PK Note']); proof.obsidian.clearNotices(); })()"
+      }
+    }
+  ],
+  "cases": [
+    {
+      "id": "bracket-format-normalized",
+      "title": "A Roam format with brackets becomes a valid Obsidian format",
+      "caption": "Roam formats wrap the tag in double brackets, which Obsidian file names can't hold. Importing a Roam node type now stores its format as PKN, dash, content.",
+      "steps": [
+        {
+          "do": {
+            "command_palette": "Import nodes from another space"
+          },
+          "why": "open import the way a user would"
+        },
+        {
+          "do": {
+            "wait_for": ".modal h3:has-text(\"Select nodes to import\")"
+          },
+          "why": "wait for the shared nodes to load"
+        },
+        {
+          "do": {
+            "click": ".modal div.items-start:has-text(\"Sleep improves memory\") input[type=\"checkbox\"]"
+          },
+          "why": "select the shared node"
+        },
+        {
+          "do": {
+            "click": ".modal button:has-text(\"Next (1)\")"
+          },
+          "why": "go to the preview"
+        },
+        {
+          "do": {
+            "wait_for": ".modal button:has-text(\"Confirm Import\")"
+          },
+          "why": "wait for the preview"
+        },
+        {
+          "do": {
+            "click": ".modal button:has-text(\"Confirm Import\")"
+          },
+          "why": "import it"
+        },
+        {
+          "do": {
+            "js": "proof.waitFor(() => /Successfully imported|Import completed/.test(proof.obsidian.notices()), { what: 'the import to finish', timeout: 30000 })"
+          },
+          "why": "wait for the import notice"
+        },
+        {
+          "do": {
+            "pause": 1.5
+          },
+          "why": "hold on the result"
+        }
+      ],
+      "expect": {
+        "js": "proof.waitFor(() => { const type = proof.obsidian.nodeType('PK Note'); return type && type.format === 'PKN - {content}'; }, { what: 'PK Note with the format PKN - {content}', timeout: 20000 })"
+      }
+    },
+    {
+      "id": "file-named-from-format",
+      "title": "The imported note's file is named from that format",
+      "caption": "So the imported note decorates as a normal file name: PKN, dash, Sleep improves memory.",
+      "steps": [
+        {
+          "do": {
+            "js": "proof.obsidian.open(proof.obsidian.importedFiles(['pk-2195-roam-note'])[0].path)"
+          },
+          "why": "open the imported note"
+        },
+        {
+          "do": {
+            "pause": 2
+          },
+          "why": "hold on the note"
+        }
+      ],
+      "expect": {
+        "js": "proof.assert(window.app.workspace.getActiveFile().basename === 'PKN - Sleep improves memory', 'The imported note is named ' + window.app.workspace.getActiveFile().basename + '.')"
+      }
+    }
+  ]
+}

@@ -1,0 +1,81 @@
+{
+  "name": "dg-baseline",
+  "version": 1,
+  "why": "What most DG Roam proofs assume: the sync, node-sharing and node-search flags on, the four default node types, one page per default type, and a quiet UI. Taken from what past storyboards seeded most and what the open PRs need.",
+  "prepare": [
+    {
+      "id": "flag-sync",
+      "why": "the sync flag (Suggestive mode overlay enabled) is on, so DG: Discover shared nodes is registered",
+      "phase": "before-load",
+      "check": { "js": "proof.flags.get('Suggestive mode overlay enabled')" },
+      "apply": { "js": "proof.flags.set('Suggestive mode overlay enabled', true)" }
+    },
+    {
+      "id": "flag-node-sharing",
+      "why": "node sharing is on, so DG: Share current node, Publish and Refresh are registered",
+      "phase": "before-load",
+      "check": { "js": "proof.flags.get('Enable node sharing')" },
+      "apply": { "js": "proof.flags.set('Enable node sharing', true)" }
+    },
+    {
+      "id": "flag-node-search",
+      "why": "advanced node search is on, so DG: Open Node Search is registered",
+      "phase": "before-load",
+      "check": { "js": "proof.flags.get('Advanced node search enabled')" },
+      "apply": { "js": "proof.flags.set('Advanced node search enabled', true)" }
+    },
+    {
+      "id": "baseline-pages",
+      "why": "one page per default node type exists",
+      "phase": "in-session",
+      "check": {
+        "js": "['[[CLM]] - PK baseline claim', '[[QUE]] - PK baseline question', '@PK baseline source', '[[EVD]] - PK baseline evidence - [[@PK baseline source]]'].every((title) => proof.page.exists(title))"
+      },
+      "apply": {
+        "js": "(async () => { for (const title of ['[[CLM]] - PK baseline claim', '[[QUE]] - PK baseline question', '@PK baseline source', '[[EVD]] - PK baseline evidence - [[@PK baseline source]]']) { await proof.page.ensure(title, ['Baseline page for proof kits. Leave it in place.']); } })()"
+      }
+    },
+    {
+      "id": "quiet-ui",
+      "why": "no dialog, toast or right-sidebar window is left over from the load",
+      "phase": "in-session",
+      "apply": {
+        "js": "(async () => { await proof.closeDialogs(); proof.toasts.clear(); await proof.sidebar.clearRight(); })()"
+      }
+    }
+  ],
+  "smoke": [
+    {
+      "id": "extension-loaded",
+      "title": "The DG extension loaded",
+      "expect": {
+        "js": "proof.assert(typeof (window.roamjs && window.roamjs.extension && window.roamjs.extension.queryBuilder && window.roamjs.extension.queryBuilder.runQuery) === 'function', 'The DG extension did not load.')"
+      }
+    },
+    {
+      "id": "default-node-types",
+      "title": "The four default node types exist",
+      "expect": {
+        "js": "(() => { const labels = proof.nodeTypes().map((node) => node.text); const missing = ['Claim', 'Question', 'Evidence', 'Source'].filter((label) => !labels.includes(label)); proof.assert(missing.length === 0, 'Missing node types: ' + missing.join(', ') + '. Found: ' + labels.join(', ')); })()"
+      }
+    },
+    {
+      "id": "flags-on",
+      "title": "The baseline flags read back as on",
+      "expect": {
+        "js": "(() => { const off = ['Suggestive mode overlay enabled', 'Enable node sharing', 'Advanced node search enabled'].filter((name) => !proof.flags.get(name)); proof.assert(off.length === 0, 'These flags are off: ' + off.join(', ')); })()"
+      }
+    },
+    {
+      "id": "settings-open",
+      "title": "Discourse settings open from the command palette",
+      "steps": [
+        { "use": "settings.open-home", "why": "open the settings" },
+        { "use": "dialog.close-all", "why": "close them again" }
+      ],
+      "expect": {
+        "js": "proof.assert(proof.dialogs().length === 0, 'A dialog is still open after closing settings.')"
+      }
+    }
+  ]
+}

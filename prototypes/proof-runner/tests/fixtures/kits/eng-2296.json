@@ -1,0 +1,197 @@
+{
+  "name": "eng-2296",
+  "title": "Simplify the Roam import dialog and import feedback",
+  "baseline": "dg-baseline@1",
+  "target": {
+    "slot": "3",
+    "pr": 1479,
+    "viewport": {
+      "width": 1280,
+      "height": 720
+    }
+  },
+  "needs": [
+    "supabase",
+    "embed-stub"
+  ],
+  "prepare": [
+    {
+      "id": "shared-claims",
+      "why": "the Obsidian test vault published three claims to the eng-2329-demo group",
+      "phase": "outside",
+      "apply": {
+        "publish": {
+          "space": 106039,
+          "author": 106041,
+          "group": "eng-2329-demo",
+          "types": [
+            {
+              "id": "node_pk-2296-claim",
+              "label": "PK Import Claim",
+              "format": "PKC - {content}"
+            }
+          ],
+          "nodes": [
+            {
+              "id": "pk-2296-claim-1",
+              "type": "node_pk-2296-claim",
+              "title": "Daylight exposure resets the circadian clock",
+              "body": "Morning light shifts melatonin onset earlier.\n"
+            },
+            {
+              "id": "pk-2296-claim-2",
+              "type": "node_pk-2296-claim",
+              "title": "Caffeine after noon delays sleep onset",
+              "body": "Half-life is five to six hours.\n"
+            },
+            {
+              "id": "pk-2296-claim-3",
+              "type": "node_pk-2296-claim",
+              "title": "Cool bedrooms improve deep sleep",
+              "body": "Around 18 degrees Celsius works best.\n"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "no-earlier-import",
+      "why": "none of the three claims, nor their type, was imported into this graph before",
+      "phase": "before-load",
+      "check": {
+        "js": "![\"discourse-graph/nodes/PK Import Claim\", \"PKC - Daylight exposure resets the circadian clock\", \"PKC - Caffeine after noon delays sleep onset\", \"PKC - Cool bedrooms improve deep sleep\"].some((title) => proof.page.exists(title))"
+      },
+      "apply": {
+        "js": "proof.page.remove([\"discourse-graph/nodes/PK Import Claim\", \"PKC - Daylight exposure resets the circadian clock\", \"PKC - Caffeine after noon delays sleep onset\", \"PKC - Cool bedrooms improve deep sleep\"])"
+      }
+    },
+    {
+      "id": "database-session",
+      "why": "the extension has a local database session for this graph, since the local create-space edge function is down",
+      "phase": "before-load",
+      "check": {
+        "js": "proof.supabase.signedIn()"
+      },
+      "apply": {
+        "js": "proof.supabase.signIn({ serviceKey: '{{env.SUPABASE_SERVICE_ROLE_KEY}}', publishableKey: '{{env.SUPABASE_PUBLISHABLE_KEY}}' })"
+      },
+      "settleMs": 1000
+    }
+  ],
+  "cases": [
+    {
+      "id": "result-lists-links",
+      "title": "The import result links every imported node",
+      "caption": "Import two shared claims. The result now lists each imported node as a link, not only the ones with warnings.",
+      "steps": [
+        {
+          "use": "discover.open",
+          "why": "open import the way a user would"
+        },
+        {
+          "do": {
+            "wait_for": ".bp3-dialog tbody tr:has-text(\"Daylight exposure resets the circadian clock\")"
+          },
+          "why": "wait for the shared node's row"
+        },
+        {
+          "do": {
+            "click": ".bp3-dialog tbody tr:has-text(\"Daylight exposure resets the circadian clock\") label.bp3-checkbox"
+          },
+          "why": "select it"
+        },
+        {
+          "do": {
+            "click": ".bp3-dialog tbody tr:has-text(\"Caffeine after noon delays sleep onset\") label.bp3-checkbox"
+          },
+          "why": "select a second claim"
+        },
+        {
+          "do": {
+            "click": ".bp3-dialog button:has-text(\"Import selected (2)\")"
+          },
+          "why": "import the selection"
+        },
+        {
+          "do": {
+            "wait_for": ".bp3-dialog .bp3-callout:has-text(\"imported\")"
+          },
+          "why": "wait for the import result"
+        },
+        {
+          "do": {
+            "pause": 2
+          },
+          "why": "hold on the result"
+        }
+      ],
+      "expect": {
+        "js": "proof.waitFor(() => { const callout = proof.byText('.bp3-dialog .bp3-callout', 'imported'); if (!callout) return false; const links = Array.from(callout.querySelectorAll('li a')).map((link) => link.innerText); return callout.innerText.includes('2 imported') && links.some((text) => text.includes('Daylight exposure')) && links.some((text) => text.includes('Caffeine after noon')); }, { what: 'a result listing both imported claims as links', timeout: 20000 })"
+      }
+    },
+    {
+      "id": "imported-rows-leave-the-table",
+      "title": "Imported nodes leave the table",
+      "caption": "Imported nodes leave the table, as in Obsidian's import, so only the claim still to import is left.",
+      "steps": [
+        {
+          "do": {
+            "pause": 1
+          },
+          "why": "look at the table under the result"
+        }
+      ],
+      "expect": {
+        "js": "proof.waitFor(() => { const rows = Array.from(document.querySelectorAll('.bp3-dialog tbody tr')).map((row) => row.innerText); return rows.some((text) => text.includes('Cool bedrooms')) && !rows.some((text) => text.includes('Daylight exposure') || text.includes('Caffeine after noon')); }, { what: 'only the unimported claim in the table' })"
+      }
+    },
+    {
+      "id": "link-opens-the-page",
+      "title": "Clicking a result opens the page and closes the dialog",
+      "caption": "Clicking a result opens that page and closes the dialog.",
+      "steps": [
+        {
+          "do": {
+            "click": ".bp3-dialog .bp3-callout li a:has-text(\"Daylight exposure\")"
+          },
+          "why": "open the imported claim"
+        },
+        {
+          "do": {
+            "pause": 2
+          },
+          "why": "hold on the page"
+        }
+      ],
+      "expect": {
+        "js": "proof.waitFor(() => !proof.dialogs().length && Array.from(document.querySelectorAll('.rm-title-display')).some((title) => proof.visible(title) && title.innerText.includes('Daylight exposure resets the circadian clock')), { what: 'the imported page open with the dialog closed' })"
+      }
+    },
+    {
+      "id": "reopen-hides-imported",
+      "title": "Reopening import still hides what's already imported",
+      "caption": "Open import again: the two imported claims stay hidden. A newer version comes in through Refresh instead.",
+      "steps": [
+        {
+          "use": "discover.open",
+          "why": "open import again"
+        },
+        {
+          "do": {
+            "wait_for": ".bp3-dialog tbody tr:has-text(\"Cool bedrooms\")"
+          },
+          "why": "wait for the table"
+        },
+        {
+          "do": {
+            "pause": 2
+          },
+          "why": "hold on the table"
+        }
+      ],
+      "expect": {
+        "js": "(() => { const rows = Array.from(document.querySelectorAll('.bp3-dialog tbody tr')).map((row) => row.innerText); proof.assert(!rows.some((text) => text.includes('Daylight exposure') || text.includes('Caffeine after noon')), 'An imported claim is still in the table.'); })()"
+      }
+    }
+  ]
+}

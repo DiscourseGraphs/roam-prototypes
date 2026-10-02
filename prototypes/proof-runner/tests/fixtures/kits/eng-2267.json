@@ -1,0 +1,120 @@
+{
+  "name": "eng-2267",
+  "title": "Native-Obsidian styling pass for advanced node search",
+  "target": {
+    "app": "obsidian",
+    "cdp": "http://127.0.0.1:9223",
+    "vault": "/path/to/vault",
+    "pr": 1484,
+    "viewport": {
+      "width": 1280,
+      "height": 720
+    }
+  },
+  "needs": [
+    "supabase",
+    "embed-stub"
+  ],
+  "prepare": [
+    {
+      "id": "quiet",
+      "why": "no modal is open",
+      "phase": "in-session",
+      "apply": {
+        "js": "proof.obsidian.closeModals()"
+      }
+    }
+  ],
+  "cases": [
+    {
+      "id": "toolbar-sizes",
+      "title": "The search toolbar uses Obsidian's UI font size",
+      "caption": "Node search's toolbar now takes its sizes from Obsidian's own variables, so the query field and its triggers match Obsidian's menus.",
+      "steps": [
+        {
+          "do": {
+            "command_palette": "Open node search"
+          },
+          "why": "open node search the way a user would"
+        },
+        {
+          "do": {
+            "wait_for": ".modal button[title=\"Filter by type\"]"
+          },
+          "why": "wait for the toolbar"
+        },
+        {
+          "do": {
+            "pause": 2
+          },
+          "why": "hold on the toolbar"
+        }
+      ],
+      "expect": {
+        "js": "(() => { const input = document.querySelector('.modal input'); proof.assert(input, 'No search field in the modal.'); const want = getComputedStyle(document.body).getPropertyValue('--font-ui-small').trim(); proof.assert(want && getComputedStyle(input).fontSize === want, 'The search field is ' + getComputedStyle(input).fontSize + ', not --font-ui-small (' + want + ').'); })()"
+      }
+    },
+    {
+      "id": "filter-panel-border",
+      "title": "The filter panel draws its border and dividers",
+      "caption": "The filter panel now draws its border and dividers, which never rendered before.",
+      "steps": [
+        {
+          "do": {
+            "click": ".modal button[title=\"Filter by type\"]"
+          },
+          "why": "open the type filter"
+        },
+        {
+          "do": {
+            "wait_for": ".modal div.absolute.top-full"
+          },
+          "why": "wait for the panel"
+        },
+        {
+          "do": {
+            "pause": 2
+          },
+          "why": "hold on the panel"
+        }
+      ],
+      "expect": {
+        "js": "(() => { const panel = document.querySelector('.modal div.absolute.top-full'); proof.assert(panel, 'The filter panel is not open.'); const style = getComputedStyle(panel); proof.assert(style.borderTopStyle === 'solid' && parseFloat(style.borderTopWidth) > 0, 'The filter panel has no border.'); const divider = panel.querySelector('.border-b'); proof.assert(!divider || getComputedStyle(divider).borderBottomStyle === 'solid', 'A filter panel divider has no border.'); })()"
+      }
+    },
+    {
+      "id": "sort-panel-border",
+      "title": "The sort panel matches Obsidian's menus too",
+      "caption": "The sort panel gets the same border and spacing.",
+      "steps": [
+        {
+          "do": {
+            "click": ".modal button[title=\"Filter by type\"]"
+          },
+          "why": "close the type filter"
+        },
+        {
+          "do": {
+            "click": ".modal button[title^=\"Sort by\"]"
+          },
+          "why": "open the sort menu"
+        },
+        {
+          "do": {
+            "wait_for": ".modal div.absolute.top-full"
+          },
+          "why": "wait for the panel"
+        },
+        {
+          "do": {
+            "pause": 2
+          },
+          "why": "hold on the panel"
+        }
+      ],
+      "expect": {
+        "js": "(() => { const panel = document.querySelector('.modal div.absolute.top-full'); proof.assert(panel, 'The sort panel is not open.'); const style = getComputedStyle(panel); proof.assert(style.borderTopStyle === 'solid' && parseFloat(style.borderTopWidth) > 0, 'The sort panel has no border.'); })()"
+      }
+    }
+  ]
+}

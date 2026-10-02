@@ -1,0 +1,61 @@
+{
+  "node-search.open": {
+    "why": "open DG: Open Node Search",
+    "steps": [
+      {
+        "do": {
+          "command_palette": "DG: Open Node Search"
+        },
+        "why": "open node search the way a user would"
+      },
+      {
+        "do": {
+          "wait_for": ".bp3-dialog:visible"
+        },
+        "why": "wait for the search dialog"
+      }
+    ]
+  },
+  "node-search-menu.open": {
+    "why": "type the node search trigger (@ by default) into the first block of a page to open the node summoning menu",
+    "params": {
+      "page": {
+        "type": "string"
+      },
+      "query": {
+        "type": "string",
+        "default": ""
+      }
+    },
+    "steps": [
+      {
+        "use": "page.open",
+        "with": {
+          "title": "{{with.page}}"
+        }
+      },
+      {
+        "do": {
+          "click": ".roam-article .rm-block__input >> nth=0"
+        },
+        "why": "start editing the page's first block"
+      },
+      {
+        "do": {
+          "type": {
+            "into": "textarea.rm-block-input",
+            "text": "@{{with.query}}",
+            "delay_ms": 90
+          }
+        },
+        "why": "type the trigger and the search text"
+      },
+      {
+        "do": {
+          "wait_for": ".discourse-node-search-menu"
+        },
+        "why": "wait for the node summoning menu"
+      }
+    ]
+  }
+}

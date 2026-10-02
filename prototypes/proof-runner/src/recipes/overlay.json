@@ -1,0 +1,26 @@
+{
+  "overlay.context-on": {
+    "why": "turn the Discourse context overlay on, leaving it on when it already is",
+    "steps": [
+      { "do": { "js": "proof.toasts.clear()" }, "why": "clear old toasts so the next one is readable" },
+      { "do": { "command_palette": "DG: Toggle - Discourse context overlay" }, "why": "toggle the overlay the way a user would" },
+      {
+        "do": { "js": "proof.waitFor(() => /Discourse context overlay (enabled|disabled)/.test(proof.toastText()), { what: 'the overlay toggle toast' })" },
+        "why": "wait for the toggle to report its new state"
+      },
+      {
+        "do": {
+          "when": {
+            "js": "proof.toastText().includes('Discourse context overlay disabled')",
+            "do": [
+              { "js": "proof.toasts.clear()" },
+              { "command_palette": "DG: Toggle - Discourse context overlay" },
+              { "js": "proof.waitFor(() => proof.toastText().includes('Discourse context overlay enabled'), { what: 'the overlay to turn back on' })" }
+            ]
+          }
+        },
+        "why": "it was on and the toggle turned it off, so turn it on again"
+      }
+    ]
+  }
+}
