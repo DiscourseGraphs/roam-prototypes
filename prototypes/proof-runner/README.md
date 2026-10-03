@@ -32,6 +32,13 @@ browser console.
 If Discourse Graph is already running in the graph (installed from Roam Depot), the runner doesn't
 start a second copy and says so. Turn that copy off for the graph to test builds there.
 
+A kit that names a build runs only on that build, loaded for it. After navigating to a kit for a
+different PR, the panel offers **Reload with this build** and keeps Run off until you do.
+
+Releases are served with a one-day cache, and Roam loads a URL extension through the browser cache.
+After a new version is published, a hard reload (Ctrl+Shift+R) picks it up; `proofRunner.version`
+says which one is running.
+
 ## A kit page
 
 ```text
