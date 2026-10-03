@@ -65,8 +65,12 @@ so a typo can't leave a case without its check.
 - Before-load fixtures write graph-wide flags and node types, after you press Set up and load.
 - In-session fixtures create the pages a kit needs, and every finished run adds a line to the
   kit's `runs` list.
-- The CI build itself writes Discourse Graph's settings on load, as any install does. Builds talk to
-  the hosted Discourse Graph backend.
+- The CI build itself writes Discourse Graph's settings on load, as any install does.
+
+CI builds are compiled against the production database, and tests never run there. The runner
+refuses to start a CI build for a kit that needs a database, or that has or turns on sync or node
+sharing; those kits need a local build of the PR against a local Supabase. Kits that only exercise
+UI run on CI builds with sync and sharing off.
 
 Kit pages run their own js when you press Run, so keep kits in graphs shared with people you trust,
 as with `roam/js`.
