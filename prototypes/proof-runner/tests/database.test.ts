@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import type { Fixture } from "../src/core/kit";
 import { backendOf } from "../src/roam/build-loader";
-import { buildStatus, planBeforeLoad } from "../src/roam/runner";
+import { buildStatus, planBeforeLoad, wouldConnect } from "../src/roam/runner";
 
 // A CI build signs in to the hosted database itself; the kits' local
 // sign-in fixture is a stand-in for that on a local stack.
@@ -47,5 +47,25 @@ describe("a kit that needs the database", () => {
 
   it("doesn't hold up a kit that doesn't need it", () => {
     expect(buildStatus({ ...base, needsDatabase: false, database: null }).blocked).toBeNull();
+  });
+});
+
+describe("the production database", () => {
+  const sync: Fixture = {
+    id: "flag-sync",
+    why: "sync is on",
+    phase: "before-load",
+    apply: { js: "proof.flags.set('Suggestive mode overlay enabled', true)" },
+  };
+  const syncOff: Fixture = { ...sync, id: "no-sync", apply: { js: "proof.flags.set('Suggestive mode overlay enabled', false)" } };
+
+  it("is never connected to by a kit that needs a database or turns on sync or sharing", () => {
+    expect(wouldConnect({ needsDatabase: true, connectingFlagOn: false, apply: [] })).toBe(true);
+    expect(wouldConnect({ needsDatabase: false, connectingFlagOn: true, apply: [] })).toBe(true);
+    expect(wouldConnect({ needsDatabase: false, connectingFlagOn: false, apply: [sync] })).toBe(true);
+  });
+
+  it("can still load for a UI-only kit with sync and sharing off", () => {
+    expect(wouldConnect({ needsDatabase: false, connectingFlagOn: false, apply: [syncOff] })).toBe(false);
   });
 });

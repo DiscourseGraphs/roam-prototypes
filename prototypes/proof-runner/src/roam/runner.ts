@@ -253,6 +253,30 @@ export const buildStatus = ({
   return { wanted, mismatch, blocked: null };
 };
 
+// The flags that make DG connect to its database when it loads.
+const CONNECTING_FLAGS = /Suggestive mode overlay enabled|Enable node sharing/;
+
+// Whether loading this build would put the graph on the build's database:
+// the kit needs one, sync or node sharing is on, or setup would turn one on.
+export const wouldConnect = ({
+  needsDatabase,
+  connectingFlagOn,
+  apply,
+}: {
+  needsDatabase: boolean;
+  connectingFlagOn: boolean;
+  apply: Fixture[];
+}): boolean =>
+  needsDatabase ||
+  connectingFlagOn ||
+  apply.some((fixture) => "js" in fixture.apply && CONNECTING_FLAGS.test(fixture.apply.js) && /\btrue\b/.test(fixture.apply.js));
+
+// CI compiles PR builds against the production database. Tests never run
+// there: a build that isn't on a local database (127) doesn't start for a
+// kit that would connect.
+export const PRODUCTION_REFUSAL =
+  "This build talks to the production database, and this kit would connect to it (it needs a database, or turns on sync or node sharing). Kits like this run only on a local build of the PR against a local Supabase.";
+
 // A saved partial run only resumes on the kit and the commit it started on;
 // verdicts from another commit can't stand for this one.
 export const recordFits = (

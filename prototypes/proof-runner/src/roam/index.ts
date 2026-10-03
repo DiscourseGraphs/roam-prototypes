@@ -24,8 +24,10 @@ import {
   applyBeforeLoad,
   contextFor,
   fixturesFor,
+  PRODUCTION_REFUSAL,
   planBeforeLoad,
   retryPlan,
+  wouldConnect,
   type RunnerEnv,
   type SetupPlan,
 } from "./runner";
@@ -262,6 +264,14 @@ class ProofRunner {
       needsDatabase,
       fetched,
     };
+    const flags = win.proof as unknown as { flags: { get(name: string): boolean } };
+    const connectingFlagOn =
+      flags.flags.get("Suggestive mode overlay enabled") || flags.flags.get("Enable node sharing");
+    if (fetched.backend !== "127" && wouldConnect({ needsDatabase, connectingFlagOn, apply: plan.apply })) {
+      this.env.buildError = PRODUCTION_REFUSAL;
+      this.trace(`refused: ${fetched.backend ?? "unknown"} is not a local database`);
+      return;
+    }
     if (plan.apply.length) {
       this.env.setup = plan;
       this.trace(`waiting for Set up and load: ${plan.apply.map((fixture) => fixture.id).join(", ")}`);
