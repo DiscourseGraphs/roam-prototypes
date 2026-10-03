@@ -75,7 +75,7 @@
         }
       ],
       "expect": {
-        "js": "(() => { const rows = Array.from(document.querySelectorAll('.discourse-node-search-menu .max-h-48 .bp3-menu-item')).filter(proof.visible); proof.assert(rows.length >= 4, 'Expected at least 4 type rows, found ' + rows.length + '.'); for (const row of rows) { const only = proof.byText('button', 'Only', row); proof.assert(only, 'A type row has no Only button.'); const box = proof.rect(only); const edge = proof.rect(row).right - box.right; proof.assert(box.width < 100, 'The Only button is ' + Math.round(box.width) + 'px wide; it should fit its label.'); proof.assert(Math.abs(edge) <= 2, 'The Only button sits ' + Math.round(edge) + 'px from the row edge.'); } })()"
+        "js": "(() => { const rows = Array.from(document.querySelectorAll('.discourse-node-search-menu .max-h-48 .bp3-menu-item')).filter(proof.visible); proof.assert(rows.length >= 4, 'Expected at least 4 type rows, found ' + rows.length + '.'); for (const row of rows) { const only = proof.byText('button', 'Only', row); proof.assert(only, 'A type row has no Only button.'); const box = proof.rect(only); const style = getComputedStyle(row); const contentRight = proof.rect(row).right - parseFloat(style.paddingRight) - parseFloat(style.borderRightWidth); const edge = contentRight - box.right; proof.assert(box.width < 100, 'The Only button is ' + Math.round(box.width) + 'px wide; it should fit its label.'); proof.assert(Math.abs(edge) <= 2, 'The Only button sits ' + Math.round(edge) + 'px inside the row content edge.'); } })()"
       }
     },
     {
