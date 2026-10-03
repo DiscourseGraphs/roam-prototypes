@@ -1,0 +1,104 @@
+{
+  "name": "eng-2194",
+  "title": "Node summoning menu \"Only\" button stretches across filter row",
+  "baseline": "dg-baseline@1",
+  "target": {
+    "slot": "3",
+    "pr": 1485,
+    "viewport": {
+      "width": 1280,
+      "height": 720
+    }
+  },
+  "needs": [
+    "supabase",
+    "embed-stub"
+  ],
+  "prepare": [
+    {
+      "id": "database-session",
+      "why": "the extension has a local database session for this graph, since the local create-space edge function is down",
+      "phase": "before-load",
+      "check": {
+        "js": "proof.supabase.signedIn()"
+      },
+      "apply": {
+        "js": "proof.supabase.signIn({ serviceKey: '{{env.SUPABASE_SERVICE_ROLE_KEY}}', publishableKey: '{{env.SUPABASE_PUBLISHABLE_KEY}}' })"
+      },
+      "settleMs": 1000
+    },
+    {
+      "id": "scratch-page",
+      "why": "an empty page to type the node search trigger on",
+      "phase": "in-session",
+      "apply": {
+        "js": "proof.page.recreate('PK node search scratch', [''])"
+      }
+    }
+  ],
+  "cases": [
+    {
+      "id": "only-sizes-to-label",
+      "title": "Each Only button sizes to its label at the right edge of its row",
+      "caption": "In the node summoning menu's type filter, the Only button now fits its label and sits at the right edge of each row, instead of taking half the row.",
+      "steps": [
+        {
+          "use": "node-search-menu.open",
+          "with": {
+            "page": "PK node search scratch"
+          },
+          "why": "open the node summoning menu"
+        },
+        {
+          "do": {
+            "click": ".discourse-node-search-menu button[title=\"Filter by type\"]"
+          },
+          "why": "open the type filter"
+        },
+        {
+          "do": {
+            "wait_for": ".discourse-node-search-menu .max-h-48 .bp3-menu-item"
+          },
+          "why": "wait for the type rows"
+        },
+        {
+          "do": {
+            "hover": ".discourse-node-search-menu .max-h-48 .bp3-menu-item:has-text(\"Claim\")"
+          },
+          "why": "hover Claim so its Only button shows"
+        },
+        {
+          "do": {
+            "pause": 1.5
+          },
+          "why": "hold on the row"
+        }
+      ],
+      "expect": {
+        "js": "(() => { const rows = Array.from(document.querySelectorAll('.discourse-node-search-menu .max-h-48 .bp3-menu-item')).filter(proof.visible); proof.assert(rows.length >= 4, 'Expected at least 4 type rows, found ' + rows.length + '.'); for (const row of rows) { const only = proof.byText('button', 'Only', row); proof.assert(only, 'A type row has no Only button.'); const box = proof.rect(only); const style = getComputedStyle(row); const contentRight = proof.rect(row).right - parseFloat(style.paddingRight) - parseFloat(style.borderRightWidth); const edge = contentRight - box.right; proof.assert(box.width < 100, 'The Only button is ' + Math.round(box.width) + 'px wide; it should fit its label.'); proof.assert(Math.abs(edge) <= 2, 'The Only button sits ' + Math.round(edge) + 'px inside the row content edge.'); } })()"
+      }
+    },
+    {
+      "id": "only-filters",
+      "title": "Only on Claim leaves just the Claim results",
+      "caption": "Clicking Only still does its job: the filter closes and only the Claim results are left.",
+      "steps": [
+        {
+          "do": {
+            "click": ".discourse-node-search-menu .max-h-48 .bp3-menu-item:has-text(\"Claim\") button:has-text(\"Only\")"
+          },
+          "why": "keep only Claim"
+        },
+        {
+          "do": {
+            "pause": 1.5
+          },
+          "why": "hold on the filtered results"
+        }
+      ],
+      "expect": {
+        "js": "proof.waitFor(() => { const headers = Array.from(document.querySelectorAll('.discourse-node-search-menu .h-64 > div > .border-b')).filter(proof.visible).map((el) => el.innerText.trim()); return headers.length === 1 && headers[0] === 'Claim' && !document.querySelector('.discourse-node-search-menu .max-h-48'); }, { what: 'only the Claim results, with the filter closed' })"
+      }
+    }
+  ]
+}

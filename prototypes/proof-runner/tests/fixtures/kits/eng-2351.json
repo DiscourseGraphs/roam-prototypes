@@ -1,0 +1,149 @@
+{
+  "name": "eng-2351",
+  "title": "Import Roam templates without a title into Obsidian",
+  "target": {
+    "app": "obsidian",
+    "cdp": "http://127.0.0.1:9223",
+    "vault": "/path/to/vault",
+    "pr": 1510,
+    "viewport": {
+      "width": 1280,
+      "height": 720
+    }
+  },
+  "needs": [
+    "supabase",
+    "embed-stub"
+  ],
+  "prepare": [
+    {
+      "id": "roam-untitled-template",
+      "why": "the dev graph published a PK Plan node type whose template has a body but no title, as Roam always does, and one node",
+      "phase": "outside",
+      "apply": {
+        "publish": {
+          "space": 66566,
+          "author": 3,
+          "group": "eng-2329-demo",
+          "types": [
+            {
+              "id": "pk-2351-plan",
+              "label": "PK Plan",
+              "format": "[[PLN]] - {content}",
+              "template": "- Goal\n- Steps\n- Done when"
+            }
+          ],
+          "nodes": [
+            {
+              "id": "pk-2351-roam-plan",
+              "type": "pk-2351-plan",
+              "title": "Ship the import fix",
+              "body": "- Shared from Roam."
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "templates-on",
+      "why": "the Templates core plugin is on with a Templates folder",
+      "phase": "in-session",
+      "check": {
+        "js": "(() => { const templates = proof.obsidian.templates(); return templates.enabled && templates.folder === 'Templates' && Boolean(proof.obsidian.file('Templates')); })()"
+      },
+      "apply": {
+        "js": "proof.obsidian.setTemplates({ on: true, folder: 'Templates' })"
+      }
+    },
+    {
+      "id": "no-earlier-import",
+      "why": "the vault has no PK Plan type, note or template file from an earlier import",
+      "phase": "in-session",
+      "apply": {
+        "js": "(async () => { await proof.obsidian.closeModals(); await proof.obsidian.removeFiles([...proof.obsidian.importedFiles(['pk-2351-roam-plan']), proof.obsidian.file('Templates/PK Plan (from discourse-dev-graph).md')]); await proof.obsidian.removeNodeTypes(['PK Plan']); proof.obsidian.clearNotices(); })()"
+      }
+    }
+  ],
+  "cases": [
+    {
+      "id": "untitled-template-gets-a-file",
+      "title": "A template without a title gets a file named after its type and space",
+      "caption": "Roam publishes a template's body but never a title, so imports used to skip it. Now Obsidian creates the template as PK Plan, from discourse dev graph, and assigns it to the new node type.",
+      "steps": [
+        {
+          "do": {
+            "command_palette": "Import nodes from another space"
+          },
+          "why": "open import the way a user would"
+        },
+        {
+          "do": {
+            "wait_for": ".modal h3:has-text(\"Select nodes to import\")"
+          },
+          "why": "wait for the shared nodes to load"
+        },
+        {
+          "do": {
+            "click": ".modal div.items-start:has-text(\"Ship the import fix\") input[type=\"checkbox\"]"
+          },
+          "why": "select the shared node"
+        },
+        {
+          "do": {
+            "click": ".modal button:has-text(\"Next (1)\")"
+          },
+          "why": "go to the preview"
+        },
+        {
+          "do": {
+            "wait_for": ".modal button:has-text(\"Confirm Import\")"
+          },
+          "why": "wait for the preview"
+        },
+        {
+          "do": {
+            "click": ".modal button:has-text(\"Confirm Import\")"
+          },
+          "why": "import it"
+        },
+        {
+          "do": {
+            "js": "proof.waitFor(() => /Successfully imported|Import completed/.test(proof.obsidian.notices()), { what: 'the import to finish', timeout: 30000 })"
+          },
+          "why": "wait for the import notice"
+        },
+        {
+          "do": {
+            "pause": 1.5
+          },
+          "why": "hold on the result"
+        }
+      ],
+      "expect": {
+        "js": "(async () => { await proof.waitFor(() => { const type = proof.obsidian.nodeType('PK Plan'); return type && type.template === 'PK Plan (from discourse-dev-graph)'; }, { what: 'PK Plan with its template assigned', timeout: 20000 }); const file = proof.obsidian.file('Templates/PK Plan (from discourse-dev-graph).md'); proof.assert(file, 'No template file at Templates/PK Plan (from discourse-dev-graph).md.'); const text = await window.app.vault.read(file); proof.assert(text.includes('Done when'), 'The template file is missing the template body.'); })()"
+      }
+    },
+    {
+      "id": "template-file-opens",
+      "title": "The template file holds the template from Roam",
+      "caption": "The template file holds the body from Roam, ready for new plans.",
+      "steps": [
+        {
+          "do": {
+            "js": "proof.obsidian.open('Templates/PK Plan (from discourse-dev-graph).md')"
+          },
+          "why": "open the template file"
+        },
+        {
+          "do": {
+            "pause": 2
+          },
+          "why": "hold on the template"
+        }
+      ],
+      "expect": {
+        "js": "proof.assert(window.app.workspace.getActiveFile().basename === 'PK Plan (from discourse-dev-graph)', 'The template file is not open.')"
+      }
+    }
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "page.open": {
+    "why": "open a page by its title",
+    "params": { "title": { "type": "string" } },
+    "steps": [
+      {
+        "do": { "js": "window.roamAlphaAPI.ui.mainWindow.openPage({ page: { title: {{json with.title}} } })" },
+        "why": "open the page"
+      },
+      {
+        "do": { "js": "proof.waitFor(() => Array.from(document.querySelectorAll('.rm-title-display')).find((title) => proof.visible(title) && title.innerText.trim() === {{json with.title}}), { what: 'the page ' + {{json with.title}} })" },
+        "why": "wait for the page title"
+      }
+    ]
+  }
+}

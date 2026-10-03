@@ -1,0 +1,35 @@
+{
+  "name": "smoke",
+  "title": "Rehearsal smoke test",
+  "target": {
+    "slot": "3",
+    "viewport": { "width": 1280, "height": 720 }
+  },
+  "cases": [
+    {
+      "id": "settings-open",
+      "title": "Discourse settings open from the command palette",
+      "steps": [
+        {
+          "do": { "command_palette": "DG: Open - Discourse settings" },
+          "why": "open the settings the way a user would"
+        },
+        {
+          "do": { "wait_for": ".bp3-dialog:visible" },
+          "why": "wait for the dialog to finish opening"
+        }
+      ],
+      "expect": {
+        "js": "if (!document.querySelector('.bp3-dialog')) throw new Error('The settings dialog did not open.')"
+      }
+    },
+    {
+      "id": "daily-note",
+      "title": "Today's daily note opens after closing settings",
+      "intent": "Close the settings dialog, then open today's daily note from the left sidebar.",
+      "expect": {
+        "text": "Today's daily note is open and no error toast is showing."
+      }
+    }
+  ]
+}

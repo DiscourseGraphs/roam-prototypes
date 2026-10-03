@@ -1,0 +1,128 @@
+{
+  "name": "eng-2176",
+  "title": "Escape regex metacharacters in discourse node format expressions",
+  "baseline": "dg-baseline@1",
+  "target": {
+    "slot": "3",
+    "pr": 1508,
+    "viewport": {
+      "width": 1280,
+      "height": 720
+    }
+  },
+  "needs": [
+    "supabase",
+    "embed-stub"
+  ],
+  "prepare": [
+    {
+      "id": "database-session",
+      "why": "the extension has a local database session for this graph, since the local create-space edge function is down",
+      "phase": "before-load",
+      "check": {
+        "js": "proof.supabase.signedIn()"
+      },
+      "apply": {
+        "js": "proof.supabase.signIn({ serviceKey: '{{env.SUPABASE_SERVICE_ROLE_KEY}}', publishableKey: '{{env.SUPABASE_PUBLISHABLE_KEY}}' })"
+      },
+      "settleMs": 1000
+    },
+    {
+      "id": "draft-claim-type",
+      "why": "a Draft Claim node type whose format has parentheses, which are regex metacharacters",
+      "phase": "before-load",
+      "check": {
+        "js": "proof.nodeType.format('Draft Claim') === 'Claim (draft) - {content}'"
+      },
+      "apply": {
+        "js": "proof.nodeType.ensure({ label: 'Draft Claim', format: 'Claim (draft) - {content}', shortcut: 'D' })"
+      }
+    },
+    {
+      "id": "draft-claim-pages",
+      "why": "a page in the Draft Claim format, a look-alike title without the parentheses, and a scratch page",
+      "phase": "in-session",
+      "apply": {
+        "js": "(async () => { await proof.page.ensure('Claim (draft) - Sleep improves memory consolidation', ['A Draft Claim page.']); await proof.page.ensure('Claim draft - Naps replace a night of sleep', ['Not a Draft Claim: no parentheses.']); await proof.page.recreate('PK format search scratch', ['']); })()"
+      }
+    }
+  ],
+  "cases": [
+    {
+      "id": "format-matches-its-title",
+      "title": "A format with parentheses matches its own titles",
+      "caption": "The Draft Claim format is Claim, then draft in parentheses, then the content. A page in that format is now recognized as a Draft Claim, so it gets its discourse context.",
+      "steps": [
+        {
+          "use": "page.open",
+          "with": {
+            "title": "Claim (draft) - Sleep improves memory consolidation"
+          },
+          "why": "open the Draft Claim page"
+        },
+        {
+          "do": {
+            "wait_for": ".discourse-graph-title-additions"
+          },
+          "why": "wait for the discourse context under the title"
+        },
+        {
+          "do": {
+            "pause": 2
+          },
+          "why": "hold on the page"
+        }
+      ],
+      "expect": {
+        "js": "(() => { const uid = proof.uid('Claim (draft) - Sleep improves memory consolidation'); proof.assert(window.roamjs.extension.queryBuilder.isDiscourseNode(uid), 'The page is not recognized as a discourse node.'); })()"
+      }
+    },
+    {
+      "id": "look-alike-does-not-match",
+      "title": "A title without the parentheses is not a Draft Claim",
+      "caption": "The parentheses are literal text now. A look-alike title without them is a plain page, where the old pattern treated them as a group and matched it.",
+      "steps": [
+        {
+          "use": "page.open",
+          "with": {
+            "title": "Claim draft - Naps replace a night of sleep"
+          },
+          "why": "open the look-alike page"
+        },
+        {
+          "do": {
+            "pause": 2
+          },
+          "why": "hold on the plain page"
+        }
+      ],
+      "expect": {
+        "js": "(async () => { await proof.sleep(800); const uid = proof.uid('Claim draft - Naps replace a night of sleep'); proof.assert(!window.roamjs.extension.queryBuilder.isDiscourseNode(uid), 'The look-alike title matched the Draft Claim format.'); proof.assert(!document.querySelector('.discourse-graph-title-additions'), 'The look-alike page shows a discourse context.'); })()"
+      }
+    },
+    {
+      "id": "node-search-finds-it",
+      "title": "Node search lists the page under Draft Claim",
+      "caption": "Search finds it too: the node summoning menu lists the page under Draft Claim.",
+      "steps": [
+        {
+          "use": "node-search-menu.open",
+          "with": {
+            "page": "PK format search scratch",
+            "query": "Sleep improves"
+          },
+          "why": "search for the Draft Claim page"
+        },
+        {
+          "do": {
+            "pause": 2
+          },
+          "why": "hold on the results"
+        }
+      ],
+      "expect": {
+        "js": "proof.waitFor(() => Array.from(document.querySelectorAll('.discourse-node-search-menu .h-64 > div')).some((section) => { const header = section.querySelector('.border-b'); return header && header.innerText.trim() === 'Draft Claim' && section.innerText.includes('Sleep improves memory consolidation'); }), { what: 'the page listed under Draft Claim' })"
+      }
+    }
+  ]
+}

@@ -1,0 +1,54 @@
+{
+  "name": "talk-eng-2348",
+  "title": "Warn when Roam sharing or importing is used with Stored Relations disabled (talked through)",
+  "baseline": "dg-baseline@1",
+  "target": {
+    "slot": "3",
+    "pr": 1506,
+    "viewport": {
+      "width": 1280,
+      "height": 720
+    }
+  },
+  "needs": [
+    "supabase",
+    "embed-stub"
+  ],
+  "prepare": [
+    {
+      "id": "database-session",
+      "why": "the extension has a local database session for this graph, since the local create-space edge function is down",
+      "phase": "before-load",
+      "check": {
+        "js": "proof.supabase.signedIn()"
+      },
+      "apply": {
+        "js": "proof.supabase.signIn({ serviceKey: '{{env.SUPABASE_SERVICE_ROLE_KEY}}', publishableKey: '{{env.SUPABASE_PUBLISHABLE_KEY}}' })"
+      },
+      "settleMs": 1000
+    },
+    {
+      "id": "stored-relations-off",
+      "why": "Stored Relations is off, the state the warning is for",
+      "phase": "in-session",
+      "apply": {
+        "steps": [
+          {
+            "use": "settings.stored-relations",
+            "with": {
+              "on": false
+            },
+            "why": "turn Stored Relations off"
+          }
+        ]
+      }
+    }
+  ],
+  "cases": [
+    {
+      "id": "start",
+      "title": "Discover shared nodes warns while Stored Relations is off",
+      "intent": "Open DG: Discover shared nodes and check that the 'Stored relations are disabled' warning shows in the dialog."
+    }
+  ]
+}
