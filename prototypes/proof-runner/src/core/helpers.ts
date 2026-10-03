@@ -513,8 +513,16 @@ export const HELPERS_INIT_SCRIPT = String.raw`(() => {
     return spaces[0].id;
   };
 
+  // The database the loaded build talks to, by the first part of its
+  // Supabase host, the way DG names its session key: "127" for a local dist,
+  // the hosted project for a CI build (the in-Roam runner sets
+  // window.__proofBackend from the build it loaded).
+  const backendRef = () => (window.__proofBackend && window.__proofBackend.ref) || "127";
+
   const supabase = {
-    storageKey: () => "sb-127:" + api().graph.name.replace(/\W/g, "") + "-auth-token",
+    backend: backendRef,
+    hosted: () => backendRef() !== "127",
+    storageKey: () => "sb-" + backendRef() + ":" + api().graph.name.replace(/\W/g, "") + "-auth-token",
     spaceUrl: () => "https://roamresearch.com/#/app/" + api().graph.name,
     session: () => storedSession(supabase.storageKey()),
     signedIn: () => sessionValid(supabase.storageKey(), "roam"),
@@ -530,15 +538,19 @@ export const HELPERS_INIT_SCRIPT = String.raw`(() => {
       });
       return password;
     },
-    signIn: async ({ serviceKey, publishableKey }) =>
-      signInAnon({
+    signIn: async ({ serviceKey, publishableKey }) => {
+      if (supabase.hosted()) {
+        throw new Error("This build uses the hosted database; DG signs in to it by itself when it loads with sync or node sharing on.");
+      }
+      return signInAnon({
         storageKey: supabase.storageKey(),
         spaceUrl: supabase.spaceUrl(),
         platform: "roam",
         password: await supabase.password(),
         serviceKey,
         publishableKey,
-      }),
+      });
+    },
   };
 
   // Obsidian: the same helpers work in its window (it has no roamAlphaAPI),

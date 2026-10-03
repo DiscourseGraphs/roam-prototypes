@@ -2,7 +2,7 @@ import { HELPERS_INIT_SCRIPT } from "../core/helpers";
 import { validateBaseline, validateKit, type Baseline, type Kit } from "../core/kit";
 import { parseRecipes, type RecipeBook } from "../core/recipes";
 import type { TemplateContext } from "../core/template";
-import { PaletteRegistry, dgRunning, loadBuild, prHead, type ExtensionAPI } from "./build-loader";
+import { PaletteRegistry, dgRunning, fetchBuild, loadBuild, prHead, type ExtensionAPI, type FetchedBuild } from "./build-loader";
 import { baselineFiles, recipeFiles } from "./data";
 import { evaluate } from "./executor";
 import { isProofRoot, kitBlocks, pageKit, rootConfig } from "./page-kit";
@@ -39,6 +39,8 @@ import {
 
 type ProofWindow = Window & {
   proof?: Record<string, unknown> & { sidebar?: Record<string, unknown> };
+  // Which database the loaded build talks to, for proof.supabase.
+  __proofBackend?: { ref: string };
   proofRunner?: unknown;
   roamAlphaAPI?: unknown;
 };
@@ -145,6 +147,7 @@ class ProofRunner {
       secrets: readSecrets,
       loadTrace: [],
       loading: false,
+      database: null,
     };
   }
 
@@ -233,9 +236,32 @@ class ProofRunner {
     } catch (error) {
       this.trace(`the kit didn't parse, so no fixtures run: ${describe(error)}`);
     }
+    // Download the build first: its commit and its database decide the plan.
+    let fetched: FetchedBuild;
+    try {
+      this.trace(`fetching ${branch}`);
+      fetched = await fetchBuild(branch as string);
+    } catch (error) {
+      this.env.buildError = describe(error);
+      return;
+    }
+    win.__proofBackend = { ref: fetched.backend ?? "127" };
+    this.trace(`build ${fetched.commit?.slice(0, 7) ?? "?"} talks to database ${fetched.backend ?? "unknown"}`);
     const context = contextFor(kit?.name ?? "kit", this.env, "load");
-    const found = kit ? await planBeforeLoad(fixturesFor(kit, this.env), context) : { apply: [], skip: [], kept: [] };
-    const plan: SetupPlan = { rootUid: root.uid, kit: kit?.name ?? "kit", branch: branch as string, pr: config.pr, head, ...found };
+    const found = kit
+      ? await planBeforeLoad(fixturesFor(kit, this.env), context, fetched.backend)
+      : { apply: [], skip: [], kept: [], byBuild: [] };
+    const needsDatabase = Boolean(kit?.needs?.includes("supabase")) || found.byBuild.length > 0;
+    const plan: SetupPlan = {
+      rootUid: root.uid,
+      kit: kit?.name ?? "kit",
+      branch: branch as string,
+      pr: config.pr,
+      head,
+      ...found,
+      needsDatabase,
+      fetched,
+    };
     if (plan.apply.length) {
       this.env.setup = plan;
       this.trace(`waiting for Set up and load: ${plan.apply.map((fixture) => fixture.id).join(", ")}`);
@@ -259,7 +285,7 @@ class ProofRunner {
     try {
       this.trace(`loading ${branch}`);
       this.env.build = await loadBuild({
-        branch,
+        fetched: plan.fetched ?? (await fetchBuild(branch)),
         pr: plan.pr,
         graph: this.env.graph,
         palette: this.env.palette,
@@ -269,7 +295,53 @@ class ProofRunner {
       this.trace(`loaded ${branch} @ ${this.env.build.commit?.slice(0, 7) ?? "?"} with ${this.extensionAPI ? "the runner's extensionAPI" : "a stand-in extensionAPI"}`);
     } catch (error) {
       this.env.buildError = describe(error);
+      return;
     }
+    if (plan.needsDatabase) await this.checkDatabase();
+  }
+
+  // Waits for DG's session on the build's database. DG signs itself in
+  // shortly after loading when sync or node sharing is on (creating the
+  // graph's space the first time); kits that need the database stay
+  // un-runnable until it has.
+  async checkDatabase(timeoutMs = 45_000): Promise<void> {
+    const proof = win.proof as unknown as {
+      supabase: { signedIn(): boolean; session(): { user?: { email?: string } } | null; backend(): string };
+      flags: { get(name: string): boolean };
+    };
+    const ref = proof.supabase.backend();
+    this.env.database = { state: "checking", detail: `${ref} for ${this.env.graph}` };
+    this.refreshAll();
+    // DG reports a failed sign-in on the console; keep what it says.
+    const heard: string[] = [];
+    const original = console.error;
+    console.error = (...args: unknown[]) => {
+      const text = args.map((arg) => (arg instanceof Error ? arg.message : String(arg))).join(" ");
+      if (/space|auth|database|supabase/i.test(text)) heard.push(text.slice(0, 300));
+      original.apply(console, args);
+    };
+    try {
+      const deadline = Date.now() + timeoutMs;
+      while (!proof.supabase.signedIn() && Date.now() < deadline) await sleep(500);
+    } finally {
+      console.error = original;
+    }
+    if (proof.supabase.signedIn()) {
+      const email = proof.supabase.session()?.user?.email ?? "the space account";
+      this.env.database = { state: "ok", detail: `signed in to ${ref} as ${email}` };
+    } else {
+      const syncing = proof.flags.get("Suggestive mode overlay enabled") || proof.flags.get("Enable node sharing");
+      this.env.database = {
+        state: "missing",
+        detail: !syncing
+          ? "DG only signs in to its database when sync or node sharing is on, and both are off in this graph."
+          : heard.length
+            ? `DG tried and failed: ${heard[0]}`
+            : `DG didn't sign in to ${ref} within ${timeoutMs / 1000}s. Reload to try again.`,
+      };
+    }
+    this.trace(`database: ${this.env.database.state} (${this.env.database.detail})`);
+    this.refreshAll();
   }
 
   // The panel's Set up and load: apply the fixtures it listed, then load.
@@ -456,9 +528,11 @@ class ProofRunner {
         error: this.env.buildError,
         beforeLoad: this.env.beforeLoad,
         setup: this.env.setup ? { apply: this.env.setup.apply.map((fixture) => fixture.id), skip: this.env.setup.skip.map(({ fixture }) => fixture.id) } : null,
+        database: this.env.database,
         trace: this.env.loadTrace,
       }),
       setUpAndLoad: () => this.confirmSetup(),
+      checkDatabase: () => this.checkDatabase(),
       palette: () => this.env.palette.labels(),
       status: async (uid?: string) => this.runFor(await this.rootFor(uid)).status(),
       run: async (uid?: string, from = 0) => this.runFor(await this.rootFor(uid)).start(from),

@@ -11,6 +11,8 @@ export const DG_REPO = "DiscourseGraphs/discourse-graph";
 
 export type LoadedBuild = {
   branch: string;
+  // The database it talks to (see backendOf).
+  backend: string | null;
   // The PR the page named, when it named one.
   pr: number | null;
   commit: string | null;
@@ -219,23 +221,25 @@ const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout
 
 const CSS_ID = "proof-dg-build-css";
 
-export const loadBuild = async ({
-  branch,
-  pr = null,
-  graph,
-  palette,
-  head,
-  extensionAPI,
-  timeout = 60_000,
-}: {
+// The first part of the Supabase host a build talks to, as DG keys its
+// session: the hosted project for CI builds, "127" for a local dist.
+export const backendOf = (source: string): string | null => {
+  if (/127\.0\.0\.1:54321/.test(source)) return "127";
+  return /https:\/\/([a-z0-9]+)\.supabase\.co/.exec(source)?.[1] ?? null;
+};
+
+export type FetchedBuild = {
   branch: string;
-  pr?: number | null;
-  graph: string;
-  palette: PaletteRegistry;
-  head: string | null;
-  extensionAPI?: ExtensionAPI;
-  timeout?: number;
-}): Promise<LoadedBuild> => {
+  url: string;
+  source: string;
+  css: string;
+  commit: string | null;
+  backend: string | null;
+};
+
+// Downloads a build without running it, so the runner knows its commit and
+// database before deciding on setup.
+export const fetchBuild = async (branch: string): Promise<FetchedBuild> => {
   const url = buildUrl(branch);
   // no-store skips the browser's day-long copy; the CDN serves its latest.
   const response = await fetch(`${url}extension.js?proof=${Date.now()}`, { cache: "no-store" });
@@ -245,7 +249,6 @@ export const loadBuild = async ({
     );
   }
   const source = await response.text();
-  const commit = commitOf(source);
   const builtFrom = branchOf(source);
   if (builtFrom && builtFrom !== branch && !(branch === "main" && builtFrom === "main")) {
     throw new Error(`The file at ${url} says it was built from ${builtFrom}, not ${branch}.`);
@@ -253,6 +256,27 @@ export const loadBuild = async ({
   const css = await fetch(`${url}extension.css?proof=${Date.now()}`, { cache: "no-store" })
     .then((reply) => (reply.ok ? reply.text() : ""))
     .catch(() => "");
+  return { branch, url, source, css, commit: commitOf(source), backend: backendOf(source) };
+};
+
+export const loadBuild = async ({
+  fetched,
+  pr = null,
+  graph,
+  palette,
+  head,
+  extensionAPI,
+  timeout = 60_000,
+}: {
+  fetched: FetchedBuild;
+  pr?: number | null;
+  graph: string;
+  palette: PaletteRegistry;
+  head: string | null;
+  extensionAPI?: ExtensionAPI;
+  timeout?: number;
+}): Promise<LoadedBuild> => {
+  const { branch, url, source, css, commit } = fetched;
   // Importing the text that was checked, through a blob: URL, so the code
   // that runs is the commit the panel names.
   const moduleUrl = URL.createObjectURL(new Blob([source], { type: "text/javascript" }));
@@ -298,5 +322,5 @@ export const loadBuild = async ({
     await cleanUp().catch(() => undefined);
     throw error;
   }
-  return { branch, pr, commit, prHead: head, url, loadedAt: Date.now(), unload: cleanUp };
+  return { branch, backend: fetched.backend, pr, commit, prHead: head, url, loadedAt: Date.now(), unload: cleanUp };
 };

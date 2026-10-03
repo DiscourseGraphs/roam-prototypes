@@ -4,7 +4,7 @@ import type { Baseline, Fixture, Kit, Verdict } from "../core/kit";
 import { Machine, type MachineState } from "../core/machine";
 import { makeExpander, type RecipeBook } from "../core/recipes";
 import { fill, fillDeep, type TemplateContext } from "../core/template";
-import type { ExtensionAPI, LoadedBuild, PaletteRegistry } from "./build-loader";
+import type { ExtensionAPI, FetchedBuild, LoadedBuild, PaletteRegistry } from "./build-loader";
 import { evaluate, makePageExecutor } from "./executor";
 import { pageKit, rootConfig, type BlockNode, type PageKit } from "./page-kit";
 import { ProofPanel, type PanelAction, type PanelView } from "./panel";
@@ -18,7 +18,8 @@ import { createTree, readTree, roam, userName } from "./roam";
 export type FixtureOutcome = {
   id: string;
   why: string;
-  outcome: "ok" | "kept" | "skipped" | "failed";
+  // build: the build does it itself (a CI build signs in to its own database).
+  outcome: "ok" | "kept" | "skipped" | "failed" | "build";
   detail?: string;
 };
 
@@ -34,7 +35,16 @@ export type SetupPlan = {
   // Fixtures that need a key this browser doesn't have; they're skipped.
   skip: Array<{ fixture: Fixture; reason: string }>;
   kept: Fixture[];
+  // Local-database sign-ins a hosted build does for itself at load; the
+  // runner checks the session after load instead.
+  byBuild: Fixture[];
+  // The kit needs a database session (needs: supabase, or a sign-in above).
+  needsDatabase: boolean;
+  fetched?: FetchedBuild;
 };
+
+// Whether DG has a session on the build's database, checked after load.
+export type DatabaseState = { state: "checking" | "ok" | "missing"; detail: string };
 
 export type RunnerEnv = {
   graph: string;
@@ -54,6 +64,7 @@ export type RunnerEnv = {
   // What the loader decided, for "why didn't my build load?".
   loadTrace: string[];
   loading: boolean;
+  database: DatabaseState | null;
 };
 
 type RunRecord = {
@@ -108,11 +119,20 @@ export const contextFor = (kit: string, env: RunnerEnv, run: string): TemplateCo
 // starts) into kept (their check holds), to apply, and skipped (they need a
 // key this browser doesn't have: a CI build talks to the hosted backend, so
 // a local-database sign-in doesn't apply to it).
+type Plan = Pick<SetupPlan, "apply" | "skip" | "kept" | "byBuild">;
+
+// proof.supabase.signIn signs in to a local database with its service key,
+// a stand-in for the create-space call a local stack lacked. A hosted build
+// makes that call itself, so for one the fixture is the build's to do.
+const LOCAL_SIGN_IN = /proof\.supabase\.signIn\b/;
+
 export const planBeforeLoad = async (
   fixtures: Fixture[],
   context: TemplateContext,
-): Promise<Pick<SetupPlan, "apply" | "skip" | "kept">> => {
-  const plan: Pick<SetupPlan, "apply" | "skip" | "kept"> = { apply: [], skip: [], kept: [] };
+  backend: string | null = null,
+): Promise<Plan> => {
+  const plan: Plan = { apply: [], skip: [], kept: [], byBuild: [] };
+  const hosted = Boolean(backend && backend !== "127");
   for (const fixture of fixtures.filter((item) => item.phase === "before-load")) {
     try {
       if (fixture.check && "js" in fixture.check && (await evaluate(fill(fixture.check.js, context)))) {
@@ -121,6 +141,10 @@ export const planBeforeLoad = async (
       }
     } catch {
       // A check that throws counts as not holding; the apply decides.
+    }
+    if (hosted && "js" in fixture.apply && LOCAL_SIGN_IN.test(fixture.apply.js)) {
+      plan.byBuild.push(fixture);
+      continue;
     }
     if (!("js" in fixture.apply)) {
       plan.skip.push({ fixture, reason: "a before-load fixture applies js" });
@@ -137,12 +161,12 @@ export const planBeforeLoad = async (
   return plan;
 };
 
-export const applyBeforeLoad = async (
-  plan: Pick<SetupPlan, "apply" | "skip" | "kept">,
-  context: TemplateContext,
-): Promise<FixtureOutcome[]> => {
+export const applyBeforeLoad = async (plan: Plan, context: TemplateContext): Promise<FixtureOutcome[]> => {
   const outcomes: FixtureOutcome[] = [
     ...plan.kept.map((fixture): FixtureOutcome => ({ id: fixture.id, why: fixture.why, outcome: "kept" })),
+    ...plan.byBuild.map(
+      (fixture): FixtureOutcome => ({ id: fixture.id, why: fixture.why, outcome: "build", detail: "the build signs in to its own database" }),
+    ),
     ...plan.skip.map(({ fixture, reason }): FixtureOutcome => ({ id: fixture.id, why: fixture.why, outcome: "skipped", detail: reason })),
   ];
   for (const fixture of plan.apply) {
@@ -183,6 +207,8 @@ export const buildStatus = ({
   setup,
   loading,
   buildError,
+  needsDatabase = false,
+  database = null,
 }: {
   config: { build: string | null; pr: number | null };
   loaded: Pick<LoadedBuild, "branch" | "pr" | "commit" | "prHead"> | null;
@@ -190,6 +216,8 @@ export const buildStatus = ({
   setup: boolean;
   loading: boolean;
   buildError: string | null;
+  needsDatabase?: boolean;
+  database?: DatabaseState | null;
 }): BuildStatus => {
   const requested = Boolean(config.build || config.pr);
   const matches = Boolean(
@@ -210,7 +238,19 @@ export const buildStatus = ({
     };
   }
   const behind = loaded.prHead && loaded.commit && !loaded.prHead.startsWith(loaded.commit.slice(0, 7));
-  return { wanted, mismatch: behind ? `PR head is ${loaded.prHead?.slice(0, 7)}; CI may still be building it` : null, blocked: null };
+  const mismatch = behind ? `PR head is ${loaded.prHead?.slice(0, 7)}; CI may still be building it` : null;
+  // A kit that needs the database proves nothing without a session on it.
+  if (needsDatabase && database?.state !== "ok") {
+    return {
+      wanted,
+      mismatch,
+      blocked:
+        database?.state === "missing"
+          ? `No database session: ${database.detail}`
+          : "Waiting for DG to sign in to its database.",
+    };
+  }
+  return { wanted, mismatch, blocked: null };
 };
 
 // A saved partial run only resumes on the kit and the commit it started on;
@@ -323,7 +363,16 @@ export class ProofRun {
       setup: this.env.setup?.rootUid === this.rootUid,
       loading: this.env.loading,
       buildError: this.env.buildError,
+      needsDatabase: this.needsDatabase(),
+      database: this.env.buildFor === this.rootUid ? this.env.database : null,
     });
+  }
+
+  private needsDatabase(): boolean {
+    const kit = this.kit?.kit;
+    if (!kit) return false;
+    if (kit.needs?.includes("supabase")) return true;
+    return fixturesFor(kit, this.env).some((fixture) => "js" in fixture.apply && LOCAL_SIGN_IN.test(fixture.apply.js));
   }
 
   view(): PanelView {
@@ -365,6 +414,7 @@ export class ProofRun {
         loading: this.env.loading,
       },
       blocked: status.blocked,
+      database: this.env.buildFor === this.rootUid && this.needsDatabase() ? this.env.database : null,
       setup: setup
         ? {
             branch: setup.branch,

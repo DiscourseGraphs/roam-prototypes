@@ -33,6 +33,8 @@ export type PanelView = {
   setup: SetupView | null;
   // Why Run is off (the build isn't this kit's, or isn't loaded); null to run.
   blocked: string | null;
+  // DG's session on the build's database, for kits that need one.
+  database: { state: "checking" | "ok" | "missing"; detail: string } | null;
   // Kit or page problems that stop a run, e.g. a block the parser can't read.
   error: string | null;
   // Things to know before running: skipped fixtures, needs this tab can't meet.
@@ -70,6 +72,10 @@ const CSS = `
   .title { flex: 1; min-width: 0; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .build { font: 11.5px ui-monospace, Menlo, monospace; color: #4b5567; }
   .build.bad { color: #b3261e; }
+  .db { font: 11.5px ui-monospace, Menlo, monospace; color: #4b5567; }
+  .db:empty { display: none; }
+  .db.ok { color: #15805a; }
+  .db.missing { color: #b3261e; background: #fdecea; border-radius: 4px; padding: 4px 6px; }
   .claim { font-weight: 600; }
   .claim:empty, .given:empty, .where:empty { display: none; }
   .given, .muted { color: #5d6778; font-size: 12px; }
@@ -157,6 +163,7 @@ type Parts = {
   badge: HTMLElement;
   title: HTMLElement;
   build: HTMLElement;
+  database: HTMLElement;
   claim: HTMLElement;
   given: HTMLElement;
   where: HTMLElement;
@@ -195,6 +202,7 @@ export class ProofPanel {
       badge,
       title,
       build: el("div", "", "build"),
+      database: el("div", "", "db"),
       claim: el("div", "", "claim"),
       given: el("div", "", "given"),
       where: el("div", "", "where"),
@@ -207,7 +215,7 @@ export class ProofPanel {
     };
     parts.feed.setAttribute("aria-live", "polite");
     parts.err.setAttribute("role", "status");
-    panel.append(head, parts.build, parts.claim, parts.given, parts.where, parts.notices, parts.plan, parts.pending, parts.feed, parts.controls, parts.err);
+    panel.append(head, parts.build, parts.database, parts.claim, parts.given, parts.where, parts.notices, parts.plan, parts.pending, parts.feed, parts.controls, parts.err);
     root.append(style, panel);
     // Roam handles mouse and key events on blocks; keep ours to ourselves so a
     // click on Run doesn't also open the block for editing.
@@ -311,6 +319,11 @@ export class ProofPanel {
       .join(" ");
     parts.build.textContent = build.mismatch ? `${buildText} · ${build.mismatch}` : buildText;
     parts.build.className = build.mismatch || (build.wanted && !build.loaded && !build.loading) ? "build bad" : "build";
+    const database = view.database;
+    parts.database.textContent = database
+      ? { checking: "Database: waiting for DG to sign in… ", ok: "Database: ", missing: "Database: no session. " }[database.state] + database.detail
+      : "";
+    parts.database.className = `db ${database?.state ?? ""}`;
     parts.claim.textContent = state?.claim ? `Proving: ${state.claim}` : "";
     parts.given.textContent = state?.given ? `Given: ${state.given}` : "";
     parts.where.textContent = !state
