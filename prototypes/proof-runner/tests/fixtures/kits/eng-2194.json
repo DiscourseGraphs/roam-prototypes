@@ -1,52 +1,558 @@
 {
   "name": "eng-2194",
-  "title": "Node summoning menu \"Only\" button stretches across filter row",
-  "baseline": "dg-baseline@1",
-  "target": {
-    "slot": "3",
-    "pr": 1485,
-    "viewport": {
-      "width": 1280,
-      "height": 720
-    }
-  },
-  "needs": [
-    "supabase",
-    "embed-stub"
-  ],
-  "prepare": [
-    {
-      "id": "database-session",
-      "why": "the extension has a proof database session for this graph; the proof database runs without edge functions, so this signs in the way create-space would",
-      "phase": "before-load",
-      "check": {
-        "js": "proof.supabase.signedIn()"
-      },
-      "apply": {
-        "js": "proof.supabase.signIn({ serviceKey: '{{env.SUPABASE_SERVICE_ROLE_KEY}}', publishableKey: '{{env.SUPABASE_PUBLISHABLE_KEY}}' })"
-      },
-      "settleMs": 1000
-    },
-    {
-      "id": "scratch-page",
-      "why": "an empty page to type the node search trigger on",
-      "phase": "in-session",
-      "apply": {
-        "js": "proof.page.recreate('PK node search scratch', [''])"
-      }
-    }
-  ],
   "cases": [
     {
       "id": "only-sizes-to-label",
       "title": "Each Only button sizes to its label at the right edge of its row",
-      "proves": "Done When 1: The Only button stays compact and right-aligned when a node-type row is hovered, with no stretching or layout shift.",
-      "caption": "In the node summoning menu's type filter, the Only button now fits its label and sits at the right edge of each row, instead of taking half the row.",
       "steps": [
         {
+          "id": "s1",
+          "why": "open the node summoning menu",
+          "source": "kit",
           "use": "node-search-menu.open",
           "with": {
             "page": "PK node search scratch"
+          }
+        },
+        {
+          "id": "s2",
+          "why": "open the type filter",
+          "source": "kit",
+          "do": {
+            "click": ".discourse-node-search-menu button[title=\"Filter by type\"]"
+          }
+        },
+        {
+          "id": "s3",
+          "why": "wait for the type rows",
+          "source": "kit",
+          "do": {
+            "wait_for": ".discourse-node-search-menu .max-h-48 .bp3-menu-item"
+          }
+        },
+        {
+          "id": "s4",
+          "why": "hover Claim so its Only button shows",
+          "source": "kit",
+          "do": {
+            "hover": ".discourse-node-search-menu .max-h-48 .bp3-menu-item:has-text(\"Claim\")"
+          }
+        },
+        {
+          "id": "s5",
+          "why": "hold on the row",
+          "source": "kit",
+          "do": {
+            "pause": 1.5
+          }
+        }
+      ],
+      "proves": "Done When 1: The Only button stays compact and right-aligned when a node-type row is hovered, with no stretching or layout shift.",
+      "caption": "In the node summoning menu's type filter, the Only button now fits its label and sits at the right edge of each row, instead of taking half the row.",
+      "expect": {
+        "js": "(() => { const rows = Array.from(document.querySelectorAll('.discourse-node-search-menu .max-h-48 .bp3-menu-item')).filter(proof.visible); proof.assert(rows.length >= 4, 'Expected at least 4 type rows, found ' + rows.length + '.'); for (const row of rows) { const only = proof.byText('button', 'Only', row); proof.assert(only, 'A type row has no Only button.'); const box = proof.rect(only); const style = getComputedStyle(row); const contentRight = proof.rect(row).right - parseFloat(style.paddingRight) - parseFloat(style.borderRightWidth); const edge = contentRight - box.right; proof.assert(box.width < 100, 'The Only button is ' + Math.round(box.width) + 'px wide; it should fit its label.'); proof.assert(Math.abs(edge) <= 2, 'The Only button sits ' + Math.round(edge) + 'px inside the row content edge.'); } })()"
+      }
+    },
+    {
+      "id": "matches-original-design",
+      "title": "The hovered row looks like the original design",
+      "steps": [
+        {
+          "id": "s1",
+          "why": "hover Claim so its Only button shows",
+          "source": "kit",
+          "do": {
+            "hover": ".discourse-node-search-menu .max-h-48 .bp3-menu-item:has-text(\"Claim\")"
+          }
+        },
+        {
+          "id": "s2",
+          "why": "hold so the row can be compared with the screenshot",
+          "source": "kit",
+          "do": {
+            "pause": 2
+          }
+        }
+      ],
+      "proves": "Done When 2: The fix is verified in Roam against the attached original-design screenshot.",
+      "caption": "A hovered type row next to the original design: a small Only button at the right edge of the row.",
+      "expect": {
+        "text": "The hovered Claim row shows a small Only button at its right edge, as in the ticket's Original design screenshot, and not stretched across the row like the Current behavior screenshot."
+      }
+    },
+    {
+      "id": "only-filters",
+      "title": "Only on Claim leaves just the Claim results",
+      "steps": [
+        {
+          "id": "s1",
+          "why": "keep only Claim",
+          "source": "kit",
+          "do": {
+            "click": ".discourse-node-search-menu .max-h-48 .bp3-menu-item:has-text(\"Claim\") button:has-text(\"Only\")"
+          }
+        },
+        {
+          "id": "s2",
+          "why": "hold on the filtered results",
+          "source": "kit",
+          "do": {
+            "pause": 1.5
+          }
+        }
+      ],
+      "caption": "Clicking Only still does its job: the filter closes and only the Claim results are left.",
+      "expect": {
+        "js": "proof.waitFor(() => { const headers = Array.from(document.querySelectorAll('.discourse-node-search-menu .h-64 > div > .border-b')).filter(proof.visible).map((el) => el.innerText.trim()); return headers.length === 1 && headers[0] === 'Claim' && !document.querySelector('.discourse-node-search-menu .max-h-48'); }, { what: 'only the Claim results, with the filter closed' })"
+      }
+    },
+    {
+      "id": "qa-only-button-reveals-only-on-row-hover",
+      "title": "Only button reveals only on row hover",
+      "steps": [
+        {
+          "do": {
+            "press": "Escape"
+          },
+          "why": "close any menu left open by the last case"
+        },
+        {
+          "do": {
+            "js": "proof.waitFor(() => !document.querySelector('.discourse-node-search-menu'), { what: 'the menu to close' })"
+          },
+          "why": "wait for the menu to close"
+        },
+        {
+          "do": {
+            "js": "proof.page.recreate('PK node search scratch', [''])"
+          },
+          "why": "start from an empty scratch page"
+        },
+        {
+          "use": "node-search-menu.open",
+          "with": {
+            "page": "PK node search scratch",
+            "query": "PK"
+          },
+          "why": "open the node summoning menu"
+        },
+        {
+          "do": {
+            "click": ".discourse-node-search-menu button[title=\"Filter by type\"]"
+          },
+          "why": "open the type filter"
+        },
+        {
+          "do": {
+            "wait_for": ".discourse-node-search-menu .max-h-48 .bp3-menu-item"
+          },
+          "why": "wait for the type rows"
+        },
+        {
+          "do": {
+            "hover": ".discourse-node-search-menu span:has-text(\"Filter by Type\")"
+          },
+          "why": "keep the mouse off the rows"
+        },
+        {
+          "do": {
+            "pause": 1
+          },
+          "why": "let any fade settle"
+        },
+        {
+          "do": {
+            "js": "(() => { const rows = Array.from(document.querySelectorAll('.discourse-node-search-menu .max-h-48 .bp3-menu-item')).filter(proof.visible); window.__pk2194 = { idle: rows.map((r) => ({ opacity: parseFloat(getComputedStyle(proof.byText('button', 'Only', r)).opacity), height: Math.round(proof.rect(r).height) })) }; })()"
+          },
+          "why": "note each row's Only opacity and height before any hover"
+        },
+        {
+          "do": {
+            "hover": ".discourse-node-search-menu .max-h-48 .bp3-menu-item:has-text(\"Claim\")"
+          },
+          "why": "hover Claim"
+        },
+        {
+          "do": {
+            "pause": 1
+          },
+          "why": "let the fade-in finish"
+        },
+        {
+          "do": {
+            "js": "(() => { const r = Array.from(document.querySelectorAll('.discourse-node-search-menu .max-h-48 .bp3-menu-item')).filter(proof.visible).find((el) => el.innerText.includes('Claim')); window.__pk2194.hovered = parseFloat(getComputedStyle(proof.byText('button', 'Only', r)).opacity); })()"
+          },
+          "why": "note the hovered Only opacity"
+        },
+        {
+          "do": {
+            "hover": ".discourse-node-search-menu span:has-text(\"Filter by Type\")"
+          },
+          "why": "move the mouse off the row"
+        },
+        {
+          "do": {
+            "pause": 1
+          },
+          "why": "let the fade-out finish"
+        }
+      ],
+      "intent": "Open the node search menu by typing the trigger in a block, click the filter icon, then move the mouse over each type row and away from it.",
+      "expect": {
+        "js": "(() => { const s = window.__pk2194; proof.assert(s && s.idle.length >= 4, 'No measurements from before the hover.'); s.idle.forEach((i, n) => { proof.assert(i.opacity < 0.01, 'The Only button on row ' + (n + 1) + ' showed with no hover.'); }); proof.assert(s.hovered > 0.99, 'The Only button did not show on hover.'); const rows = Array.from(document.querySelectorAll('.discourse-node-search-menu .max-h-48 .bp3-menu-item')).filter(proof.visible); rows.forEach((r, n) => { proof.assert(parseFloat(getComputedStyle(proof.byText('button', 'Only', r)).opacity) < 0.01, 'The Only button on row ' + (n + 1) + ' stayed visible after the mouse left.'); proof.assert(Math.abs(Math.round(proof.rect(r).height) - s.idle[n].height) <= 1, 'Row ' + (n + 1) + ' changed height.'); }); })()"
+      },
+      "decision": {
+        "status": "approved",
+        "by": "sid",
+        "at": "2026-10-05T07:11:42.020Z"
+      },
+      "surface": "s-node-search-menu-filter-list",
+      "caption": "Only stays hidden until you hover a row, fades in on that row, and fades out when the mouse leaves.",
+      "checks": "Only is invisible on every row at rest, fully visible on the hovered row, invisible again after the mouse leaves, and no row changes height."
+    },
+    {
+      "id": "qa-row-height-stays-steady-with-and-without",
+      "title": "Row height stays steady with and without hover",
+      "steps": [
+        {
+          "do": {
+            "press": "Escape"
+          },
+          "why": "close any menu left open by the last case"
+        },
+        {
+          "do": {
+            "js": "proof.waitFor(() => !document.querySelector('.discourse-node-search-menu'), { what: 'the menu to close' })"
+          },
+          "why": "wait for the menu to close"
+        },
+        {
+          "do": {
+            "js": "proof.page.recreate('PK node search scratch', [''])"
+          },
+          "why": "start from an empty scratch page"
+        },
+        {
+          "use": "node-search-menu.open",
+          "with": {
+            "page": "PK node search scratch",
+            "query": "PK"
+          },
+          "why": "open the node summoning menu"
+        },
+        {
+          "do": {
+            "click": ".discourse-node-search-menu button[title=\"Filter by type\"]"
+          },
+          "why": "open the type filter"
+        },
+        {
+          "do": {
+            "wait_for": ".discourse-node-search-menu .max-h-48 .bp3-menu-item"
+          },
+          "why": "wait for the type rows"
+        },
+        {
+          "do": {
+            "hover": ".discourse-node-search-menu span:has-text(\"Filter by Type\")"
+          },
+          "why": "keep the mouse off the rows"
+        },
+        {
+          "do": {
+            "pause": 1
+          },
+          "why": "let the list settle"
+        },
+        {
+          "do": {
+            "js": "(() => { const list = document.querySelector('.discourse-node-search-menu .max-h-48'); window.__pk2194 = { idle: Array.from(document.querySelectorAll('.discourse-node-search-menu .max-h-48 .bp3-menu-item')).filter(proof.visible).map((r) => Math.round(proof.rect(r).height)), idleList: [Math.round(proof.rect(list).height), list.scrollHeight] }; })()"
+          },
+          "why": "note row heights and the list's size at rest"
+        },
+        {
+          "do": {
+            "hover": ".discourse-node-search-menu .max-h-48 .bp3-menu-item:has-text(\"Claim\")"
+          },
+          "why": "hover Claim"
+        },
+        {
+          "do": {
+            "pause": 0.7
+          },
+          "why": "hold"
+        },
+        {
+          "do": {
+            "hover": ".discourse-node-search-menu .max-h-48 .bp3-menu-item:has-text(\"Question\")"
+          },
+          "why": "hover Question"
+        },
+        {
+          "do": {
+            "pause": 0.7
+          },
+          "why": "hold"
+        },
+        {
+          "do": {
+            "js": "(() => { const list = document.querySelector('.discourse-node-search-menu .max-h-48'); window.__pk2194.during = { rows: Array.from(document.querySelectorAll('.discourse-node-search-menu .max-h-48 .bp3-menu-item')).filter(proof.visible).map((r) => Math.round(proof.rect(r).height)), list: [Math.round(proof.rect(list).height), list.scrollHeight] }; })()"
+          },
+          "why": "note the same sizes while a row is hovered"
+        },
+        {
+          "do": {
+            "hover": ".discourse-node-search-menu span:has-text(\"Filter by Type\")"
+          },
+          "why": "move off the rows"
+        },
+        {
+          "do": {
+            "pause": 0.7
+          },
+          "why": "hold"
+        }
+      ],
+      "intent": "With the filter list open, compare each type row's height and spacing while hovered and not hovered. Scroll the list if there are more than 6 types.",
+      "expect": {
+        "js": "(() => { const s = window.__pk2194; proof.assert(s && s.during, 'No measurements.'); const list = document.querySelector('.discourse-node-search-menu .max-h-48'); const after = Array.from(document.querySelectorAll('.discourse-node-search-menu .max-h-48 .bp3-menu-item')).filter(proof.visible).map((r) => Math.round(proof.rect(r).height)); proof.assert(s.idle.length >= 4 && s.idle.length === s.during.rows.length && s.idle.length === after.length, 'The number of rows changed.'); s.idle.forEach((h, n) => { proof.assert(Math.abs(s.during.rows[n] - h) <= 1, 'Row ' + (n + 1) + ' went from ' + h + 'px to ' + s.during.rows[n] + 'px on hover.'); proof.assert(Math.abs(after[n] - h) <= 1, 'Row ' + (n + 1) + ' did not return to ' + h + 'px.'); }); proof.assert(s.idleList[0] === s.during.list[0] && s.idleList[1] === s.during.list[1], 'The list size changed on hover: ' + s.idleList.join('/') + ' to ' + s.during.list.join('/') + '.'); proof.assert(list.scrollHeight === s.idleList[1], 'The list scroll height changed.'); })()"
+      },
+      "decision": {
+        "status": "approved",
+        "by": "sid",
+        "at": "2026-10-05T07:11:42.020Z"
+      },
+      "surface": "s-filter-row-hover-and-checkmark-toggle",
+      "caption": "Hovering rows does not change their height, and the list does not jump or grow a scrollbar.",
+      "checks": "Every row keeps its height and the list keeps its height and scroll height while rows are hovered and after the mouse leaves."
+    },
+    {
+      "id": "qa-clicking-row-text-toggles-only-does-not",
+      "title": "Clicking row text toggles, Only does not toggle",
+      "steps": [
+        {
+          "do": {
+            "press": "Escape"
+          },
+          "why": "close any menu left open by the last case"
+        },
+        {
+          "do": {
+            "js": "proof.waitFor(() => !document.querySelector('.discourse-node-search-menu'), { what: 'the menu to close' })"
+          },
+          "why": "wait for the menu to close"
+        },
+        {
+          "do": {
+            "js": "proof.page.recreate('PK node search scratch', [''])"
+          },
+          "why": "start from an empty scratch page"
+        },
+        {
+          "use": "node-search-menu.open",
+          "with": {
+            "page": "PK node search scratch",
+            "query": "PK"
+          },
+          "why": "open the node summoning menu"
+        },
+        {
+          "do": {
+            "click": ".discourse-node-search-menu button[title=\"Filter by type\"]"
+          },
+          "why": "open the type filter"
+        },
+        {
+          "do": {
+            "wait_for": ".discourse-node-search-menu .max-h-48 .bp3-menu-item"
+          },
+          "why": "wait for the type rows"
+        },
+        {
+          "do": {
+            "click": ".discourse-node-search-menu .max-h-48 .bp3-menu-item:has-text(\"Question\")"
+          },
+          "why": "click the Question row's name area"
+        },
+        {
+          "do": {
+            "js": "proof.waitFor(() => { const r = Array.from(document.querySelectorAll('.discourse-node-search-menu .max-h-48 .bp3-menu-item')).filter(proof.visible).find((el) => el.innerText.includes('Question')); return r && !r.innerText.includes('✓') && document.querySelector('.discourse-node-search-menu .max-h-48'); }, { what: 'Question unchecked with the panel still open' })"
+          },
+          "why": "Question is unchecked and the panel is still open"
+        },
+        {
+          "do": {
+            "click": ".discourse-node-search-menu .max-h-48 .bp3-menu-item:has-text(\"Question\")"
+          },
+          "why": "click Question again to check it"
+        },
+        {
+          "do": {
+            "js": "proof.waitFor(() => { const r = Array.from(document.querySelectorAll('.discourse-node-search-menu .max-h-48 .bp3-menu-item')).filter(proof.visible).find((el) => el.innerText.includes('Question')); return r && r.innerText.includes('✓'); }, { what: 'Question checked again' })"
+          },
+          "why": "Question is checked again"
+        },
+        {
+          "do": {
+            "hover": ".discourse-node-search-menu .max-h-48 .bp3-menu-item:has-text(\"Claim\")"
+          },
+          "why": "hover Claim so its Only button shows"
+        },
+        {
+          "do": {
+            "click": ".discourse-node-search-menu .max-h-48 .bp3-menu-item:has-text(\"Claim\") button:has-text(\"Only\")"
+          },
+          "why": "click Only on Claim"
+        },
+        {
+          "do": {
+            "js": "proof.waitFor(() => !document.querySelector('.discourse-node-search-menu .max-h-48'), { what: 'the filter panel to close' })"
+          },
+          "why": "Only closes the panel"
+        },
+        {
+          "do": {
+            "click": ".discourse-node-search-menu button[title=\"Filter by type\"]"
+          },
+          "why": "reopen the filter to see the ticks"
+        },
+        {
+          "do": {
+            "wait_for": ".discourse-node-search-menu .max-h-48 .bp3-menu-item"
+          },
+          "why": "wait for the type rows"
+        }
+      ],
+      "intent": "Click a type name to toggle its checkmark, then click Only on a different row.",
+      "expect": {
+        "js": "(() => { const rows = Array.from(document.querySelectorAll('.discourse-node-search-menu .max-h-48 .bp3-menu-item')).filter(proof.visible); proof.assert(rows.length >= 4, 'Expected at least 4 type rows.'); rows.forEach((r) => { const name = r.innerText.replace(/Only|✓/g, '').trim(); const ticked = r.innerText.includes('✓'); if (name === 'Claim') proof.assert(ticked, 'Claim lost its check, so the Only click also toggled it.'); else proof.assert(!ticked, name + ' is still checked after Only on Claim.'); }); })()"
+      },
+      "decision": {
+        "status": "approved",
+        "by": "sid",
+        "at": "2026-10-05T07:11:42.020Z"
+      },
+      "surface": "s-filter-row-hover-and-checkmark-toggle",
+      "caption": "Clicking a type's name toggles its check and keeps the panel open; Only keeps just that type and does not toggle it.",
+      "checks": "After Only on Claim, Claim is still checked and no other type is, so the click kept just Claim and did not toggle it."
+    },
+    {
+      "id": "qa-only-closes-the-panel-and-keeps-focus-in",
+      "title": "Only closes the panel and keeps focus in the block",
+      "steps": [
+        {
+          "do": {
+            "press": "Escape"
+          },
+          "why": "close any menu left open by the last case"
+        },
+        {
+          "do": {
+            "js": "proof.waitFor(() => !document.querySelector('.discourse-node-search-menu'), { what: 'the menu to close' })"
+          },
+          "why": "wait for the menu to close"
+        },
+        {
+          "do": {
+            "js": "proof.page.recreate('PK node search scratch', [''])"
+          },
+          "why": "start from an empty scratch page"
+        },
+        {
+          "use": "node-search-menu.open",
+          "with": {
+            "page": "PK node search scratch",
+            "query": "PK"
+          },
+          "why": "open the node summoning menu"
+        },
+        {
+          "do": {
+            "click": ".discourse-node-search-menu button[title=\"Filter by type\"]"
+          },
+          "why": "open the type filter"
+        },
+        {
+          "do": {
+            "wait_for": ".discourse-node-search-menu .max-h-48 .bp3-menu-item"
+          },
+          "why": "wait for the type rows"
+        },
+        {
+          "do": {
+            "hover": ".discourse-node-search-menu .max-h-48 .bp3-menu-item:has-text(\"Question\")"
+          },
+          "why": "hover Question so its Only button shows"
+        },
+        {
+          "do": {
+            "click": ".discourse-node-search-menu .max-h-48 .bp3-menu-item:has-text(\"Question\") button:has-text(\"Only\")"
+          },
+          "why": "click Only on Question"
+        },
+        {
+          "do": {
+            "js": "proof.waitFor(() => !document.querySelector('.discourse-node-search-menu .max-h-48') && document.activeElement === document.querySelector('textarea.rm-block-input'), { what: 'the panel closed with the cursor still in the block' })"
+          },
+          "why": "the panel closes and the cursor is still in the block"
+        },
+        {
+          "do": {
+            "type": {
+              "into": "textarea.rm-block-input",
+              "text": " baseline",
+              "delay_ms": 90
+            }
+          },
+          "why": "keep typing in the block"
+        },
+        {
+          "do": {
+            "pause": 1.5
+          },
+          "why": "let the menu update"
+        }
+      ],
+      "intent": "Type the trigger plus a search term, open the filter, click Only on one type, then keep typing in the block.",
+      "expect": {
+        "js": "proof.waitFor(() => { const headers = Array.from(document.querySelectorAll('.discourse-node-search-menu .h-64 > div > .border-b')).filter(proof.visible).map((el) => el.innerText.trim()); const items = Array.from(document.querySelectorAll('.discourse-node-search-menu .h-64 .bp3-menu-item')).map((el) => el.innerText); return document.activeElement === document.querySelector('textarea.rm-block-input') && document.querySelector('textarea.rm-block-input').value === '@PK baseline' && headers.length === 1 && headers[0] === 'Question' && items.length === 1 && items[0].includes('PK baseline question'); }, { what: 'the menu narrowed to the one Question result for the longer text, with the cursor in the block' })"
+      },
+      "decision": {
+        "status": "approved",
+        "by": "sid",
+        "at": "2026-10-05T07:11:42.020Z"
+      },
+      "surface": "s-node-search-results-and-keyboard",
+      "caption": "Only closes the filter, the cursor stays in the block, and the menu keeps updating as you type.",
+      "checks": "The cursor is in the block, the text reads @PK baseline, and the menu shows only the Question result PK baseline question."
+    },
+    {
+      "id": "qa-arrow-keys-and-enter-after-using-only",
+      "title": "Arrow keys and Enter after using Only",
+      "steps": [
+        {
+          "do": {
+            "press": "Escape"
+          },
+          "why": "close any menu left open by the last case"
+        },
+        {
+          "do": {
+            "js": "proof.waitFor(() => !document.querySelector('.discourse-node-search-menu'), { what: 'the menu to close' })"
+          },
+          "why": "wait for the menu to close"
+        },
+        {
+          "do": {
+            "js": "proof.page.recreate('PK node search scratch', [''])"
+          },
+          "why": "start from an empty scratch page"
+        },
+        {
+          "use": "node-search-menu.open",
+          "with": {
+            "page": "PK node search scratch",
+            "query": "PK"
           },
           "why": "open the node summoning menu"
         },
@@ -70,36 +576,917 @@
         },
         {
           "do": {
-            "pause": 1.5
-          },
-          "why": "hold on the row"
-        }
-      ],
-      "expect": {
-        "js": "(() => { const rows = Array.from(document.querySelectorAll('.discourse-node-search-menu .max-h-48 .bp3-menu-item')).filter(proof.visible); proof.assert(rows.length >= 4, 'Expected at least 4 type rows, found ' + rows.length + '.'); for (const row of rows) { const only = proof.byText('button', 'Only', row); proof.assert(only, 'A type row has no Only button.'); const box = proof.rect(only); const style = getComputedStyle(row); const contentRight = proof.rect(row).right - parseFloat(style.paddingRight) - parseFloat(style.borderRightWidth); const edge = contentRight - box.right; proof.assert(box.width < 100, 'The Only button is ' + Math.round(box.width) + 'px wide; it should fit its label.'); proof.assert(Math.abs(edge) <= 2, 'The Only button sits ' + Math.round(edge) + 'px inside the row content edge.'); } })()"
-      }
-    },
-    {
-      "id": "only-filters",
-      "title": "Only on Claim leaves just the Claim results",
-      "caption": "Clicking Only still does its job: the filter closes and only the Claim results are left.",
-      "steps": [
-        {
-          "do": {
             "click": ".discourse-node-search-menu .max-h-48 .bp3-menu-item:has-text(\"Claim\") button:has-text(\"Only\")"
           },
-          "why": "keep only Claim"
+          "why": "click Only on Claim"
+        },
+        {
+          "do": {
+            "js": "proof.waitFor(() => !document.querySelector('.discourse-node-search-menu .max-h-48') && Array.from(document.querySelectorAll('.discourse-node-search-menu .h-64 > div > .border-b')).filter(proof.visible).map((el) => el.innerText.trim()).length === 1 && document.querySelectorAll('.discourse-node-search-menu .h-64 .bp3-menu-item').length >= 3, { what: 'at least 3 Claim results' })"
+          },
+          "why": "wait for the Claim results"
+        },
+        {
+          "do": {
+            "press": "ArrowDown"
+          },
+          "why": "move down"
+        },
+        {
+          "do": {
+            "pause": 0.5
+          },
+          "why": "hold"
+        },
+        {
+          "do": {
+            "press": "ArrowDown"
+          },
+          "why": "move down again"
+        },
+        {
+          "do": {
+            "pause": 0.5
+          },
+          "why": "hold"
+        },
+        {
+          "do": {
+            "press": "ArrowUp"
+          },
+          "why": "move back up"
+        },
+        {
+          "do": {
+            "pause": 0.5
+          },
+          "why": "hold"
+        },
+        {
+          "do": {
+            "js": "(() => { const items = Array.from(document.querySelectorAll('.discourse-node-search-menu .h-64 .bp3-menu-item')); const at = items.findIndex((el) => el.getAttribute('data-active') === 'true'); proof.assert(at === 1, 'After down, down, up the highlight is on result ' + (at + 1) + ', not 2.'); window.__pk2194 = { picked: items[at].innerText.trim() }; })()"
+          },
+          "why": "the highlight is on the second Claim result; remember which"
+        },
+        {
+          "do": {
+            "press": "Enter"
+          },
+          "why": "press Enter to insert it"
         },
         {
           "do": {
             "pause": 1.5
           },
+          "why": "hold on the inserted node"
+        }
+      ],
+      "intent": "Click Only on a type that has several results, then press ArrowDown/ArrowUp a few times and press Enter.",
+      "expect": {
+        "js": "proof.waitFor(() => { const picked = window.__pk2194 && window.__pk2194.picked; return picked && !document.querySelector('.discourse-node-search-menu') && document.querySelector('textarea.rm-block-input') && document.querySelector('textarea.rm-block-input').value.includes('[[' + picked + ']]'); }, { what: 'the highlighted Claim inserted as a link and the menu closed' })"
+      },
+      "decision": {
+        "status": "approved",
+        "by": "sid",
+        "at": "2026-10-05T07:11:42.020Z"
+      },
+      "surface": "s-node-search-results-and-keyboard",
+      "caption": "After Only, the arrow keys move through that type's results and Enter inserts the highlighted one.",
+      "checks": "The menu closes and the block holds a link to the Claim that was highlighted when Enter was pressed."
+    },
+    {
+      "id": "qa-select-all-label-after-only",
+      "title": "Select all label after Only",
+      "steps": [
+        {
+          "do": {
+            "press": "Escape"
+          },
+          "why": "close any menu left open by the last case"
+        },
+        {
+          "do": {
+            "js": "proof.waitFor(() => !document.querySelector('.discourse-node-search-menu'), { what: 'the menu to close' })"
+          },
+          "why": "wait for the menu to close"
+        },
+        {
+          "do": {
+            "js": "proof.page.recreate('PK node search scratch', [''])"
+          },
+          "why": "start from an empty scratch page"
+        },
+        {
+          "use": "node-search-menu.open",
+          "with": {
+            "page": "PK node search scratch",
+            "query": "PK"
+          },
+          "why": "open the node summoning menu"
+        },
+        {
+          "do": {
+            "click": ".discourse-node-search-menu button[title=\"Filter by type\"]"
+          },
+          "why": "open the type filter"
+        },
+        {
+          "do": {
+            "wait_for": ".discourse-node-search-menu .max-h-48 .bp3-menu-item"
+          },
+          "why": "wait for the type rows"
+        },
+        {
+          "do": {
+            "hover": ".discourse-node-search-menu .max-h-48 .bp3-menu-item:has-text(\"Claim\")"
+          },
+          "why": "hover Claim so its Only button shows"
+        },
+        {
+          "do": {
+            "click": ".discourse-node-search-menu .max-h-48 .bp3-menu-item:has-text(\"Claim\") button:has-text(\"Only\")"
+          },
+          "why": "click Only on Claim"
+        },
+        {
+          "do": {
+            "js": "proof.waitFor(() => !document.querySelector('.discourse-node-search-menu .max-h-48'), { what: 'the filter to close' })"
+          },
+          "why": "Only closes the panel"
+        },
+        {
+          "do": {
+            "click": ".discourse-node-search-menu button[title=\"Filter by type\"]"
+          },
+          "why": "reopen the filter"
+        },
+        {
+          "do": {
+            "wait_for": ".discourse-node-search-menu .max-h-48 .bp3-menu-item"
+          },
+          "why": "wait for the type rows"
+        },
+        {
+          "do": {
+            "js": "(() => { const b = proof.byText('button', 'Select all'); proof.assert(b && b.classList.contains('bp3-intent-primary'), 'After Only the header button is not a blue Select all.'); })()"
+          },
+          "why": "the header button reads Select all in blue"
+        },
+        {
+          "do": {
+            "click": ".discourse-node-search-menu button:has-text(\"Select all\")"
+          },
+          "why": "click Select all"
+        },
+        {
+          "do": {
+            "js": "proof.waitFor(() => { const b = proof.byText('button', 'All selected'); return b && b.classList.contains('bp3-intent-success') && Array.from(document.querySelectorAll('.discourse-node-search-menu .max-h-48 .bp3-menu-item')).filter(proof.visible).length >= 4 && Array.from(document.querySelectorAll('.discourse-node-search-menu .max-h-48 .bp3-menu-item')).filter(proof.visible).every((r) => r.innerText.includes('✓')); }, { what: 'All selected in green with every row checked' })"
+          },
+          "why": "the button reads All selected in green and every row is checked"
+        },
+        {
+          "do": {
+            "hover": ".discourse-node-search-menu .max-h-48 .bp3-menu-item:has-text(\"Claim\")"
+          },
+          "why": "hover Claim so its Only button shows"
+        },
+        {
+          "do": {
+            "click": ".discourse-node-search-menu .max-h-48 .bp3-menu-item:has-text(\"Claim\") button:has-text(\"Only\")"
+          },
+          "why": "click Only on Claim"
+        },
+        {
+          "do": {
+            "js": "proof.waitFor(() => !document.querySelector('.discourse-node-search-menu .max-h-48'), { what: 'the filter to close' })"
+          },
+          "why": "Only closes the panel again"
+        },
+        {
+          "do": {
+            "click": ".discourse-node-search-menu button[title=\"Filter by type\"]"
+          },
+          "why": "reopen the filter"
+        },
+        {
+          "do": {
+            "wait_for": ".discourse-node-search-menu .max-h-48 .bp3-menu-item"
+          },
+          "why": "wait for the type rows"
+        }
+      ],
+      "intent": "Click Only on one type and reopen the filter panel. Then click Select all, then click Only again.",
+      "expect": {
+        "js": "(() => { const rows = Array.from(document.querySelectorAll('.discourse-node-search-menu .max-h-48 .bp3-menu-item')).filter(proof.visible); proof.assert(rows.length >= 4, 'Expected at least 4 type rows.'); const ticked = rows.filter((r) => r.innerText.includes('✓')); proof.assert(ticked.length === 1 && ticked[0].innerText.includes('Claim'), 'Expected only Claim checked, found ' + ticked.length + ' checked.'); const b = proof.byText('button', 'Select all'); proof.assert(b && b.classList.contains('bp3-intent-primary'), 'The header button is not a blue Select all after the second Only.'); })()"
+      },
+      "decision": {
+        "status": "approved",
+        "by": "sid",
+        "at": "2026-10-05T07:11:42.020Z"
+      },
+      "surface": "s-filter-by-type-panel-header-and-select",
+      "caption": "After Only the header button offers Select all in blue; Select all turns it to All selected in green; Only again narrows to one type.",
+      "checks": "After the second Only just Claim is checked and the header button is the blue Select all again."
+    },
+    {
+      "id": "qa-long-type-name-beside-the-only-button",
+      "title": "Long type name beside the Only button",
+      "steps": [
+        {
+          "do": {
+            "press": "Escape"
+          },
+          "why": "close any menu left open by the last case"
+        },
+        {
+          "do": {
+            "js": "proof.waitFor(() => !document.querySelector('.discourse-node-search-menu'), { what: 'the menu to close' })"
+          },
+          "why": "wait for the menu to close"
+        },
+        {
+          "do": {
+            "js": "proof.page.recreate('PK node search scratch', [''])"
+          },
+          "why": "start from an empty scratch page"
+        },
+        {
+          "use": "node-search-menu.open",
+          "with": {
+            "page": "PK node search scratch",
+            "query": "PK"
+          },
+          "why": "open the node summoning menu"
+        },
+        {
+          "do": {
+            "click": ".discourse-node-search-menu button[title=\"Filter by type\"]"
+          },
+          "why": "open the type filter"
+        },
+        {
+          "do": {
+            "wait_for": ".discourse-node-search-menu .max-h-48 .bp3-menu-item"
+          },
+          "why": "wait for the type rows"
+        },
+        {
+          "do": {
+            "hover": ".discourse-node-search-menu .max-h-48 .bp3-menu-item:has-text(\"PK 2194 A deliberately\")"
+          },
+          "why": "hover the long-named type"
+        },
+        {
+          "do": {
+            "pause": 1
+          },
+          "why": "hold on the row"
+        },
+        {
+          "do": {
+            "js": "(() => { const r = Array.from(document.querySelectorAll('.discourse-node-search-menu .max-h-48 .bp3-menu-item')).find((el) => el.innerText.includes('PK 2194 A deliberately')); proof.assert(r, 'The long-named type row is missing.'); const only = proof.byText('button', 'Only', r); proof.assert(only, 'The long-named row has no Only button.'); const box = proof.rect(only); const row = proof.rect(r); proof.assert(parseFloat(getComputedStyle(only).opacity) > 0.99, 'Only is not visible on the hovered long row.'); proof.assert(box.right <= row.right + 1 && box.left >= row.left, 'Only sits outside the long row.'); proof.assert(box.width < 100, 'Only is ' + Math.round(box.width) + 'px wide.'); proof.assert(r.scrollWidth <= r.clientWidth + 1, 'The long name overflows its row.'); const at = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2); proof.assert(at && only.contains(at), 'Something covers the Only button.'); })()"
+          },
+          "why": "the long row fits, and Only is visible, inside the row and not covered"
+        },
+        {
+          "do": {
+            "click": ".discourse-node-search-menu .max-h-48 .bp3-menu-item:has-text(\"PK 2194 A deliberately\") button:has-text(\"Only\")"
+          },
+          "why": "click Only on the long-named type"
+        }
+      ],
+      "intent": "Use a graph with a node type with a long name (or rename one in Settings), open the filter, and hover that row.",
+      "expect": {
+        "js": "proof.waitFor(() => !document.querySelector('.discourse-node-search-menu .max-h-48') && document.querySelector('.discourse-node-search-menu').innerText.includes('No matches found'), { what: 'the filter closed with only the long-named type selected, which has no results' })"
+      },
+      "decision": {
+        "status": "approved",
+        "by": "sid",
+        "at": "2026-10-05T07:11:42.020Z"
+      },
+      "surface": "s-roam-light-dark-theme-styling-of-the",
+      "caption": "A node type with a very long name stays inside its row, with Only still at the right edge and clickable.",
+      "checks": "The long row fits its width with Only inside it and uncovered, and clicking Only closes the filter with only that type selected (it has no results)."
+    },
+    {
+      "id": "qa-custom-trigger-still-opens-the-filtered",
+      "title": "Custom trigger still opens the filtered menu",
+      "steps": [
+        {
+          "do": {
+            "press": "Escape"
+          },
+          "why": "close any menu left open"
+        },
+        {
+          "do": {
+            "js": "proof.waitFor(() => !document.querySelector('.discourse-node-search-menu'), { what: 'the menu to close' })"
+          },
+          "why": "wait for the menu to close"
+        },
+        {
+          "use": "settings.open-home",
+          "why": "open Personal Settings, Home"
+        },
+        {
+          "do": {
+            "fill": {
+              "into": ".bp3-dialog:visible input[placeholder=\"Click to set trigger\"]",
+              "text": "@@"
+            }
+          },
+          "why": "set the node search menu trigger to @@"
+        },
+        {
+          "do": {
+            "pause": 1
+          },
+          "why": "let the setting save"
+        },
+        {
+          "use": "dialog.close-all",
+          "why": "close the settings"
+        },
+        {
+          "do": {
+            "js": "proof.page.recreate('PK node search scratch', [''])"
+          },
+          "why": "start from an empty scratch page"
+        },
+        {
+          "use": "node-search-menu.open",
+          "with": {
+            "page": "PK node search scratch",
+            "query": "@PK"
+          },
+          "why": "type @@PK to open the menu with the custom trigger"
+        },
+        {
+          "do": {
+            "click": ".discourse-node-search-menu button[title=\"Filter by type\"]"
+          },
+          "why": "open the type filter"
+        },
+        {
+          "do": {
+            "wait_for": ".discourse-node-search-menu .max-h-48 .bp3-menu-item"
+          },
+          "why": "wait for the type rows"
+        },
+        {
+          "do": {
+            "hover": ".discourse-node-search-menu .max-h-48 .bp3-menu-item:has-text(\"Claim\")"
+          },
+          "why": "hover Claim"
+        },
+        {
+          "do": {
+            "pause": 1
+          },
+          "why": "hold on the row"
+        },
+        {
+          "do": {
+            "js": "(() => { const rows = Array.from(document.querySelectorAll('.discourse-node-search-menu .max-h-48 .bp3-menu-item')).filter(proof.visible); proof.assert(rows.length >= 4, 'Expected at least 4 type rows, found ' + rows.length + '.'); const r = rows.find((el) => el.innerText.includes('Claim')); proof.assert(r, 'No Claim row.'); const only = proof.byText('button', 'Only', r); proof.assert(only, 'The Claim row has no Only button.'); const box = proof.rect(only); const style = getComputedStyle(r); const edge = proof.rect(r).right - parseFloat(style.paddingRight) - parseFloat(style.borderRightWidth) - box.right; proof.assert(box.width < 100, 'The Only button is ' + Math.round(box.width) + 'px wide; it should fit its label.'); proof.assert(Math.abs(edge) <= 2, 'The Only button sits ' + Math.round(edge) + 'px inside the row content edge.'); })()"
+          },
+          "why": "with the custom trigger, Only sizes to its label at the row's right edge"
+        },
+        {
+          "do": {
+            "click": ".discourse-node-search-menu .max-h-48 .bp3-menu-item:has-text(\"Claim\") button:has-text(\"Only\")"
+          },
+          "why": "click Only on Claim"
+        },
+        {
+          "do": {
+            "pause": 1
+          },
           "why": "hold on the filtered results"
         }
       ],
+      "intent": "In Personal settings, set a custom Node search menu trigger (for example \"@@\"), type it in a block, open the filter and use Only.",
       "expect": {
-        "js": "proof.waitFor(() => { const headers = Array.from(document.querySelectorAll('.discourse-node-search-menu .h-64 > div > .border-b')).filter(proof.visible).map((el) => el.innerText.trim()); return headers.length === 1 && headers[0] === 'Claim' && !document.querySelector('.discourse-node-search-menu .max-h-48'); }, { what: 'only the Claim results, with the filter closed' })"
+        "js": "proof.waitFor(() => !document.querySelector('.discourse-node-search-menu .max-h-48') && Array.from(document.querySelectorAll('.discourse-node-search-menu .h-64 > div > .border-b')).filter(proof.visible).map((el) => el.innerText.trim()).length === 1 && Array.from(document.querySelectorAll('.discourse-node-search-menu .h-64 > div > .border-b')).filter(proof.visible).map((el) => el.innerText.trim())[0] === 'Claim' && document.querySelector('textarea.rm-block-input') && document.querySelector('textarea.rm-block-input').value === '@@PK', { what: 'the menu opened from @@ with only the Claim results' })"
+      },
+      "decision": {
+        "status": "approved",
+        "by": "sid",
+        "at": "2026-10-05T07:11:42.020Z"
+      },
+      "surface": "s-node-search-trigger-setting",
+      "caption": "With the trigger set to @@, the menu still opens from it and Only is just as compact and works the same.",
+      "checks": "The menu opened from @@PK, Only was compact at the row's right edge, and clicking it left only the Claim results."
+    },
+    {
+      "id": "restore-default-trigger",
+      "title": "The default @ trigger is back after the custom trigger case",
+      "caption": "The trigger is set back to @ and the menu opens from it again.",
+      "steps": [
+        {
+          "do": {
+            "press": "Escape"
+          },
+          "why": "close any menu left open"
+        },
+        {
+          "do": {
+            "js": "proof.waitFor(() => !document.querySelector('.discourse-node-search-menu'), { what: 'the menu to close' })"
+          },
+          "why": "wait for the menu to close"
+        },
+        {
+          "use": "settings.open-home",
+          "why": "open Personal Settings, Home"
+        },
+        {
+          "do": {
+            "fill": {
+              "into": ".bp3-dialog:visible input[placeholder=\"Click to set trigger\"]",
+              "text": "@"
+            }
+          },
+          "why": "set the node search menu trigger back to @"
+        },
+        {
+          "do": {
+            "pause": 1
+          },
+          "why": "let the setting save"
+        },
+        {
+          "use": "dialog.close-all",
+          "why": "close the settings"
+        },
+        {
+          "do": {
+            "js": "proof.page.recreate('PK node search scratch', [''])"
+          },
+          "why": "start from an empty scratch page"
+        },
+        {
+          "use": "node-search-menu.open",
+          "with": {
+            "page": "PK node search scratch",
+            "query": "PK"
+          },
+          "why": "type @PK to open the menu with the default trigger"
+        }
+      ],
+      "expect": {
+        "js": "proof.waitFor(() => document.querySelector('.discourse-node-search-menu') && document.querySelector('textarea.rm-block-input') && document.querySelector('textarea.rm-block-input').value === '@PK', { what: 'the menu open from the default @ trigger' })"
+      },
+      "checks": "The menu opens from @PK, so the default trigger is back."
+    },
+    {
+      "id": "qa-only-works-in-a-reference-item-and",
+      "title": "Only works in a reference-item and sidebar block",
+      "steps": [
+        {
+          "do": {
+            "press": "Escape"
+          },
+          "why": "close any menu left open by the last case"
+        },
+        {
+          "do": {
+            "js": "proof.waitFor(() => !document.querySelector('.discourse-node-search-menu'), { what: 'the menu to close' })"
+          },
+          "why": "wait for the menu to close"
+        },
+        {
+          "do": {
+            "js": "proof.page.recreate('PK node search scratch', [''])"
+          },
+          "why": "start from an empty scratch page"
+        },
+        {
+          "use": "node-search-menu.open",
+          "with": {
+            "page": "PK node search scratch",
+            "query": "PK"
+          },
+          "why": "open the node summoning menu"
+        },
+        {
+          "do": {
+            "press": "Escape"
+          },
+          "why": "close the menu"
+        },
+        {
+          "do": {
+            "js": "proof.waitFor(() => !document.querySelector('.discourse-node-search-menu'), { what: 'the menu to close' })"
+          },
+          "why": "wait for the menu to close"
+        },
+        {
+          "do": {
+            "js": "window.roamAlphaAPI.ui.rightSidebar.addWindow({ window: { type: 'outline', 'block-uid': proof.page.uid('PK 2194 sidebar scratch') } })"
+          },
+          "why": "open the sidebar scratch page in the right sidebar"
+        },
+        {
+          "do": {
+            "wait_for": "#right-sidebar .rm-block__input"
+          },
+          "why": "wait for the sidebar block"
+        },
+        {
+          "do": {
+            "click": "#right-sidebar .rm-block__input >> nth=0"
+          },
+          "why": "start editing the sidebar block"
+        },
+        {
+          "do": {
+            "type": {
+              "into": "textarea.rm-block-input",
+              "text": "@PK",
+              "delay_ms": 90
+            }
+          },
+          "why": "type the trigger and PK"
+        },
+        {
+          "do": {
+            "wait_for": ".discourse-node-search-menu"
+          },
+          "why": "wait for the node summoning menu"
+        },
+        {
+          "do": {
+            "click": ".discourse-node-search-menu button[title=\"Filter by type\"]"
+          },
+          "why": "open the type filter"
+        },
+        {
+          "do": {
+            "wait_for": ".discourse-node-search-menu .max-h-48 .bp3-menu-item"
+          },
+          "why": "wait for the type rows"
+        },
+        {
+          "do": {
+            "hover": ".discourse-node-search-menu .max-h-48 .bp3-menu-item:has-text(\"Claim\")"
+          },
+          "why": "hover Claim"
+        },
+        {
+          "do": {
+            "pause": 1
+          },
+          "why": "hold on the row"
+        },
+        {
+          "do": {
+            "js": "(() => { const rows = Array.from(document.querySelectorAll('.discourse-node-search-menu .max-h-48 .bp3-menu-item')).filter(proof.visible); proof.assert(rows.length >= 4, 'Expected at least 4 type rows, found ' + rows.length + '.'); const r = rows.find((el) => el.innerText.includes('Claim')); proof.assert(r, 'No Claim row.'); const only = proof.byText('button', 'Only', r); proof.assert(only, 'The Claim row has no Only button.'); const box = proof.rect(only); const style = getComputedStyle(r); const edge = proof.rect(r).right - parseFloat(style.paddingRight) - parseFloat(style.borderRightWidth) - box.right; proof.assert(box.width < 100, 'The Only button is ' + Math.round(box.width) + 'px wide; it should fit its label.'); proof.assert(Math.abs(edge) <= 2, 'The Only button sits ' + Math.round(edge) + 'px inside the row content edge.'); })()"
+          },
+          "why": "in the sidebar, Only sizes to its label at the row's right edge"
+        },
+        {
+          "do": {
+            "click": ".discourse-node-search-menu .max-h-48 .bp3-menu-item:has-text(\"Claim\") button:has-text(\"Only\")"
+          },
+          "why": "click Only on Claim"
+        },
+        {
+          "do": {
+            "js": "proof.waitFor(() => !document.querySelector('.discourse-node-search-menu .max-h-48') && Array.from(document.querySelectorAll('.discourse-node-search-menu .h-64 > div > .border-b')).filter(proof.visible).map((el) => el.innerText.trim()).length === 1 && Array.from(document.querySelectorAll('.discourse-node-search-menu .h-64 > div > .border-b')).filter(proof.visible).map((el) => el.innerText.trim())[0] === 'Claim', { what: 'only the Claim results in the sidebar menu' })"
+          },
+          "why": "in the sidebar, only the Claim results are left"
+        },
+        {
+          "do": {
+            "press": "Escape"
+          },
+          "why": "close the menu"
+        },
+        {
+          "do": {
+            "js": "(async () => { await proof.waitFor(() => !document.querySelector('.discourse-node-search-menu'), { what: 'the menu to close' }); await proof.sidebar.clearRight(); })()"
+          },
+          "why": "close the sidebar window"
+        },
+        {
+          "use": "page.open",
+          "with": {
+            "title": "PK 2194 ref target"
+          },
+          "why": "open the page that the reference item links to"
+        },
+        {
+          "do": {
+            "wait_for": ".rm-reference-item .rm-block__input"
+          },
+          "why": "wait for the reference item"
+        },
+        {
+          "do": {
+            "click": ".rm-reference-item .rm-block__input >> nth=0"
+          },
+          "why": "start editing the block inside the reference item"
+        },
+        {
+          "do": {
+            "js": "(() => { const t = document.querySelector('textarea.rm-block-input'); proof.assert(t && t.closest('.rm-reference-item'), 'The edited block is not in a reference item.'); t.setSelectionRange(t.value.length, t.value.length); })()"
+          },
+          "why": "put the cursor at the end of the reference block"
+        },
+        {
+          "do": {
+            "type": {
+              "into": "textarea.rm-block-input",
+              "text": " @PK",
+              "delay_ms": 90
+            }
+          },
+          "why": "type the trigger and PK"
+        },
+        {
+          "do": {
+            "wait_for": ".discourse-node-search-menu"
+          },
+          "why": "wait for the node summoning menu"
+        },
+        {
+          "do": {
+            "click": ".discourse-node-search-menu button[title=\"Filter by type\"]"
+          },
+          "why": "open the type filter"
+        },
+        {
+          "do": {
+            "wait_for": ".discourse-node-search-menu .max-h-48 .bp3-menu-item"
+          },
+          "why": "wait for the type rows"
+        },
+        {
+          "do": {
+            "hover": ".discourse-node-search-menu .max-h-48 .bp3-menu-item:has-text(\"Claim\")"
+          },
+          "why": "hover Claim"
+        },
+        {
+          "do": {
+            "pause": 1
+          },
+          "why": "hold on the row"
+        },
+        {
+          "do": {
+            "js": "(() => { const rows = Array.from(document.querySelectorAll('.discourse-node-search-menu .max-h-48 .bp3-menu-item')).filter(proof.visible); proof.assert(rows.length >= 4, 'Expected at least 4 type rows, found ' + rows.length + '.'); const r = rows.find((el) => el.innerText.includes('Claim')); proof.assert(r, 'No Claim row.'); const only = proof.byText('button', 'Only', r); proof.assert(only, 'The Claim row has no Only button.'); const box = proof.rect(only); const style = getComputedStyle(r); const edge = proof.rect(r).right - parseFloat(style.paddingRight) - parseFloat(style.borderRightWidth) - box.right; proof.assert(box.width < 100, 'The Only button is ' + Math.round(box.width) + 'px wide; it should fit its label.'); proof.assert(Math.abs(edge) <= 2, 'The Only button sits ' + Math.round(edge) + 'px inside the row content edge.'); })()"
+          },
+          "why": "in the reference item, Only sizes to its label at the row's right edge"
+        },
+        {
+          "do": {
+            "click": ".discourse-node-search-menu .max-h-48 .bp3-menu-item:has-text(\"Claim\") button:has-text(\"Only\")"
+          },
+          "why": "click Only on Claim"
+        },
+        {
+          "do": {
+            "pause": 1
+          },
+          "why": "hold on the filtered results"
+        }
+      ],
+      "intent": "Trigger the menu in a block in the right sidebar, and in an edited block inside a reference item, then use Only.",
+      "expect": {
+        "js": "proof.waitFor(() => !document.querySelector('.discourse-node-search-menu .max-h-48') && Array.from(document.querySelectorAll('.discourse-node-search-menu .h-64 > div > .border-b')).filter(proof.visible).map((el) => el.innerText.trim()).length === 1 && Array.from(document.querySelectorAll('.discourse-node-search-menu .h-64 > div > .border-b')).filter(proof.visible).map((el) => el.innerText.trim())[0] === 'Claim' && document.querySelector('textarea.rm-block-input') && document.querySelector('textarea.rm-block-input').closest('.rm-reference-item'), { what: 'only the Claim results in the reference item menu' })"
+      },
+      "decision": {
+        "status": "approved",
+        "by": "sid",
+        "at": "2026-10-05T07:11:42.020Z"
+      },
+      "caption": "Only is compact and filters the same from a block in the right sidebar and from a block in a reference item.",
+      "checks": "In the sidebar and in the reference item, Only is compact at the row's right edge and leaves only the Claim results."
+    },
+    {
+      "id": "qa-only-button-looks-right-in-dark-theme",
+      "title": "Only button looks right in dark theme",
+      "steps": [
+        {
+          "do": {
+            "press": "Escape"
+          },
+          "why": "close any menu left open by the last case"
+        },
+        {
+          "do": {
+            "js": "proof.waitFor(() => !document.querySelector('.discourse-node-search-menu'), { what: 'the menu to close' })"
+          },
+          "why": "wait for the menu to close"
+        },
+        {
+          "do": {
+            "js": "proof.page.recreate('PK node search scratch', [''])"
+          },
+          "why": "start from an empty scratch page"
+        },
+        {
+          "use": "node-search-menu.open",
+          "with": {
+            "page": "PK node search scratch",
+            "query": "PK"
+          },
+          "why": "open the node summoning menu"
+        },
+        {
+          "do": {
+            "click": ".discourse-node-search-menu button[title=\"Filter by type\"]"
+          },
+          "why": "open the type filter"
+        },
+        {
+          "do": {
+            "wait_for": ".discourse-node-search-menu .max-h-48 .bp3-menu-item"
+          },
+          "why": "wait for the type rows"
+        },
+        {
+          "do": {
+            "hover": ".discourse-node-search-menu .max-h-48 .bp3-menu-item:has-text(\"Claim\")"
+          },
+          "why": "hover Claim in the light theme"
+        },
+        {
+          "do": {
+            "pause": 1
+          },
+          "why": "hold"
+        },
+        {
+          "do": {
+            "js": "window.__pk2194 = { light: getComputedStyle((() => { const r = Array.from(document.querySelectorAll('.discourse-node-search-menu .max-h-48 .bp3-menu-item')).find((el) => el.innerText.includes('Claim')); return proof.byText('button', 'Only', r); })()).color }"
+          },
+          "why": "note the Only button's text colour in the light theme"
+        },
+        {
+          "do": {
+            "js": "document.body.classList.add('bp3-dark')"
+          },
+          "why": "apply Blueprint's dark styling to the page (the bp3-dark class, as Roam dark themes do)"
+        },
+        {
+          "do": {
+            "pause": 2
+          },
+          "why": "hold on the hovered row in the dark styling"
+        },
+        {
+          "do": {
+            "js": "(() => { const b = (() => { const r = Array.from(document.querySelectorAll('.discourse-node-search-menu .max-h-48 .bp3-menu-item')).find((el) => el.innerText.includes('Claim')); return proof.byText('button', 'Only', r); })(); window.__pk2194.dark = getComputedStyle(b).color; })()"
+          },
+          "why": "note the Only button's text colour in the dark styling"
+        },
+        {
+          "do": {
+            "js": "(() => { const r = Array.from(document.querySelectorAll('.discourse-node-search-menu .max-h-48 .bp3-menu-item')).find((el) => el.innerText.includes('Claim')); return proof.byText('button', 'Only', r); })().focus()"
+          },
+          "why": "give the Only button keyboard focus, as Tab would"
+        },
+        {
+          "do": {
+            "pause": 2
+          },
+          "why": "hold on the focused button"
+        },
+        {
+          "do": {
+            "click": ".discourse-node-search-menu .max-h-48 .bp3-menu-item:has-text(\"Claim\") button:has-text(\"Only\")"
+          },
+          "why": "click Only on Claim"
+        },
+        {
+          "do": {
+            "pause": 2
+          },
+          "why": "hold on the filtered results"
+        },
+        {
+          "do": {
+            "js": "document.body.classList.remove('bp3-dark')"
+          },
+          "why": "remove the dark styling again"
+        }
+      ],
+      "intent": "Switch Roam to the dark theme, open the filter, and hover and click on an Only button, including keyboard focus via Tab if reachable.",
+      "expect": {
+        "js": "(() => { const s = window.__pk2194; proof.assert(s && s.light && s.dark, 'No colours were noted.'); proof.assert(s.light !== s.dark, 'The Only button kept the same text colour (' + s.light + ') in the dark styling.'); proof.assert(!document.body.classList.contains('bp3-dark'), 'The dark styling was left on.'); })()",
+        "text": "With Blueprint's dark styling applied, the Only button text is readable, its hover background is subtle, and there is no stray square, oversized corner or focus ring cut off by the row."
+      },
+      "decision": {
+        "status": "approved",
+        "by": "sid",
+        "at": "2026-10-05T07:11:42.020Z"
+      },
+      "surface": "s-roam-light-dark-theme-styling-of-the",
+      "caption": "With Blueprint's dark styling applied to the page, the way Roam dark themes do, the Only button has readable text, a subtle hover background and a focus ring that is not cut off.",
+      "checks": "The Only button's text colour differs between light and the dark styling, and the dark styling is removed afterwards."
+    }
+  ],
+  "title": "Node summoning menu \"Only\" button stretches across filter row",
+  "claim": "In the node summoning menu, the Only button on a node-type row stays small and at the right edge when you hover the row, as in the original design.",
+  "given": "A scratch page with the node summoning menu open and its type filter showing the node types. Sync and node sharing are off.",
+  "baseline": "dg-baseline@2",
+  "target": {
+    "slot": "3",
+    "pr": 1485,
+    "viewport": {
+      "width": 1280,
+      "height": 720
+    }
+  },
+  "prepare": [
+    {
+      "id": "long-type-name",
+      "why": "a node type with a very long name, for the long-name case",
+      "phase": "before-load",
+      "check": {
+        "js": "proof.nodeType.format(\"PK 2194 A deliberately long node type name that keeps going\") === 'LTN - {content}'"
+      },
+      "apply": {
+        "js": "proof.nodeType.ensure({ label: \"PK 2194 A deliberately long node type name that keeps going\", format: 'LTN - {content}', shortcut: 'Z' })"
       }
+    },
+    {
+      "id": "scratch-page",
+      "why": "an empty page to type the node search trigger on",
+      "phase": "in-session",
+      "apply": {
+        "js": "proof.page.recreate('PK node search scratch', [''])"
+      }
+    },
+    {
+      "id": "pk-2194-claims",
+      "why": "three more Claim pages, so a search for PK has several Claim results to move through",
+      "phase": "in-session",
+      "check": {
+        "js": "[\"[[CLM]] - PK 2194 alpha\",\"[[CLM]] - PK 2194 beta\",\"[[CLM]] - PK 2194 gamma\"].every((title) => proof.page.exists(title))"
+      },
+      "apply": {
+        "js": "(async () => { for (const title of [\"[[CLM]] - PK 2194 alpha\",\"[[CLM]] - PK 2194 beta\",\"[[CLM]] - PK 2194 gamma\"]) { await proof.page.ensure(title, ['Claim page for the ENG-2194 proof kit. Leave it in place.']); } })()"
+      }
+    },
+    {
+      "id": "pk-2194-pages",
+      "why": "a page to edit in the right sidebar, and a page whose linked reference is a block to edit as a reference item; rebuilt on every run",
+      "phase": "in-session",
+      "apply": {
+        "js": "(async () => { await proof.page.recreate('PK 2194 sidebar scratch', ['']); await proof.page.recreate('PK 2194 ref target', ['']); await proof.page.recreate('PK 2194 ref source', ['[[PK 2194 ref target]] is referenced here']); })()"
+      }
+    }
+  ],
+  "surface": [
+    {
+      "id": "s-node-search-menu-filter-list",
+      "area": "Node search menu filter list",
+      "why": "The Only button lost its flex, !h-full, items-center, justify-center, !rounded-none and px-3 classes, so its size, padding, corners and height now come from Blueprint's small minimal button defaults.",
+      "files": [
+        "apps/roam/src/components/DiscourseNodeSearchMenu.tsx"
+      ]
+    },
+    {
+      "id": "s-filter-row-hover-and-checkmark-toggle",
+      "area": "Filter row hover and checkmark toggle",
+      "why": "The row is a MenuItem with p-0 and the Only button sits inside it, so the button's new size changes the row height and the hover area, and clicking the row (not Only) must still toggle the type.",
+      "files": [
+        "apps/roam/src/components/DiscourseNodeSearchMenu.tsx"
+      ]
+    },
+    {
+      "id": "s-node-search-results-and-keyboard",
+      "area": "Node search results and keyboard selection",
+      "why": "Only calls handleSelectOnly and closes the filter panel, which changes which result groups render and the active index used by arrow keys and Enter.",
+      "files": [
+        "apps/roam/src/components/DiscourseNodeSearchMenu.tsx"
+      ]
+    },
+    {
+      "id": "s-filter-by-type-panel-header-and-select",
+      "area": "Filter by Type panel header and Select all",
+      "why": "It shares the filter panel with the Only buttons, and the Only/Select all state interplay (isAllSelected) decides the Select all button label and colour.",
+      "files": [
+        "apps/roam/src/components/DiscourseNodeSearchMenu.tsx"
+      ]
+    },
+    {
+      "id": "s-node-search-trigger-setting",
+      "area": "Node search trigger setting",
+      "why": "The menu is opened by the personal trigger configured in Personal settings, so the menu must still open from a custom trigger and render the filter the same way.",
+      "files": [
+        "apps/roam/src/components/DiscourseNodeSearchMenu.tsx"
+      ]
+    },
+    {
+      "id": "s-roam-light-dark-theme-styling-of-the",
+      "area": "Roam light/dark theme styling of the filter menu",
+      "why": "Removing the !rounded-none and !h-full overrides leaves Blueprint's hover, focus and corner styling in charge, which can look different in Roam's dark theme or on a long type name.",
+      "files": [
+        "apps/roam/src/components/DiscourseNodeSearchMenu.tsx"
+      ]
     }
   ]
 }

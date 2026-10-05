@@ -1,0 +1,581 @@
+{
+  "name": "eng-2143-obsidian",
+  "title": "Round-trip Roam and Obsidian source references (Obsidian)",
+  "target": {
+    "app": "obsidian",
+    "cdp": "http://127.0.0.1:9223",
+    "vault": "/path/to/vault",
+    "pr": 1412,
+    "viewport": {
+      "width": 1280,
+      "height": 720
+    }
+  },
+  "needs": [
+    "supabase",
+    "embed-stub"
+  ],
+  "claim": "In Obsidian, a Source relation survives the round trip: what Roam shares comes in as a relation to its Source, a missing or unavailable source warns without blocking and creates no placeholder, the earliest of several Source relations is pushed, and repeating the push or the fetch changes nothing.",
+  "given": "Sid-Obsidian-test runs the ENG-2143 build, signed in to the proof database with sync mode on, and has Evidence and Source types joined by a derived-from relation. The dev graph published a Source with an Evidence node that cites it, an Evidence node with no source, and an Evidence node citing a Source the group cannot see. The vault holds an Evidence note with two Source relations (the later one listed first), their two Source notes, and an Evidence note with no source. The Roam half is in the eng-2143 kit.",
+  "prepare": [
+    {
+      "id": "database-session",
+      "why": "the vault has a proof database session, so sync writes to the proof database",
+      "phase": "in-session",
+      "check": {
+        "js": "proof.obsidian.signedIn()"
+      },
+      "apply": {
+        "js": "proof.obsidian.signIn({ serviceKey: '{{env.SUPABASE_SERVICE_ROLE_KEY}}', publishableKey: '{{env.SUPABASE_PUBLISHABLE_KEY}}' })"
+      },
+      "settleMs": 1000
+    },
+    {
+      "id": "sync-mode-on",
+      "why": "sync mode is on, so Sync discourse nodes to Supabase and the import commands run",
+      "phase": "in-session",
+      "check": {
+        "js": "proof.obsidian.plugin().settings.syncModeEnabled === true"
+      },
+      "apply": {
+        "js": "(async () => { const plugin = proof.obsidian.plugin(); plugin.settings.syncModeEnabled = true; await plugin.saveSettings(); })()"
+      }
+    },
+    {
+      "id": "roam-published-evidence",
+      "why": "the dev graph published a Source, an Evidence node that cites it, an Evidence node with no source, a second Source, and an Evidence node that cites that one, to the eng-2329-demo group (this stands in for Roam's own push, which the Roam kit proves)",
+      "phase": "outside",
+      "apply": {
+        "publish": {
+          "space": 66566,
+          "author": 3,
+          "group": "eng-2329-demo",
+          "types": [
+            {
+              "id": "pk-2143-evidence",
+              "label": "Evidence",
+              "format": "[[EVD]] - {content}"
+            },
+            {
+              "id": "pk-2143-source",
+              "label": "Source",
+              "format": "@{content}"
+            }
+          ],
+          "nodes": [
+            {
+              "id": "pk-2143-r2o-src",
+              "type": "pk-2143-source",
+              "title": "PK 2143 Roam source",
+              "body": "A source Roam published.\n"
+            },
+            {
+              "id": "pk-2143-r2o-evd",
+              "type": "pk-2143-evidence",
+              "title": "PK 2143 Roam evidence with source",
+              "body": "Evidence that cites the published source.\n"
+            },
+            {
+              "id": "pk-2143-r2o-evd-bare",
+              "type": "pk-2143-evidence",
+              "title": "PK 2143 Roam evidence without source",
+              "body": "Evidence whose source slot is empty.\n"
+            },
+            {
+              "id": "pk-2143-r2o-hid-src",
+              "type": "pk-2143-source",
+              "title": "PK 2143 Roam hidden source",
+              "body": "A source Roam did not share with the group.\n"
+            },
+            {
+              "id": "pk-2143-r2o-evd-hid",
+              "type": "pk-2143-evidence",
+              "title": "PK 2143 Roam evidence with hidden source",
+              "body": "Evidence that cites a source the group cannot see.\n"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "roam-source-values",
+      "why": "the two published Evidence nodes carry the source value Roam's push writes (sourceDocument, pointing at their Source), and the second Source is not shared with the group, so it is unavailable to this vault",
+      "phase": "outside",
+      "apply": {
+        "sql": "UPDATE \"Concept\" SET reference_content = jsonb_build_object('sourceDocument', (SELECT id FROM \"Concept\" s WHERE s.space_id = 66566 AND s.source_local_id = 'pk-2143-r2o-src')) WHERE space_id = 66566 AND source_local_id = 'pk-2143-r2o-evd';\nUPDATE \"Concept\" SET reference_content = jsonb_build_object('sourceDocument', (SELECT id FROM \"Concept\" s WHERE s.space_id = 66566 AND s.source_local_id = 'pk-2143-r2o-hid-src')) WHERE space_id = 66566 AND source_local_id = 'pk-2143-r2o-evd-hid';\nDELETE FROM \"ResourceAccess\" WHERE space_id = 66566 AND source_local_id = 'pk-2143-r2o-hid-src';"
+      }
+    },
+    {
+      "id": "evidence-source-types",
+      "why": "the vault has an Evidence type, a Source type, and an accepted Evidence-to-Source relation (derived from), which is what a source relation needs",
+      "phase": "in-session",
+      "apply": {
+        "js": "(async () => { await proof.obsidian.closeModals(); const plugin = proof.obsidian.plugin(); const s = plugin.settings; const now = Date.now(); const ensure = (name, format, color) => { let t = s.nodeTypes.find((x) => x.name === name && !x.importedFromRid); if (!t) { t = { id: 'pk-2143-' + name.toLowerCase(), name, format, color, created: now, modified: now }; s.nodeTypes.push(t); } return t; }; const evd = ensure('Evidence', 'EVD - {content}', '#DB134A'); const src = ensure('Source', 'SRC - {content}', '#9E9E9E'); let rel = s.relationTypes.find((r) => r.label === 'derived from' && !r.importedFromRid); if (!rel) { rel = { id: 'pk-2143-derived-from', label: 'derived from', complement: 'has derivation', color: 'blue', created: now, modified: now }; s.relationTypes.push(rel); } if (!s.discourseRelations.some((r) => r.sourceId === evd.id && r.destinationId === src.id && r.relationshipTypeId === rel.id && !r.importedFromRid)) s.discourseRelations.push({ id: 'pk-2143-evd-src', sourceId: evd.id, destinationId: src.id, relationshipTypeId: rel.id, created: now, modified: now });  await plugin.saveSettings(); })()"
+      }
+    },
+    {
+      "id": "clean-earlier-run",
+      "why": "nothing from an earlier run is left: the imported notes, the relations that touch them or the PK 2143 vault notes, and the ghost Source",
+      "phase": "in-session",
+      "apply": {
+        "js": "(async () => { const readRelations = async () => { const f = proof.obsidian.file('relations.json'); return f ? JSON.parse(await window.app.vault.read(f)) : { version: 1, lastModified: 0, relations: {} }; }; const writeRelations = async (d) => { d.lastModified = Date.now(); await proof.obsidian.write('relations.json', JSON.stringify(d, null, 2)); };  await proof.obsidian.removeFiles(proof.obsidian.importedFiles([\"pk-2143-r2o-src\", \"pk-2143-r2o-evd\", \"pk-2143-r2o-evd-bare\", \"pk-2143-r2o-hid-src\", \"pk-2143-r2o-evd-hid\", \"pk-2143-ghost-src\"])); await proof.obsidian.removeFiles(window.app.vault.getMarkdownFiles().filter((f) => /^(EVD|SRC) - PK 2143 (Vault|Ghost)/.test(f.basename))); const data = await readRelations(); for (const [id, r] of Object.entries(data.relations)) if ([id, r.source, r.destination].some((e) => String(e).includes('pk-2143-'))) delete data.relations[id]; await writeRelations(data); proof.obsidian.clearNotices(); })()"
+      }
+    },
+    {
+      "id": "vault-notes",
+      "why": "the vault holds an Evidence note with two Source relations, its two Sources, and an Evidence note with no source",
+      "phase": "in-session",
+      "apply": {
+        "js": "(async () => { const plugin = proof.obsidian.plugin(); const s = plugin.settings; const now = Date.now(); const ensure = (name, format, color) => { let t = s.nodeTypes.find((x) => x.name === name && !x.importedFromRid); if (!t) { t = { id: 'pk-2143-' + name.toLowerCase(), name, format, color, created: now, modified: now }; s.nodeTypes.push(t); } return t; }; const evd = ensure('Evidence', 'EVD - {content}', '#DB134A'); const src = ensure('Source', 'SRC - {content}', '#9E9E9E'); let rel = s.relationTypes.find((r) => r.label === 'derived from' && !r.importedFromRid); if (!rel) { rel = { id: 'pk-2143-derived-from', label: 'derived from', complement: 'has derivation', color: 'blue', created: now, modified: now }; s.relationTypes.push(rel); } if (!s.discourseRelations.some((r) => r.sourceId === evd.id && r.destinationId === src.id && r.relationshipTypeId === rel.id && !r.importedFromRid)) s.discourseRelations.push({ id: 'pk-2143-evd-src', sourceId: evd.id, destinationId: src.id, relationshipTypeId: rel.id, created: now, modified: now });  const note = (type, id) => '---\\nnodeTypeId: ' + type.id + '\\nnodeInstanceId: ' + id + '\\n---\\nA PK 2143 note.\\n'; await proof.obsidian.write('EVD - PK 2143 Vault evidence.md', note(evd, 'pk-2143-vault-evd')); await proof.obsidian.write('SRC - PK 2143 Vault early source.md', note(src, 'pk-2143-vault-src-early')); await proof.obsidian.write('SRC - PK 2143 Vault late source.md', note(src, 'pk-2143-vault-src-late')); await proof.obsidian.write('EVD - PK 2143 Vault bare evidence.md', note(evd, 'pk-2143-vault-evd-bare')); })()"
+      }
+    },
+    {
+      "id": "vault-source-relations",
+      "why": "the Evidence note's relation to the late Source is stored first in relations.json but was created later than its relation to the early Source",
+      "phase": "in-session",
+      "apply": {
+        "js": "(async () => { const readRelations = async () => { const f = proof.obsidian.file('relations.json'); return f ? JSON.parse(await window.app.vault.read(f)) : { version: 1, lastModified: 0, relations: {} }; }; const writeRelations = async (d) => { d.lastModified = Date.now(); await proof.obsidian.write('relations.json', JSON.stringify(d, null, 2)); };  const rel = proof.obsidian.plugin().settings.relationTypes.find((r) => r.label === 'derived from' && !r.importedFromRid); const data = await readRelations(); data.relations['pk-2143-rel-late'] = { id: 'pk-2143-rel-late', type: rel.id, source: 'pk-2143-vault-evd', destination: 'pk-2143-vault-src-late', created: 1760000100000 }; data.relations['pk-2143-rel-early'] = { id: 'pk-2143-rel-early', type: rel.id, source: 'pk-2143-vault-evd', destination: 'pk-2143-vault-src-early', created: 1760000000000 }; await writeRelations(data); })()"
+      }
+    }
+  ],
+  "cases": [
+    {
+      "id": "pull-evidence-with-source",
+      "title": "Roam evidence imports with its source and one relation",
+      "proves": "Done When 1: A Roam referenced node survives push to the database source value and pull into an Obsidian relation.",
+      "caption": "Roam shared an Evidence node and the Source it cites. Import only the evidence: its Source comes with it, and the vault links them with one relation.",
+      "steps": [
+        {
+          "do": {
+            "js": "(async () => { await proof.obsidian.closeModals(); proof.obsidian.clearNotices(); })()"
+          },
+          "why": "start without a dialog or old notices"
+        },
+        {
+          "do": {
+            "command_palette": "Import nodes from another space"
+          },
+          "why": "open import the way a user would"
+        },
+        {
+          "do": {
+            "wait_for": ".modal h3:has-text(\"Select nodes to import\")"
+          },
+          "why": "wait for the shared nodes to load"
+        },
+        {
+          "do": {
+            "click": ".modal div.items-start:has-text(\"PK 2143 Roam evidence with source\") input[type=\"checkbox\"]"
+          },
+          "why": "select the shared node"
+        },
+        {
+          "do": {
+            "click": ".modal button:has-text(\"Next (1)\")"
+          },
+          "why": "go to the preview"
+        },
+        {
+          "do": {
+            "wait_for": ".modal button:has-text(\"Confirm Import\")"
+          },
+          "why": "wait for the preview"
+        },
+        {
+          "do": {
+            "click": ".modal button:has-text(\"Confirm Import\")"
+          },
+          "why": "import it"
+        },
+        {
+          "do": {
+            "js": "proof.waitFor(() => /Successfully imported|Import completed|Import failed/.test(proof.obsidian.notices()), { what: 'the import to finish', timeout: 60000 })"
+          },
+          "why": "wait for the import notice"
+        },
+        {
+          "do": {
+            "pause": 1.5
+          },
+          "why": "hold on the result"
+        }
+      ],
+      "checks": "The Evidence note and its Source note are both in the vault, and relations.json holds exactly one relation from the Evidence's origin to the Source's origin.",
+      "expect": {
+        "js": "(async () => { await proof.waitFor(() => proof.obsidian.importedFiles(['pk-2143-r2o-evd'])[0] && proof.obsidian.importedFiles(['pk-2143-r2o-src'])[0], { what: 'the imported Evidence note and its Source note', timeout: 30000 }); const found = await proof.waitFor(async () => { const relations = Object.values((await (async () => { const f = proof.obsidian.file('relations.json'); return f ? JSON.parse(await window.app.vault.read(f)) : { relations: {} }; })()).relations); const touching = (id) => relations.filter((r) => [r.source, r.destination].some((e) => e === 'https://roamresearch.com/#/app/discourse-dev-graph/' + id));  const hits = relations.filter((r) => r.source === 'https://roamresearch.com/#/app/discourse-dev-graph/pk-2143-r2o-evd' && r.destination === 'https://roamresearch.com/#/app/discourse-dev-graph/pk-2143-r2o-src'); return hits.length ? hits : null; }, { what: 'the Evidence-to-Source relation', timeout: 20000, interval: 500 }); proof.assert(found.length === 1, 'Expected one relation, found ' + found.length + '.'); })()"
+      }
+    },
+    {
+      "id": "pull-evidence-without-source",
+      "title": "Roam evidence without a source imports with no relation and no placeholder",
+      "proves": "Done When 3: A current node without a source completes both flows without a placeholder.",
+      "caption": "Evidence with no source imports quietly: no relation, no Source note, no placeholder, no warning.",
+      "steps": [
+        {
+          "do": {
+            "js": "(async () => { await proof.obsidian.closeModals(); proof.obsidian.clearNotices(); })()"
+          },
+          "why": "start without a dialog or old notices"
+        },
+        {
+          "do": {
+            "command_palette": "Import nodes from another space"
+          },
+          "why": "open import the way a user would"
+        },
+        {
+          "do": {
+            "wait_for": ".modal h3:has-text(\"Select nodes to import\")"
+          },
+          "why": "wait for the shared nodes to load"
+        },
+        {
+          "do": {
+            "click": ".modal div.items-start:has-text(\"PK 2143 Roam evidence without source\") input[type=\"checkbox\"]"
+          },
+          "why": "select the shared node"
+        },
+        {
+          "do": {
+            "click": ".modal button:has-text(\"Next (1)\")"
+          },
+          "why": "go to the preview"
+        },
+        {
+          "do": {
+            "wait_for": ".modal button:has-text(\"Confirm Import\")"
+          },
+          "why": "wait for the preview"
+        },
+        {
+          "do": {
+            "click": ".modal button:has-text(\"Confirm Import\")"
+          },
+          "why": "import it"
+        },
+        {
+          "do": {
+            "js": "proof.waitFor(() => /Successfully imported|Import completed|Import failed/.test(proof.obsidian.notices()), { what: 'the import to finish', timeout: 60000 })"
+          },
+          "why": "wait for the import notice"
+        },
+        {
+          "do": {
+            "pause": 1.5
+          },
+          "why": "hold on the result"
+        }
+      ],
+      "checks": "The Evidence note is imported, no relation touches it, no note carries a placeholder name, and no warning about a Source appeared.",
+      "expect": {
+        "js": "(async () => { await proof.waitFor(() => proof.obsidian.importedFiles(['pk-2143-r2o-evd-bare'])[0], { what: 'the imported Evidence note', timeout: 30000 }); const relations = Object.values((await (async () => { const f = proof.obsidian.file('relations.json'); return f ? JSON.parse(await window.app.vault.read(f)) : { relations: {} }; })()).relations); const touching = (id) => relations.filter((r) => [r.source, r.destination].some((e) => e === 'https://roamresearch.com/#/app/discourse-dev-graph/' + id));  proof.assert(touching('pk-2143-r2o-evd-bare').length === 0, 'A relation touches the evidence without a source.'); proof.assert(!window.app.vault.getMarkdownFiles().some((f) => /placeholder/i.test(f.basename)), 'A note carries a placeholder name.'); proof.assert(!/Source is unavailable/.test(proof.obsidian.notices()), 'A Source warning appeared: ' + proof.obsidian.notices()); })()"
+      }
+    },
+    {
+      "id": "pull-evidence-unavailable-source",
+      "title": "Roam evidence whose source is unavailable imports with a warning and no relation",
+      "proves": "Done When 5: A missing or unavailable Source node remains non-blocking, emits the expected warning, and creates no placeholder.",
+      "caption": "This evidence cites a Source the group cannot see. The vault imports it, warns that the Source is unavailable, and makes no relation and no placeholder.",
+      "steps": [
+        {
+          "do": {
+            "js": "(async () => { await proof.obsidian.closeModals(); proof.obsidian.clearNotices(); })()"
+          },
+          "why": "start without a dialog or old notices"
+        },
+        {
+          "do": {
+            "command_palette": "Import nodes from another space"
+          },
+          "why": "open import the way a user would"
+        },
+        {
+          "do": {
+            "wait_for": ".modal h3:has-text(\"Select nodes to import\")"
+          },
+          "why": "wait for the shared nodes to load"
+        },
+        {
+          "do": {
+            "click": ".modal div.items-start:has-text(\"PK 2143 Roam evidence with hidden source\") input[type=\"checkbox\"]"
+          },
+          "why": "select the shared node"
+        },
+        {
+          "do": {
+            "click": ".modal button:has-text(\"Next (1)\")"
+          },
+          "why": "go to the preview"
+        },
+        {
+          "do": {
+            "wait_for": ".modal button:has-text(\"Confirm Import\")"
+          },
+          "why": "wait for the preview"
+        },
+        {
+          "do": {
+            "click": ".modal button:has-text(\"Confirm Import\")"
+          },
+          "why": "import it"
+        },
+        {
+          "do": {
+            "js": "proof.waitFor(() => /its Source is unavailable\\. No source relation was created\\./.test(proof.obsidian.notices()), { what: 'the unavailable-source warning', timeout: 60000 })"
+          },
+          "why": "wait for the warning"
+        },
+        {
+          "do": {
+            "pause": 1.5
+          },
+          "why": "hold on the warning"
+        }
+      ],
+      "checks": "A notice says the Source is unavailable and no source relation was created, the Evidence note is imported, the hidden Source is not, and no relation or placeholder note exists.",
+      "expect": {
+        "js": "(async () => { proof.assert(/Imported .*PK 2143 Roam evidence with hidden source, but its Source is unavailable\\./.test(proof.obsidian.notices()), 'The warning does not name the note: ' + proof.obsidian.notices()); await proof.waitFor(() => proof.obsidian.importedFiles(['pk-2143-r2o-evd-hid'])[0], { what: 'the imported Evidence note', timeout: 30000 }); proof.assert(proof.obsidian.importedFiles(['pk-2143-r2o-hid-src']).length === 0, 'The hidden Source was imported.'); const relations = Object.values((await (async () => { const f = proof.obsidian.file('relations.json'); return f ? JSON.parse(await window.app.vault.read(f)) : { relations: {} }; })()).relations); const touching = (id) => relations.filter((r) => [r.source, r.destination].some((e) => e === 'https://roamresearch.com/#/app/discourse-dev-graph/' + id));  proof.assert(touching('pk-2143-r2o-evd-hid').length === 0, 'A relation was created for the unavailable source.'); proof.assert(!window.app.vault.getMarkdownFiles().some((f) => /placeholder/i.test(f.basename)), 'A note carries a placeholder name.'); })()"
+      }
+    },
+    {
+      "id": "repeat-pull-no-churn",
+      "title": "Fetching imported nodes twice changes no note, title or relation",
+      "proves": "Done When 7: Repeated push and pull operations create no duplicate nodes or relations and do not churn unchanged titles.",
+      "caption": "Fetch the latest content twice. The imported notes keep their names, none is duplicated, and the relation stays single.",
+      "steps": [
+        {
+          "do": {
+            "js": "(async () => { const relations = Object.values((await (async () => { const f = proof.obsidian.file('relations.json'); return f ? JSON.parse(await window.app.vault.read(f)) : { relations: {} }; })()).relations); const touching = (id) => relations.filter((r) => [r.source, r.destination].some((e) => e === 'https://roamresearch.com/#/app/discourse-dev-graph/' + id));  window.__pk2143Before = JSON.stringify([proof.obsidian.importedFiles([\"pk-2143-r2o-src\", \"pk-2143-r2o-evd\", \"pk-2143-r2o-evd-bare\", \"pk-2143-r2o-hid-src\", \"pk-2143-r2o-evd-hid\"]).map((f) => f.path).sort(), touching('pk-2143-r2o-evd').length]); })()"
+          },
+          "why": "note the imported notes and relations"
+        },
+        {
+          "do": {
+            "js": "proof.obsidian.clearNotices()"
+          },
+          "why": "clear old notices"
+        },
+        {
+          "do": {
+            "command_palette": "Fetch latest content from imported nodes"
+          },
+          "why": "refresh the imported nodes"
+        },
+        {
+          "do": {
+            "js": "proof.waitFor(() => /refreshed|No imported files|issues|Refresh failed/.test(proof.obsidian.notices()), { what: 'the refresh to finish', timeout: 60000 })"
+          },
+          "why": "wait for the refresh"
+        },
+        {
+          "do": {
+            "js": "proof.obsidian.clearNotices()"
+          },
+          "why": "clear the notice"
+        },
+        {
+          "do": {
+            "command_palette": "Fetch latest content from imported nodes"
+          },
+          "why": "refresh them again"
+        },
+        {
+          "do": {
+            "js": "proof.waitFor(() => /refreshed|No imported files|issues|Refresh failed/.test(proof.obsidian.notices()), { what: 'the second refresh to finish', timeout: 60000 })"
+          },
+          "why": "wait for the refresh"
+        },
+        {
+          "do": {
+            "pause": 1.5
+          },
+          "why": "hold on the result"
+        }
+      ],
+      "checks": "The imported notes' paths and the number of relations on the evidence are the same after two fetches.",
+      "expect": {
+        "js": "(async () => { const relations = Object.values((await (async () => { const f = proof.obsidian.file('relations.json'); return f ? JSON.parse(await window.app.vault.read(f)) : { relations: {} }; })()).relations); const touching = (id) => relations.filter((r) => [r.source, r.destination].some((e) => e === 'https://roamresearch.com/#/app/discourse-dev-graph/' + id));  const after = JSON.stringify([proof.obsidian.importedFiles([\"pk-2143-r2o-src\", \"pk-2143-r2o-evd\", \"pk-2143-r2o-evd-bare\", \"pk-2143-r2o-hid-src\", \"pk-2143-r2o-evd-hid\"]).map((f) => f.path).sort(), touching('pk-2143-r2o-evd').length]); proof.assert(after === window.__pk2143Before, 'The vault changed: ' + window.__pk2143Before + ' became ' + after); })()"
+      }
+    },
+    {
+      "id": "push-source-relation",
+      "title": "The Evidence note's source relation is pushed as its source value",
+      "proves": "Done When 2: An Obsidian source relation survives push to the database source value and pull into a Roam referenced node.",
+      "caption": "Sync the vault. The Evidence note, which has two Source relations, is stored with a source value pointing at one of its Sources.",
+      "steps": [
+        {
+          "do": {
+            "js": "(async () => { await proof.obsidian.closeModals(); proof.obsidian.clearNotices(); })()"
+          },
+          "why": "start without a dialog or old notices"
+        },
+        {
+          "do": {
+            "command_palette": "Sync discourse nodes to Supabase"
+          },
+          "why": "push the vault's nodes and relations"
+        },
+        {
+          "do": {
+            "js": "proof.waitFor(() => /synced successfully|Sync failed/.test(proof.obsidian.notices()), { what: 'the sync to finish', timeout: 120000, interval: 500 })"
+          },
+          "why": "wait for the sync"
+        },
+        {
+          "do": {
+            "pause": 1.5
+          },
+          "why": "hold on the result"
+        }
+      ],
+      "checks": "After Sync discourse nodes to Supabase, the Evidence concept's sourceDocument is the concept of one of the vault's Source notes.",
+      "expect": {
+        "js": "(async () => { proof.assert(!/Sync failed/.test(proof.obsidian.notices()), 'Sync failed: ' + proof.obsidian.notices()); const key = '{{env.SUPABASE_SERVICE_ROLE_KEY}}'; const get = (id) => proof.waitFor(async () => (await proof.rest('/rest/v1/Concept?select=id,reference_content&is_schema=eq.false&space_id=eq.106039&source_local_id=eq.' + id, { key }))[0], { what: 'the synced concept ' + id, timeout: 30000, interval: 1000 });  const early = await get('pk-2143-vault-src-early'); const late = await get('pk-2143-vault-src-late'); const evd = await get('pk-2143-vault-evd'); const value = evd.reference_content && evd.reference_content.sourceDocument; proof.assert([early.id, late.id].includes(value), 'The sourceDocument is ' + JSON.stringify(evd.reference_content) + ', not one of the vault Sources.'); })()"
+      }
+    },
+    {
+      "id": "earliest-relation-wins",
+      "title": "With two Source relations, the earliest by created date is the source value",
+      "proves": "Done When 4: Multiple Obsidian source relations select the earliest by created date ascending.",
+      "caption": "The late relation is stored first, but the early relation was created first. The stored source value is the early Source.",
+      "steps": [
+        {
+          "do": {
+            "pause": 1.5
+          },
+          "why": "look at the vault's relations"
+        }
+      ],
+      "checks": "The Evidence concept's sourceDocument is the early Source, not the late one, although relations.json lists the late relation first.",
+      "expect": {
+        "js": "(async () => { const key = '{{env.SUPABASE_SERVICE_ROLE_KEY}}'; const get = (id) => proof.waitFor(async () => (await proof.rest('/rest/v1/Concept?select=id,reference_content&is_schema=eq.false&space_id=eq.106039&source_local_id=eq.' + id, { key }))[0], { what: 'the synced concept ' + id, timeout: 30000, interval: 1000 });  const early = await get('pk-2143-vault-src-early'); const late = await get('pk-2143-vault-src-late'); const evd = await get('pk-2143-vault-evd'); const data = JSON.parse(await window.app.vault.read(proof.obsidian.file('relations.json'))); const ids = Object.keys(data.relations).filter((id) => id.startsWith('pk-2143-rel-')); proof.assert(ids[0] === 'pk-2143-rel-late', 'The late relation is not listed first: ' + ids.join(', ')); proof.assert(evd.reference_content.sourceDocument === early.id, 'The sourceDocument is concept ' + evd.reference_content.sourceDocument + ', not the early Source ' + early.id + ' (the late one is ' + late.id + ').'); })()"
+      }
+    },
+    {
+      "id": "push-evidence-without-source",
+      "title": "An Evidence note with no source relation is pushed with no source value and no placeholder",
+      "proves": "Done When 3: A current node without a source completes both flows without a placeholder.",
+      "caption": "The Evidence note without a source relation syncs with no source value, and no placeholder node is created.",
+      "steps": [
+        {
+          "do": {
+            "js": "(async () => { await proof.obsidian.closeModals(); proof.obsidian.clearNotices(); })()"
+          },
+          "why": "start without a dialog or old notices"
+        },
+        {
+          "do": {
+            "command_palette": "Sync discourse nodes to Supabase"
+          },
+          "why": "push the vault's nodes and relations"
+        },
+        {
+          "do": {
+            "js": "proof.waitFor(() => /synced successfully|Sync failed/.test(proof.obsidian.notices()), { what: 'the sync to finish', timeout: 120000, interval: 500 })"
+          },
+          "why": "wait for the sync"
+        },
+        {
+          "do": {
+            "pause": 1.5
+          },
+          "why": "hold on the result"
+        }
+      ],
+      "checks": "The bare Evidence concept exists with no sourceDocument, and no concept in the vault's space has a placeholder name.",
+      "expect": {
+        "js": "(async () => { proof.assert(!/Sync failed/.test(proof.obsidian.notices()), 'Sync failed: ' + proof.obsidian.notices()); const key = '{{env.SUPABASE_SERVICE_ROLE_KEY}}'; const get = (id) => proof.waitFor(async () => (await proof.rest('/rest/v1/Concept?select=id,reference_content&is_schema=eq.false&space_id=eq.106039&source_local_id=eq.' + id, { key }))[0], { what: 'the synced concept ' + id, timeout: 30000, interval: 1000 });  const bare = await get('pk-2143-vault-evd-bare'); proof.assert(!bare.reference_content || bare.reference_content.sourceDocument === undefined, 'A source value was stored: ' + JSON.stringify(bare.reference_content) + '.'); const named = await proof.rest('/rest/v1/Concept?select=id,name&space_id=eq.106039&name=ilike.' + encodeURIComponent('*placeholder*'), { key }); proof.assert(named.length === 0, 'A placeholder concept exists: ' + JSON.stringify(named)); })()"
+      }
+    },
+    {
+      "id": "repeat-push-no-duplicates",
+      "title": "Syncing again keeps the same concepts, source value and titles",
+      "proves": "Done When 7: Repeated push and pull operations create no duplicate nodes or relations and do not churn unchanged titles.",
+      "caption": "Sync a second time. The vault's concepts, their source values and their titles are exactly as before.",
+      "steps": [
+        {
+          "do": {
+            "js": "(async () => { const key = '{{env.SUPABASE_SERVICE_ROLE_KEY}}'; const read = async () => JSON.stringify([await proof.rest('/rest/v1/Concept?select=id,source_local_id,reference_content&space_id=eq.106039&source_local_id=in.(pk-2143-vault-evd,pk-2143-vault-src-early,pk-2143-vault-src-late,pk-2143-vault-evd-bare)&order=source_local_id', { key }), await proof.rest('/rest/v1/Content?select=source_local_id,text&space_id=eq.106039&variant=eq.direct&source_local_id=in.(pk-2143-vault-evd,pk-2143-vault-src-early,pk-2143-vault-src-late,pk-2143-vault-evd-bare)&order=source_local_id', { key })]); window.__pk2143Read = read; window.__pk2143Before = await read(); })()"
+          },
+          "why": "note the concepts, source values and titles in the database"
+        },
+        {
+          "do": {
+            "js": "(async () => { await proof.obsidian.closeModals(); proof.obsidian.clearNotices(); })()"
+          },
+          "why": "start without a dialog or old notices"
+        },
+        {
+          "do": {
+            "command_palette": "Sync discourse nodes to Supabase"
+          },
+          "why": "push the vault's nodes and relations"
+        },
+        {
+          "do": {
+            "js": "proof.waitFor(() => /synced successfully|Sync failed/.test(proof.obsidian.notices()), { what: 'the sync to finish', timeout: 120000, interval: 500 })"
+          },
+          "why": "wait for the sync"
+        },
+        {
+          "do": {
+            "pause": 1.5
+          },
+          "why": "hold on the result"
+        }
+      ],
+      "checks": "The database rows for the PK 2143 vault notes (concepts, source values, direct titles) are identical before and after the second sync.",
+      "expect": {
+        "js": "(async () => { proof.assert(!/Sync failed/.test(proof.obsidian.notices()), 'Sync failed: ' + proof.obsidian.notices()); const after = await window.__pk2143Read(); proof.assert(JSON.parse(after)[0].length === 4, 'Expected four concepts, found ' + JSON.parse(after)[0].length + '.'); proof.assert(after === window.__pk2143Before, 'The database changed: ' + window.__pk2143Before + ' became ' + after); })()"
+      }
+    },
+    {
+      "id": "push-unavailable-source",
+      "title": "A source that cannot be resolved does not block the sync and is not replaced by a later one",
+      "proves": "Done When 5: A missing or unavailable Source node remains non-blocking, emits the expected warning, and creates no placeholder.",
+      "caption": "An Evidence note's earliest Source is an imported note whose origin is gone; a later Source is available. The sync still completes, and the evidence is stored with no source value.",
+      "steps": [
+        {
+          "do": {
+            "js": "(async () => { const plugin = proof.obsidian.plugin(); const s = plugin.settings; const now = Date.now(); const ensure = (name, format, color) => { let t = s.nodeTypes.find((x) => x.name === name && !x.importedFromRid); if (!t) { t = { id: 'pk-2143-' + name.toLowerCase(), name, format, color, created: now, modified: now }; s.nodeTypes.push(t); } return t; }; const evd = ensure('Evidence', 'EVD - {content}', '#DB134A'); const src = ensure('Source', 'SRC - {content}', '#9E9E9E'); let rel = s.relationTypes.find((r) => r.label === 'derived from' && !r.importedFromRid); if (!rel) { rel = { id: 'pk-2143-derived-from', label: 'derived from', complement: 'has derivation', color: 'blue', created: now, modified: now }; s.relationTypes.push(rel); } if (!s.discourseRelations.some((r) => r.sourceId === evd.id && r.destinationId === src.id && r.relationshipTypeId === rel.id && !r.importedFromRid)) s.discourseRelations.push({ id: 'pk-2143-evd-src', sourceId: evd.id, destinationId: src.id, relationshipTypeId: rel.id, created: now, modified: now });  const readRelations = async () => { const f = proof.obsidian.file('relations.json'); return f ? JSON.parse(await window.app.vault.read(f)) : { version: 1, lastModified: 0, relations: {} }; }; const writeRelations = async (d) => { d.lastModified = Date.now(); await proof.obsidian.write('relations.json', JSON.stringify(d, null, 2)); };  await proof.obsidian.write('SRC - PK 2143 Ghost source.md', '---\\nnodeTypeId: ' + src.id + '\\nnodeInstanceId: pk-2143-ghost-src\\nimportedFromRid: https://roamresearch.com/#/app/discourse-dev-graph/pk-2143-ghost-src\\n---\\nA Source whose origin is gone.\\n'); await proof.obsidian.write('EVD - PK 2143 Vault ghost evidence.md', '---\\nnodeTypeId: ' + evd.id + '\\nnodeInstanceId: pk-2143-vault-evd-ghost\\n---\\nCites a Source that cannot be resolved.\\n'); const data = await readRelations(); data.relations['pk-2143-rel-ghost-late'] = { id: 'pk-2143-rel-ghost-late', type: rel.id, source: 'pk-2143-vault-evd-ghost', destination: 'pk-2143-vault-src-late', created: 1760000300000 }; data.relations['pk-2143-rel-ghost-early'] = { id: 'pk-2143-rel-ghost-early', type: rel.id, source: 'pk-2143-vault-evd-ghost', destination: 'https://roamresearch.com/#/app/discourse-dev-graph/pk-2143-ghost-src', created: 1760000200000 }; await writeRelations(data); })()"
+          },
+          "why": "add an Evidence note whose earliest Source is an imported note with no origin, and whose later Source is available"
+        },
+        {
+          "do": {
+            "js": "(async () => { await proof.obsidian.closeModals(); proof.obsidian.clearNotices(); })()"
+          },
+          "why": "start without a dialog or old notices"
+        },
+        {
+          "do": {
+            "command_palette": "Sync discourse nodes to Supabase"
+          },
+          "why": "push the vault's nodes and relations"
+        },
+        {
+          "do": {
+            "js": "proof.waitFor(() => /synced successfully|Sync failed/.test(proof.obsidian.notices()), { what: 'the sync to finish', timeout: 120000, interval: 500 })"
+          },
+          "why": "wait for the sync"
+        },
+        {
+          "do": {
+            "pause": 1.5
+          },
+          "why": "hold on the result"
+        },
+        {
+          "do": {
+            "js": "(async () => { await proof.obsidian.removeFiles(window.app.vault.getMarkdownFiles().filter((f) => /^(EVD|SRC) - PK 2143 (Vault ghost|Ghost)/.test(f.basename))); const f = proof.obsidian.file('relations.json'); const data = JSON.parse(await window.app.vault.read(f)); for (const id of Object.keys(data.relations)) if (id.startsWith('pk-2143-rel-ghost')) delete data.relations[id]; await proof.obsidian.write('relations.json', JSON.stringify(data, null, 2)); })()"
+          },
+          "why": "take the ghost notes out of the vault again"
+        }
+      ],
+      "checks": "The sync reports success, the ghost evidence concept exists, and it has no sourceDocument: the later, available Source was not used instead.",
+      "expect": {
+        "js": "(async () => { proof.assert(!/Sync failed/.test(proof.obsidian.notices()), 'Sync failed: ' + proof.obsidian.notices()); const key = '{{env.SUPABASE_SERVICE_ROLE_KEY}}'; const get = (id) => proof.waitFor(async () => (await proof.rest('/rest/v1/Concept?select=id,reference_content&is_schema=eq.false&space_id=eq.106039&source_local_id=eq.' + id, { key }))[0], { what: 'the synced concept ' + id, timeout: 30000, interval: 1000 });  const late = await get('pk-2143-vault-src-late'); const ghost = await get('pk-2143-vault-evd-ghost'); proof.assert(!ghost.reference_content || ghost.reference_content.sourceDocument === undefined, 'The sourceDocument is ' + JSON.stringify(ghost.reference_content) + ' (the later Source is ' + late.id + ').'); })()"
+      }
+    }
+  ]
+}

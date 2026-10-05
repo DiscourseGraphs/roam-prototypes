@@ -19,8 +19,10 @@ export type BlockRenderer = {
   unmount(el: HTMLElement): void;
 };
 
+// Rendered open whatever the page says, so the case running now shows its
+// steps even when its block is collapsed on the page.
 const roamBlocks: BlockRenderer = {
-  render: (uid, el) => roam().ui.components.renderBlock({ uid, el }),
+  render: (uid, el) => roam().ui.components.renderBlock({ uid, el, "open?": true }),
   unmount: (el) => roam().ui.components.unmountNode({ el }),
 };
 
@@ -49,6 +51,7 @@ export type PanelAction =
   | { kind: CheckAction }
   | { kind: "resume" }
   | { kind: "reset" }
+  | { kind: "restart" }
   | { kind: "done-by-hand" }
   | { kind: "command"; cmd: string; args?: Record<string, unknown> };
 
@@ -87,6 +90,8 @@ const CSS = `
   .check.blocked .mark { color: #b3261e; }
   .ready { font-size: 12px; color: #15805a; }
   .ready span { margin-right: 10px; white-space: nowrap; }
+  .now { font-size: 12.5px; background: #eef3fc; border-radius: 6px; padding: 5px 7px; }
+  .now:empty { display: none; }
   .claim { font-weight: 600; }
   .claim:empty, .given:empty, .where:empty { display: none; }
   .given, .muted { color: #5d6778; font-size: 12px; }
@@ -150,6 +155,63 @@ const BLOCKS_CSS = `
 // panel. Keys go on: Roam's shortcuts work while editing a step.
 const BLOCK_MOUSE_EVENTS = ["mousedown", "mouseup", "click", "pointerdown"];
 
+// The floating bar: the panel's status and controls, over everything, for
+// when the panel itself is under a dialog or scrolled out of view.
+const BAR_CSS = `
+  .panel.bar { max-width: none; margin: 0; box-shadow: 0 6px 24px rgba(20, 30, 50, .22); }
+`;
+
+const BADGES: Record<string, string> = {
+  idle: "ready",
+  starting: "starting",
+  running: "running",
+  dwell: "running",
+  paused: "paused",
+  "waiting-next": "step mode",
+  "waiting-steps": "your turn",
+  "waiting-approval": "allow?",
+  "waiting-verdict": "your call",
+  "step-failed": "step failed",
+  done: "done",
+  stopped: "stopped",
+  error: "error",
+};
+
+// What the run is doing, in one sentence, and what it waits on you for.
+export const nowLine = (state: MachineState | null): string => {
+  if (!state) return "";
+  const where =
+    state.caseIndex >= 0 && state.caseIndex < state.caseCount && state.caseTitle
+      ? `case ${state.caseIndex + 1}/${state.caseCount}, "${state.caseTitle}"`
+      : "setup";
+  const step = state.stepWhy ? `"${state.stepWhy}"` : "the next step";
+  switch (state.phase) {
+    case "starting":
+      return "Starting the run.";
+    case "running":
+    case "dwell":
+      return state.caseIndex < 0
+        ? `Setting up: ${state.stepWhy ?? "preparing the data and settings the cases need"}.`
+        : `Running ${where}, step ${state.stepIndex + 1}/${state.stepCount}: ${step}.`;
+    case "paused":
+      return `Paused in ${where}, before ${step}. Press Resume to play on, or Next for one step.`;
+    case "waiting-next":
+      return `Step mode stops before every step. Press Next to run ${step} in ${where}, or switch Mode to auto to play on.`;
+    case "waiting-steps":
+      return `Your turn: ${where} is done by hand. Do what it says, then press Done.`;
+    case "waiting-approval":
+      return `A step in ${where} wants to run js it didn't come with. Allow or Deny it below.`;
+    case "waiting-verdict":
+      return `Your call on ${where}: look at the page, then press ✓ Pass or ✗ Fail.`;
+    case "step-failed":
+      return `Step ${state.stepIndex + 1} of ${where} failed. Retry it, skip it, or skip the case below.`;
+    case "done":
+      return "Every case ran. Run again to start over.";
+    case "stopped":
+      return "Stopped. Run again to start over.";
+  }
+};
+
 const ICONS: Record<string, string> = { pass: "✓", fail: "✗", skip: "⏭" };
 const MARKS: Record<CheckItem["state"], string> = { ok: "✓", working: "…", waiting: "○", "needs-you": "▶", blocked: "✗", optional: "○" };
 const MODES = ["auto", "step", "case"];
@@ -187,6 +249,7 @@ type Parts = {
   root: ShadowRoot;
   badge: HTMLElement;
   title: HTMLElement;
+  now: HTMLElement;
   checks: HTMLElement;
   claim: HTMLElement;
   given: HTMLElement;
@@ -208,12 +271,28 @@ type Parts = {
 
 type CaseMount = { wrapper: HTMLElement; icon: HTMLElement; note: HTMLElement; block: HTMLElement; uid: string | null };
 
+type Bar = {
+  host: HTMLElement;
+  panel: HTMLElement;
+  badge: HTMLElement;
+  title: HTMLElement;
+  now: HTMLElement;
+  pending: HTMLElement;
+  controls: HTMLElement;
+  err: HTMLElement;
+};
+
+// Stop and Restart end the run going now, so each takes a second press.
+type Armed = "stop" | "restart";
+
 export class ProofPanel {
   private view: PanelView | null = null;
   private readonly mounts = new Map<HTMLElement, Parts>();
   private flash = "";
   private flashTimer = 0;
-  private stopArmed = 0;
+  private readonly armed: Record<Armed, number> = { stop: 0, restart: 0 };
+  private bar: Bar | null = null;
+  private barTimer = 0;
 
   constructor(
     private readonly onAction: (action: PanelAction) => Promise<string | null> | string | null,
@@ -238,6 +317,7 @@ export class ProofPanel {
       root,
       badge,
       title,
+      now: el("div", "", "now"),
       checks: el("div", undefined, "checks"),
       claim: el("div", "", "claim"),
       given: el("div", "", "given"),
@@ -265,7 +345,7 @@ export class ProofPanel {
     parts.blocks.slot = "blocks";
     parts.blocks.append(sheet);
     host.append(parts.blocks);
-    panel.append(head, parts.checks, parts.claim, parts.given, parts.where, parts.notices, parts.plan, parts.pending, parts.feed, parts.controls, parts.err);
+    panel.append(head, parts.now, parts.checks, parts.claim, parts.given, parts.where, parts.notices, parts.plan, parts.pending, parts.feed, parts.controls, parts.err);
     root.append(style, panel);
     // Roam handles mouse and key events on blocks; keep ours to ourselves so a
     // click on Run doesn't also open the block for editing. The case blocks'
@@ -295,10 +375,11 @@ export class ProofPanel {
     }
   }
 
-  // Takes down every block Roam rendered for this panel.
+  // Takes down every block Roam rendered for this panel, and the bar.
   dispose(): void {
     for (const parts of this.mounts.values()) this.unmountCases(parts);
     this.mounts.clear();
+    this.dropBar();
   }
 
   get attached(): number {
@@ -310,6 +391,7 @@ export class ProofPanel {
     this.view = view;
     this.detachGone();
     for (const parts of this.mounts.values()) this.paint(parts);
+    this.placeBar(true);
   }
 
   private async press(target: HTMLButtonElement): Promise<void> {
@@ -330,12 +412,12 @@ export class ProofPanel {
     } else if (action === "mode") {
       const current = state ? state.mode : "auto";
       request = { kind: "command", cmd: "mode", args: { mode: MODES[(MODES.indexOf(current) + 1) % MODES.length] } };
-    } else if (action === "stop") {
-      if (Date.now() < this.stopArmed) {
-        this.stopArmed = 0;
-        request = { kind: "command", cmd: "stop" };
+    } else if (action === "stop" || action === "restart") {
+      if (Date.now() < this.armed[action]) {
+        this.armed[action] = 0;
+        request = action === "stop" ? { kind: "command", cmd: "stop" } : { kind: "restart" };
       } else {
-        this.stopArmed = Date.now() + 3000;
+        this.armed[action] = Date.now() + 3000;
         this.repaint();
         setTimeout(() => this.repaint(), 3100);
         return;
@@ -360,6 +442,7 @@ export class ProofPanel {
 
   private repaint(): void {
     for (const parts of this.mounts.values()) this.paint(parts);
+    this.placeBar(true);
   }
 
   private paint(parts: Parts): void {
@@ -368,8 +451,9 @@ export class ProofPanel {
     const state = view.machine;
     const phase = view.error ? "error" : state ? state.phase : "idle";
     parts.badge.className = `badge ${phase}`;
-    parts.badge.textContent = phase.replace("-", " ");
+    parts.badge.textContent = BADGES[phase] ?? phase;
     parts.title.textContent = view.title;
+    parts.now.textContent = nowLine(state);
     this.paintChecklist(parts, view);
     parts.claim.textContent = state?.claim ? `Proving: ${state.claim}` : "";
     parts.given.textContent = state?.given ? `Given: ${state.given}` : "";
@@ -382,10 +466,112 @@ export class ProofPanel {
           : `Case ${state.caseIndex + 1}/${state.caseCount} · step ${state.stepIndex + 1}/${state.stepCount}`;
     parts.notices.replaceChildren(...view.warnings.map((text) => el("div", text, "warn")));
     this.paintPlan(parts, view);
-    this.paintPending(parts, view);
+    this.paintPending(parts.pending, view);
     this.paintFeed(parts, state);
-    this.paintControls(parts, view);
+    this.paintControls(parts.controls, view);
     parts.err.textContent = [view.error, this.flash].filter(Boolean).join("\n");
+  }
+
+  // While a run is live, the bar shows whenever no panel's controls can be
+  // seen: under a dialog, scrolled out of the sidebar, or with the sidebar
+  // closed. Nothing tells a page that a dialog now covers part of it, so a
+  // timer looks every 400 ms; it runs only while the run does.
+  private placeBar(paint: boolean): void {
+    const state = this.view?.machine;
+    if (!state || state.phase === "done" || state.phase === "stopped") {
+      this.dropBar();
+      return;
+    }
+    if (!this.barTimer) this.barTimer = window.setInterval(() => this.placeBar(false), 400);
+    if (this.panelInView()) {
+      if (this.bar) this.bar.host.hidden = true;
+      return;
+    }
+    const shown = this.bar && !this.bar.host.hidden;
+    this.bar ??= this.makeBar();
+    this.bar.host.hidden = false;
+    if (paint || !shown) this.paintBar(this.bar);
+  }
+
+  // Whether a person can see a panel's controls now: laid out, inside the
+  // window, and the top thing at that spot, not counting the bar.
+  private panelInView(): boolean {
+    for (const parts of this.mounts.values()) {
+      const host = parts.root.host;
+      if (!host.isConnected) continue;
+      const box = parts.controls.getBoundingClientRect();
+      if (box.width === 0 || box.height === 0) continue;
+      const x = box.left + box.width / 2;
+      const y = box.top + box.height / 2;
+      if (x < 0 || y < 0 || x > window.innerWidth || y > window.innerHeight) continue;
+      const top = document.elementsFromPoint(x, y).find((node) => node !== this.bar?.host);
+      if (top && (top === host || host.contains(top))) return true;
+    }
+    return false;
+  }
+
+  private makeBar(): Bar {
+    const host = document.createElement("div");
+    host.className = "proof-runner-bar";
+    host.style.cssText = "position: fixed; right: 12px; bottom: 12px; z-index: 2147483000; width: min(440px, calc(100vw - 24px));";
+    const root = host.attachShadow({ mode: "open" });
+    const style = document.createElement("style");
+    style.textContent = CSS + BAR_CSS;
+    const panel = el("div", undefined, "panel bar");
+    const head = el("div", undefined, "row");
+    const bar: Bar = {
+      host,
+      panel,
+      badge: el("span", "", "badge"),
+      title: el("span", "", "title"),
+      now: el("div", "", "now"),
+      pending: el("div", undefined, "pending"),
+      controls: el("div", undefined, "row controls"),
+      err: el("div", "", "err"),
+    };
+    head.append(bar.badge, bar.title, button("⇆", "bar-side", { title: "Move the bar to the other side" }));
+    panel.append(head, bar.now, bar.pending, bar.controls, bar.err);
+    root.append(style, panel);
+    for (const type of ["mousedown", "mouseup", "click", "keydown", "keyup", "keypress", "pointerdown"]) {
+      panel.addEventListener(type, (event) => event.stopPropagation());
+    }
+    panel.addEventListener("click", (event) => {
+      const target = (event.target as Element | null)?.closest?.("button") as HTMLButtonElement | null;
+      if (!target) return;
+      if (target.dataset.action === "bar-side") {
+        const left = host.style.left === "12px";
+        host.style.left = left ? "" : "12px";
+        host.style.right = left ? "12px" : "";
+        return;
+      }
+      void this.press(target);
+    });
+    document.body.append(host);
+    return bar;
+  }
+
+  private paintBar(bar: Bar): void {
+    const view = this.view;
+    if (!view) return;
+    const state = view.machine;
+    const phase = view.error ? "error" : state ? state.phase : "idle";
+    bar.badge.className = `badge ${phase}`;
+    bar.badge.textContent = BADGES[phase] ?? phase;
+    bar.title.textContent = view.title;
+    bar.now.textContent = nowLine(state);
+    this.paintPending(bar.pending, view);
+    this.paintControls(bar.controls, view);
+    bar.err.textContent = [view.error, this.flash].filter(Boolean).join("\n");
+    // Like the live HUD: while a step runs, clicks go through to the page,
+    // so the bar never covers what a step clicks.
+    bar.panel.style.pointerEvents = state?.executing ? "none" : "";
+  }
+
+  private dropBar(): void {
+    clearInterval(this.barTimer);
+    this.barTimer = 0;
+    this.bar?.host.remove();
+    this.bar = null;
   }
 
   // Every case of the run as its own block, with its verdict beside it; the
@@ -519,8 +705,7 @@ export class ProofPanel {
     }
   }
 
-  private paintPending(parts: Parts, view: PanelView): void {
-    const box = parts.pending;
+  private paintPending(box: HTMLElement, view: PanelView): void {
     box.replaceChildren();
     const state = view.machine;
     if (!state) {
@@ -572,8 +757,7 @@ export class ProofPanel {
     }
   }
 
-  private paintControls(parts: Parts, view: PanelView): void {
-    const box = parts.controls;
+  private paintControls(box: HTMLElement, view: PanelView): void {
     box.replaceChildren();
     const state = view.machine;
     const live = state && state.phase !== "done" && state.phase !== "stopped";
@@ -595,10 +779,11 @@ export class ProofPanel {
       button("−", "slower", { title: "Slower" }),
       el("span", `${state.speed}×`, "speed"),
       button("+", "faster", { title: "Faster" }),
-      button(state.mode, "mode", { title: "auto runs on; step stops before each step; case stops between cases" }),
+      button(`Mode: ${state.mode}`, "mode", { title: "auto plays on; step stops before every step; case stops between cases. Press to switch." }),
       button("✓ Pass", "verdict", { className: `go${verdictHot ? " hot" : ""}`, args: { verdict: "pass" } }),
       button("✗ Fail", "verdict", { className: `no${verdictHot ? " hot" : ""}`, args: { verdict: "fail" } }),
-      button(Date.now() < this.stopArmed ? "Stop?" : "Stop", "stop", { title: "Press twice to end the run" }),
+      button(Date.now() < this.armed.restart ? "Restart?" : "Restart", "restart", { title: "Press twice to end this run and start again from setup" }),
+      button(Date.now() < this.armed.stop ? "Stop?" : "Stop", "stop", { title: "Press twice to end the run" }),
     );
   }
 }

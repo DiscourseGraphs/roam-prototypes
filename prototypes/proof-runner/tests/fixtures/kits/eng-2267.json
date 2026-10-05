@@ -1,6 +1,878 @@
 {
   "name": "eng-2267",
+  "cases": [
+    {
+      "id": "toolbar-sizes",
+      "title": "The search toolbar uses Obsidian's UI font size",
+      "steps": [
+        {
+          "id": "s1",
+          "why": "open node search the way a user would",
+          "source": "kit",
+          "do": {
+            "command_palette": "Open node search"
+          }
+        },
+        {
+          "id": "s2",
+          "why": "wait for the toolbar",
+          "source": "kit",
+          "do": {
+            "wait_for": ".modal button[title=\"Filter by type\"]"
+          }
+        },
+        {
+          "id": "s3",
+          "why": "hold on the toolbar",
+          "source": "kit",
+          "do": {
+            "pause": 2
+          }
+        }
+      ],
+      "proves": "Done When 1: The modal's toolbar/dropdown components render with correct pixel parity and scale with Obsidian's font-size setting.",
+      "caption": "Node search's toolbar now takes its sizes from Obsidian's own variables, so the query field and its triggers match Obsidian's menus.",
+      "expect": {
+        "js": "(() => { const field = document.querySelector('.modal [role=\"textbox\"]'); proof.assert(field, 'No search field in the modal.'); const want = getComputedStyle(document.body).getPropertyValue('--font-ui-medium').trim(); proof.assert(want && getComputedStyle(field.parentElement).fontSize === want, 'The search field is ' + getComputedStyle(field.parentElement).fontSize + ', not --font-ui-medium (' + want + ').'); })()"
+      }
+    },
+    {
+      "id": "filter-panel-border",
+      "title": "The filter panel draws its border and dividers",
+      "steps": [
+        {
+          "id": "s1",
+          "why": "open the type filter",
+          "source": "kit",
+          "do": {
+            "click": ".modal button[title=\"Filter by type\"]"
+          }
+        },
+        {
+          "id": "s2",
+          "why": "wait for the panel",
+          "source": "kit",
+          "do": {
+            "wait_for": ".modal div.absolute.top-full"
+          }
+        },
+        {
+          "id": "s3",
+          "why": "hold on the panel",
+          "source": "kit",
+          "do": {
+            "pause": 2
+          }
+        }
+      ],
+      "proves": "Done When 1: The modal's toolbar/dropdown components render with correct pixel parity and scale with Obsidian's font-size setting.",
+      "caption": "The filter panel now draws its border and dividers, which never rendered before.",
+      "expect": {
+        "js": "(() => { const panel = document.querySelector('.modal div.absolute.top-full'); proof.assert(panel, 'The filter panel is not open.'); const style = getComputedStyle(panel); proof.assert(style.borderTopStyle === 'solid' && parseFloat(style.borderTopWidth) > 0, 'The filter panel has no border.'); const divider = panel.querySelector('.border-b'); proof.assert(!divider || getComputedStyle(divider).borderBottomStyle === 'solid', 'A filter panel divider has no border.'); })()"
+      }
+    },
+    {
+      "id": "sort-panel-border",
+      "title": "The sort panel matches Obsidian's menus too",
+      "steps": [
+        {
+          "id": "s1",
+          "why": "close the type filter",
+          "source": "kit",
+          "do": {
+            "click": ".modal button[title=\"Filter by type\"]"
+          }
+        },
+        {
+          "id": "s2",
+          "why": "open the sort menu",
+          "source": "kit",
+          "do": {
+            "click": ".modal button[title^=\"Sort by\"]"
+          }
+        },
+        {
+          "id": "s3",
+          "why": "wait for the panel",
+          "source": "kit",
+          "do": {
+            "wait_for": ".modal div.absolute.top-full"
+          }
+        },
+        {
+          "id": "s4",
+          "why": "hold on the panel",
+          "source": "kit",
+          "do": {
+            "pause": 2
+          }
+        }
+      ],
+      "proves": "Done When 1: The modal's toolbar/dropdown components render with correct pixel parity and scale with Obsidian's font-size setting.",
+      "caption": "The sort panel gets the same border and spacing.",
+      "expect": {
+        "js": "(() => { const panel = document.querySelector('.modal div.absolute.top-full'); proof.assert(panel, 'The sort panel is not open.'); const style = getComputedStyle(panel); proof.assert(style.borderTopStyle === 'solid' && parseFloat(style.borderTopWidth) > 0, 'The sort panel has no border.'); })()"
+      }
+    },
+    {
+      "id": "qa-search-dialog-fits-with-default-theme",
+      "title": "Search dialog fits with default theme",
+      "steps": [
+        {
+          "do": {
+            "js": "proof.obsidian.closeModals()"
+          },
+          "why": "start with no modal open"
+        },
+        {
+          "do": {
+            "command_palette": "Open node search"
+          },
+          "why": "open node search the way a user would"
+        },
+        {
+          "do": {
+            "wait_for": ".modal button[title=\"Filter by type\"]"
+          },
+          "why": "wait for the toolbar"
+        },
+        {
+          "do": {
+            "pause": 2
+          },
+          "why": "hold on the toolbar"
+        }
+      ],
+      "intent": "In Obsidian with the default theme, open the node search dialog from the command palette. Look at the input, the filter button and the sort button in the top row.",
+      "expect": {
+        "js": "(() => { const probe = (prop, v) => { const e = document.createElement('div'); e.style[prop] = 'var(' + v + ')'; document.body.appendChild(e); const out = getComputedStyle(e)[prop]; e.remove(); return out; }; const px = (n) => parseFloat(n); const near = (a, b) => Math.abs(a - b) <= 1; const box = document.querySelector('.modal [role=\"textbox\"]')?.parentElement; const filter = document.querySelector('.modal button[title=\"Filter by type\"]'); const sort = document.querySelector('.modal button[title^=\"Sort by\"]'); proof.assert(box && filter && sort, 'The search field, filter button or sort button is missing.'); const row = box.parentElement; const modal = row.closest('.modal').getBoundingClientRect(); const b = box.getBoundingClientRect(); const f = filter.parentElement.getBoundingClientRect(); const s = sort.parentElement.getBoundingClientRect(); for (const r of [f, s]) proof.assert(r.top < b.bottom && r.bottom > b.top, 'A trigger is not on the field row.'); const want = px(probe('paddingLeft', '--size-4-2')); proof.assert(near(f.left - b.right, want) && near(s.left - f.right, want), 'The gaps are ' + (f.left - b.right) + 'px and ' + (s.left - f.right) + 'px, not --size-4-2 (' + want + 'px).'); proof.assert(near(px(getComputedStyle(row).paddingLeft), px(probe('paddingLeft', '--size-4-1'))), 'The row padding is not --size-4-1.'); for (const r of [b, f, s]) proof.assert(r.left >= modal.left && r.right <= modal.right && r.top >= modal.top && r.bottom <= modal.bottom, 'Part of the toolbar sits outside the dialog.'); })()"
+      },
+      "decision": {
+        "status": "approved",
+        "by": "sid",
+        "at": "2026-10-05T07:12:05.995Z"
+      },
+      "surface": "s-node-search-dialog-layout",
+      "checks": "The field and both triggers share one row, are spaced by --size-4-2, and nothing sticks out of the dialog."
+    },
+    {
+      "id": "qa-chips-wrap-inline-with-query-text",
+      "title": "Chips wrap inline with query text",
+      "steps": [
+        {
+          "do": {
+            "js": "proof.obsidian.closeModals()"
+          },
+          "why": "start with no modal open"
+        },
+        {
+          "do": {
+            "command_palette": "Open node search"
+          },
+          "why": "open node search the way a user would"
+        },
+        {
+          "do": {
+            "wait_for": ".modal button[title=\"Filter by type\"]"
+          },
+          "why": "wait for the toolbar"
+        },
+        {
+          "do": {
+            "click": ".modal [role=\"textbox\"]"
+          },
+          "why": "click into the search field"
+        },
+        {
+          "do": {
+            "type": {
+              "into": ".modal [role=\"textbox\"]",
+              "text": "PK 2267 Al",
+              "delay_ms": 40
+            }
+          },
+          "why": "type the start of a node type"
+        },
+        {
+          "do": {
+            "press": {
+              "selector": ".modal [role=\"textbox\"]",
+              "key": "Tab"
+            }
+          },
+          "why": "Tab turns it into a chip"
+        },
+        {
+          "do": {
+            "type": {
+              "into": ".modal [role=\"textbox\"]",
+              "text": "PK 2267 Be",
+              "delay_ms": 40
+            }
+          },
+          "why": "type a second type"
+        },
+        {
+          "do": {
+            "press": {
+              "selector": ".modal [role=\"textbox\"]",
+              "key": "Tab"
+            }
+          },
+          "why": "second chip"
+        },
+        {
+          "do": {
+            "type": {
+              "into": ".modal [role=\"textbox\"]",
+              "text": "PK 2267 Ga",
+              "delay_ms": 40
+            }
+          },
+          "why": "type a third type"
+        },
+        {
+          "do": {
+            "press": {
+              "selector": ".modal [role=\"textbox\"]",
+              "key": "Tab"
+            }
+          },
+          "why": "third chip"
+        },
+        {
+          "do": {
+            "type": {
+              "into": ".modal [role=\"textbox\"]",
+              "text": "a long query that keeps going so the search field has to wrap onto a second line of text inside the box, and then a bit more to be sure it does",
+              "delay_ms": 10
+            }
+          },
+          "why": "type a long query so the field wraps"
+        },
+        {
+          "do": {
+            "click": ".modal span[role=\"button\"][aria-label=\"PK 2267 Alpha\"]"
+          },
+          "why": "click the first chip to focus it"
+        },
+        {
+          "do": {
+            "pause": 2
+          },
+          "why": "hold on the wrapped field"
+        }
+      ],
+      "intent": "Type a node type prefix and press Tab to make it a chip. Add several chips and a long query so the field wraps to two lines. Click a chip to focus it.",
+      "expect": {
+        "js": "(() => { const probe = (prop, v) => { const e = document.createElement('div'); e.style[prop] = 'var(' + v + ')'; document.body.appendChild(e); const out = getComputedStyle(e)[prop]; e.remove(); return out; }; const px = (n) => parseFloat(n); const near = (a, b) => Math.abs(a - b) <= 1; const field = document.querySelector('.modal [role=\"textbox\"]'); const box = field.parentElement; const chips = [...box.querySelectorAll('span[role=\"button\"][aria-label^=\"PK 2267\"]')]; proof.assert(chips.length === 3, 'Expected 3 chips, found ' + chips.length + '.'); const style = getComputedStyle(field); const line = px(style.lineHeight) || px(style.fontSize) * 1.3; const bb = box.getBoundingClientRect(); proof.assert(bb.height >= 2 * line, 'The field did not wrap: it is ' + bb.height + 'px tall for lines of ' + line + 'px.'); for (const chip of chips) { const r = chip.getBoundingClientRect(); proof.assert(r.left >= bb.left && r.right <= bb.right && r.top >= bb.top && r.bottom <= bb.bottom, 'A chip sits outside the field.'); } const cs = getComputedStyle(chips[0]); proof.assert(near(px(cs.marginRight), px(probe('paddingLeft', '--size-4-1'))) && near(px(cs.paddingLeft), px(probe('paddingLeft', '--size-4-2'))), 'The chip margin or padding is off the --size-4-* tokens.'); proof.assert(cs.fontSize === probe('fontSize', '--font-ui-smaller'), 'The chip text is not --font-ui-smaller.'); proof.assert(cs.outlineStyle === 'solid' && px(cs.outlineWidth) > 0, 'The focused chip has no outline.'); })()"
+      },
+      "decision": {
+        "status": "approved",
+        "by": "Claude, for sid",
+        "at": "2026-10-05T07:12:09.214Z"
+      },
+      "surface": "s-node-type-chips-in-the-search-field",
+      "checks": "Three chips and the long query wrap inside the field, the chips use the size tokens, and the clicked chip shows its focus outline."
+    },
+    {
+      "id": "qa-tab-completion-hint-spacing",
+      "title": "Tab completion hint spacing",
+      "steps": [
+        {
+          "do": {
+            "js": "proof.obsidian.closeModals()"
+          },
+          "why": "start with no modal open"
+        },
+        {
+          "do": {
+            "command_palette": "Open node search"
+          },
+          "why": "open node search the way a user would"
+        },
+        {
+          "do": {
+            "wait_for": ".modal button[title=\"Filter by type\"]"
+          },
+          "why": "wait for the toolbar"
+        },
+        {
+          "do": {
+            "click": ".modal [role=\"textbox\"]"
+          },
+          "why": "click into the search field"
+        },
+        {
+          "do": {
+            "type": {
+              "into": ".modal [role=\"textbox\"]",
+              "text": "PK 2267 Al",
+              "delay_ms": 40
+            }
+          },
+          "why": "type part of a node type name"
+        },
+        {
+          "do": {
+            "wait_for": ".modal [role=\"textbox\"] ~ span kbd"
+          },
+          "why": "wait for the completion hint"
+        },
+        {
+          "do": {
+            "js": "(() => { const probe = (prop, v) => { const e = document.createElement('div'); e.style[prop] = 'var(' + v + ')'; document.body.appendChild(e); const out = getComputedStyle(e)[prop]; e.remove(); return out; }; const px = (n) => parseFloat(n); const near = (a, b) => Math.abs(a - b) <= 1; const kbd = document.querySelector('.modal [role=\"textbox\"] ~ span kbd'); proof.assert(kbd, 'No Tab hint.'); const suffix = kbd.previousElementSibling; proof.assert(suffix && suffix.textContent.endsWith('pha'), 'The grey suffix is \"' + (suffix && suffix.textContent) + '\", not the rest of Alpha.'); proof.assert(near(px(getComputedStyle(kbd).marginLeft), px(probe('paddingLeft', '--size-4-2'))), 'The hint is not --size-4-2 from the suffix.'); })()"
+          },
+          "why": "check the suffix and the hint spacing"
+        },
+        {
+          "do": {
+            "pause": 2
+          },
+          "why": "hold on the hint"
+        },
+        {
+          "do": {
+            "press": {
+              "selector": ".modal [role=\"textbox\"]",
+              "key": "Tab"
+            }
+          },
+          "why": "Tab accepts the completion"
+        },
+        {
+          "do": {
+            "pause": 1.5
+          },
+          "why": "hold on the chip"
+        }
+      ],
+      "intent": "Type a partial node type name so the grey completion suffix and the Tab key hint show. Then press Tab.",
+      "expect": {
+        "js": "(() => { const field = document.querySelector('.modal [role=\"textbox\"]'); proof.assert(document.querySelector('.modal span[role=\"button\"][aria-label=\"PK 2267 Alpha\"]'), 'Tab did not make a PK 2267 Alpha chip.'); proof.assert(!field.textContent.trim(), 'The query was not cleared.'); proof.assert(!document.querySelector('.modal [role=\"textbox\"] ~ span kbd'), 'The hint is still showing.'); })()"
+      },
+      "decision": {
+        "status": "approved",
+        "by": "Claude, for sid",
+        "at": "2026-10-05T07:12:09.214Z"
+      },
+      "surface": "s-node-type-chips-in-the-search-field",
+      "checks": "The hint sits --size-4-2 after the grey suffix, and Tab turns the name into a chip and clears the field."
+    },
+    {
+      "id": "qa-count-badge-on-the-filter-trigger",
+      "title": "Count badge on the filter trigger",
+      "steps": [
+        {
+          "do": {
+            "js": "proof.obsidian.closeModals()"
+          },
+          "why": "start with no modal open"
+        },
+        {
+          "do": {
+            "command_palette": "Open node search"
+          },
+          "why": "open node search the way a user would"
+        },
+        {
+          "do": {
+            "wait_for": ".modal button[title=\"Filter by type\"]"
+          },
+          "why": "wait for the toolbar"
+        },
+        {
+          "do": {
+            "click": ".modal button[title=\"Filter by type\"]"
+          },
+          "why": "open the type filter"
+        },
+        {
+          "do": {
+            "wait_for": ".modal div.absolute.top-full"
+          },
+          "why": "wait for the panel"
+        },
+        {
+          "do": {
+            "click": ".modal div.absolute.top-full label:has-text(\"PK 2267 Alpha\") input[type=\"checkbox\"]"
+          },
+          "why": "tick the first type"
+        },
+        {
+          "do": {
+            "click": ".modal div.absolute.top-full label:has-text(\"PK 2267 Beta\") input[type=\"checkbox\"]"
+          },
+          "why": "tick the second type"
+        },
+        {
+          "do": {
+            "click": ".modal button[title=\"Filter by type\"]"
+          },
+          "why": "close the panel"
+        },
+        {
+          "do": {
+            "js": "(() => { const probe = (prop, v) => { const e = document.createElement('div'); e.style[prop] = 'var(' + v + ')'; document.body.appendChild(e); const out = getComputedStyle(e)[prop]; e.remove(); return out; }; const px = (n) => parseFloat(n); const near = (a, b) => Math.abs(a - b) <= 1; const button = document.querySelector('.modal button[title=\"Filter by type\"]'); const badge = button.querySelector(':scope > span[aria-hidden]'); proof.assert(badge && badge.textContent.trim() === '2', 'The badge does not show 2.'); const b = badge.getBoundingClientRect(); const t = button.getBoundingClientRect(); const off = px(probe('paddingLeft', '--size-4-1')); proof.assert(near(b.right - t.right, off) && near(t.top - b.top, off), 'The badge is offset ' + (b.right - t.right) + 'px and ' + (t.top - b.top) + 'px, not --size-4-1 (' + off + 'px).'); const cs = getComputedStyle(badge); proof.assert(cs.fontSize === probe('fontSize', '--font-ui-smaller') && cs.borderTopLeftRadius === probe('borderTopLeftRadius', '--radius-m'), 'The badge font size or radius is off the tokens.'); })()"
+          },
+          "why": "check the badge"
+        },
+        {
+          "do": {
+            "pause": 2
+          },
+          "why": "hold on the badge"
+        },
+        {
+          "do": {
+            "click": ".modal button[title=\"Filter by type\"]"
+          },
+          "why": "open the panel again"
+        },
+        {
+          "do": {
+            "wait_for": ".modal div.absolute.top-full"
+          },
+          "why": "wait for the panel"
+        },
+        {
+          "do": {
+            "click": ".modal div.absolute.top-full button:has-text(\"Clear filter\")"
+          },
+          "why": "clear the filter"
+        },
+        {
+          "do": {
+            "click": ".modal button[title=\"Filter by type\"]"
+          },
+          "why": "close the panel"
+        },
+        {
+          "do": {
+            "pause": 1.5
+          },
+          "why": "hold on the empty corner"
+        }
+      ],
+      "intent": "Open the filter panel and tick two node types. Close the panel and look at the filter button's corner. Then clear the filter.",
+      "expect": {
+        "js": "(() => { const button = document.querySelector('.modal button[title=\"Filter by type\"]'); proof.assert(button && !button.querySelector(':scope > span[aria-hidden]'), 'The badge is still showing after Clear filter.'); })()"
+      },
+      "decision": {
+        "status": "approved",
+        "by": "Claude, for sid",
+        "at": "2026-10-05T07:12:09.214Z"
+      },
+      "surface": "s-filter-and-sort-trigger-buttons-count",
+      "checks": "Two ticked types show a 2 badge placed and sized from the tokens, and clearing the filter removes it."
+    },
+    {
+      "id": "qa-filter-panel-clear-filter-and-type",
+      "title": "Filter panel Clear filter and type search",
+      "steps": [
+        {
+          "do": {
+            "js": "proof.obsidian.closeModals()"
+          },
+          "why": "start with no modal open"
+        },
+        {
+          "do": {
+            "command_palette": "Open node search"
+          },
+          "why": "open node search the way a user would"
+        },
+        {
+          "do": {
+            "wait_for": ".modal button[title=\"Filter by type\"]"
+          },
+          "why": "wait for the toolbar"
+        },
+        {
+          "do": {
+            "click": ".modal button[title=\"Filter by type\"]"
+          },
+          "why": "open the type filter"
+        },
+        {
+          "do": {
+            "wait_for": ".modal div.absolute.top-full"
+          },
+          "why": "wait for the panel"
+        },
+        {
+          "do": {
+            "click": ".modal div.absolute.top-full label:has-text(\"PK 2267 Alpha\") input[type=\"checkbox\"]"
+          },
+          "why": "tick one type"
+        },
+        {
+          "do": {
+            "wait_for": ".modal div.absolute.top-full button:has-text(\"Clear filter\")"
+          },
+          "why": "wait for the Clear filter strip"
+        },
+        {
+          "do": {
+            "js": "(() => { const probe = (prop, v) => { const e = document.createElement('div'); e.style[prop] = 'var(' + v + ')'; document.body.appendChild(e); const out = getComputedStyle(e)[prop]; e.remove(); return out; }; const px = (n) => parseFloat(n); const near = (a, b) => Math.abs(a - b) <= 1; const panel = document.querySelector('.modal div.absolute.top-full'); const strip = [...panel.querySelectorAll('div')].find((d) => d.querySelector(':scope > button') && /Clear filter/.test(d.textContent)); proof.assert(strip, 'No Clear filter strip.'); const cs = getComputedStyle(strip); proof.assert(cs.borderBottomStyle === 'solid' && px(cs.borderBottomWidth) > 0, 'The strip has no divider.'); proof.assert(near(px(cs.paddingLeft), px(probe('paddingLeft', '--size-4-2'))), 'The strip padding is off --size-4-2.'); const search = panel.querySelector('input[type=\"text\"]'); proof.assert(search, 'No type search above seven types.'); proof.assert(getComputedStyle(search.parentElement).borderBottomStyle === 'solid', 'The type search has no divider.'); })()"
+          },
+          "why": "check the strip and search dividers"
+        },
+        {
+          "do": {
+            "type": {
+              "into": ".modal div.absolute.top-full input[type=\"text\"]",
+              "text": "zzzznomatch",
+              "delay_ms": 40
+            }
+          },
+          "why": "type nonsense into the type search"
+        },
+        {
+          "do": {
+            "wait_for": ".modal div.absolute.top-full div.text-center"
+          },
+          "why": "wait for the empty state"
+        },
+        {
+          "do": {
+            "js": "(() => { const probe = (prop, v) => { const e = document.createElement('div'); e.style[prop] = 'var(' + v + ')'; document.body.appendChild(e); const out = getComputedStyle(e)[prop]; e.remove(); return out; }; const px = (n) => parseFloat(n); const near = (a, b) => Math.abs(a - b) <= 1; const empty = document.querySelector('.modal div.absolute.top-full div.text-center'); proof.assert(/No matching node types/.test(empty.textContent), 'The empty state text is wrong.'); const cs = getComputedStyle(empty); proof.assert(cs.fontSize === probe('fontSize', '--font-ui-small') && near(px(cs.paddingLeft), px(probe('paddingLeft', '--size-4-4'))), 'The empty state is off the tokens.'); })()"
+          },
+          "why": "check the empty state"
+        },
+        {
+          "do": {
+            "pause": 2
+          },
+          "why": "hold on the empty state"
+        },
+        {
+          "do": {
+            "click": ".modal div.absolute.top-full button:has-text(\"Clear filter\")"
+          },
+          "why": "click Clear filter"
+        },
+        {
+          "do": {
+            "pause": 1.5
+          },
+          "why": "hold on the result"
+        }
+      ],
+      "intent": "With many node types configured, open the filter panel. Tick one type and confirm the Clear filter strip appears. Type nonsense into the type search box. Then click Clear filter.",
+      "expect": {
+        "js": "(() => { const panel = document.querySelector('.modal div.absolute.top-full'); proof.assert(panel, 'The panel closed.'); proof.assert(!/Clear filter/.test(panel.textContent), 'The Clear filter strip is still there.'); proof.assert(getComputedStyle(panel.querySelector('input[type=\"text\"]').parentElement).borderBottomStyle === 'solid', 'The type search lost its divider.'); })()"
+      },
+      "decision": {
+        "status": "approved",
+        "by": "Claude, for sid",
+        "at": "2026-10-05T07:12:09.214Z"
+      },
+      "surface": "s-node-type-filter-panel",
+      "checks": "The Clear filter strip and type search keep their dividers, the empty state uses the tokens, and Clear filter removes the strip."
+    },
+    {
+      "id": "qa-filter-panel-keeps-working-toggle-and",
+      "title": "Filter panel keeps working: toggle and Only",
+      "steps": [],
+      "intent": "Open the filter panel. Tick and untick a type by clicking its row. Use each row's 'only' button. Check that the results list changes and that the panel stays open after each click.",
+      "expect": {
+        "text": "Results narrow to the chosen types. The panel does not close or lose focus on row clicks, and the hover highlight shows across the whole row."
+      },
+      "decision": {
+        "status": "rejected",
+        "by": "Claude, for sid",
+        "at": "2026-10-05T07:12:12.470Z",
+        "reason": "This PR doesn't reach it: the diff only changes classes, and toggle and Only behaviour is unchanged"
+      },
+      "surface": "s-node-type-filter-panel"
+    },
+    {
+      "id": "qa-sort-panel-rows-and-direction-toggle",
+      "title": "Sort panel rows and direction toggle",
+      "steps": [
+        {
+          "do": {
+            "js": "proof.obsidian.closeModals()"
+          },
+          "why": "start with no modal open"
+        },
+        {
+          "do": {
+            "command_palette": "Open node search"
+          },
+          "why": "open node search the way a user would"
+        },
+        {
+          "do": {
+            "wait_for": ".modal button[title=\"Filter by type\"]"
+          },
+          "why": "wait for the toolbar"
+        },
+        {
+          "do": {
+            "click": ".modal button[title^=\"Sort by\"]"
+          },
+          "why": "open the sort menu"
+        },
+        {
+          "do": {
+            "wait_for": ".modal div.absolute.top-full"
+          },
+          "why": "wait for the panel"
+        },
+        {
+          "do": {
+            "js": "(() => { const probe = (prop, v) => { const e = document.createElement('div'); e.style[prop] = 'var(' + v + ')'; document.body.appendChild(e); const out = getComputedStyle(e)[prop]; e.remove(); return out; }; const px = (n) => parseFloat(n); const near = (a, b) => Math.abs(a - b) <= 1; const panel = document.querySelector('.modal div.absolute.top-full'); const rows = panel.querySelectorAll('[role=\"menuitemradio\"]'); proof.assert(rows.length === 5, 'Expected 5 sort options.'); const cs = getComputedStyle(rows[0]); proof.assert(cs.fontSize === probe('fontSize', '--font-ui-small') && near(px(cs.paddingLeft), px(probe('paddingLeft', '--size-4-3'))), 'A sort row is off the tokens.'); const head = panel.querySelector('div.text-muted'); proof.assert(getComputedStyle(head).fontSize === probe('fontSize', '--font-ui-smaller'), 'The Sort by header is not --font-ui-smaller.'); })()"
+          },
+          "why": "check the rows and header"
+        },
+        {
+          "do": {
+            "hover": ".modal [role=\"menuitemradio\"]:has-text(\"Date created\")"
+          },
+          "why": "hover an option"
+        },
+        {
+          "do": {
+            "pause": 1
+          },
+          "why": "hold on the hover"
+        },
+        {
+          "do": {
+            "click": ".modal [role=\"menuitemradio\"]:has-text(\"Date created\")"
+          },
+          "why": "pick Date created"
+        },
+        {
+          "do": {
+            "js": "(() => { window.__dg2267SortTitle = document.querySelector('.modal button[title^=\"Sort by\"]').title; return window.__dg2267SortTitle; })()"
+          },
+          "why": "note the sort button's title"
+        },
+        {
+          "do": {
+            "click": ".modal div.absolute.top-full div[role=\"button\"][aria-pressed=\"false\"]"
+          },
+          "why": "switch direction"
+        },
+        {
+          "do": {
+            "pause": 2
+          },
+          "why": "hold on the toggle"
+        }
+      ],
+      "intent": "Open the sort panel. Hover each option and select a different sort key. Switch direction with the toggle at the bottom.",
+      "expect": {
+        "js": "(() => { const probe = (prop, v) => { const e = document.createElement('div'); e.style[prop] = 'var(' + v + ')'; document.body.appendChild(e); const out = getComputedStyle(e)[prop]; e.remove(); return out; }; const px = (n) => parseFloat(n); const near = (a, b) => Math.abs(a - b) <= 1; const panel = document.querySelector('.modal div.absolute.top-full'); proof.assert(panel, 'The sort menu closed.'); const checked = panel.querySelector('[role=\"menuitemradio\"][aria-checked=\"true\"]'); proof.assert(checked && /Date created/.test(checked.textContent), 'Date created is not the selected option.'); const pressed = panel.querySelector('div[role=\"button\"][aria-pressed=\"true\"]'); proof.assert(pressed, 'No direction is pressed.'); const button = document.querySelector('.modal button[title^=\"Sort by\"]'); proof.assert(button.title !== window.__dg2267SortTitle && button.title.endsWith(pressed.title), 'The direction toggle did not change the sort.'); const toggle = pressed.parentElement; const cs = getComputedStyle(toggle); proof.assert(cs.borderTopStyle === 'solid' && px(cs.borderTopWidth) > 0, 'The direction toggle has no top border.'); proof.assert(near(px(cs.paddingLeft), px(probe('paddingLeft', '--size-4-2'))) && getComputedStyle(pressed).borderTopLeftRadius === probe('borderTopLeftRadius', '--radius-s'), 'The direction toggle is off the tokens.'); })()"
+      },
+      "decision": {
+        "status": "approved",
+        "by": "Claude, for sid",
+        "at": "2026-10-05T07:12:09.214Z"
+      },
+      "surface": "s-sort-panel",
+      "checks": "Sort rows, header and direction toggle use the tokens, the toggle has its top border, and switching direction changes the sort."
+    },
+    {
+      "id": "qa-panels-share-one-border-and-radius",
+      "title": "Panels share one border and radius",
+      "steps": [],
+      "intent": "Open the filter panel, close it, then open the sort panel. Compare the border, corner radius, shadow and offset below the button.",
+      "expect": {
+        "text": "Both panels have a solid thin border, rounded corners and a shadow, and the same small gap under their trigger. Neither is clipped by the dialog or hidden behind the results list."
+      },
+      "decision": {
+        "status": "rejected",
+        "by": "Claude, for sid",
+        "at": "2026-10-05T07:12:15.704Z",
+        "reason": "Another case covers it: filter-panel-border and sort-panel-border check both panels' borders"
+      }
+    },
+    {
+      "id": "qa-change-appearance-font-size",
+      "title": "Change Appearance font size",
+      "steps": [
+        {
+          "do": {
+            "js": "(async () => { const app = window.app; if (typeof app.updateFontSize !== 'function' || typeof app.vault.getConfig !== 'function' || typeof app.vault.setConfig !== 'function') throw new Error('This Obsidian has no vault.getConfig/setConfig or app.updateFontSize, so the font size cannot be changed from here.'); await proof.obsidian.closeModals(); const orig = app.vault.getConfig('baseFontSize'); window.__dg2267FontSize = typeof orig === 'number' ? orig : 16; const rootBefore = parseFloat(getComputedStyle(document.documentElement).fontSize); window.__dg2267UiSmall = getComputedStyle(document.body).getPropertyValue('--font-ui-small').trim(); const next = window.__dg2267FontSize >= 20 ? 12 : 22; app.vault.setConfig('baseFontSize', next); app.updateFontSize(); await proof.waitFor(() => parseFloat(getComputedStyle(document.documentElement).fontSize) !== rootBefore, { what: 'the Appearance font size to take effect', timeout: 5000 }); return next; })()"
+          },
+          "why": "change the Appearance font size"
+        },
+        {
+          "do": {
+            "command_palette": "Open node search"
+          },
+          "why": "open node search at the new size"
+        },
+        {
+          "do": {
+            "wait_for": ".modal button[title=\"Filter by type\"]"
+          },
+          "why": "wait for the toolbar"
+        },
+        {
+          "do": {
+            "click": ".modal button[title=\"Filter by type\"]"
+          },
+          "why": "open the type filter"
+        },
+        {
+          "do": {
+            "wait_for": ".modal div.absolute.top-full"
+          },
+          "why": "wait for the panel"
+        },
+        {
+          "do": {
+            "js": "(() => { const probe = (prop, v) => { const e = document.createElement('div'); e.style[prop] = 'var(' + v + ')'; document.body.appendChild(e); const out = getComputedStyle(e)[prop]; e.remove(); return out; }; const px = (n) => parseFloat(n); const near = (a, b) => Math.abs(a - b) <= 1; const label = document.querySelector('.modal div.absolute.top-full label span.truncate'); proof.assert(label, 'No filter row.'); proof.assert(getComputedStyle(label).fontSize === probe('fontSize', '--font-ui-small'), 'The filter rows are ' + getComputedStyle(label).fontSize + ', not --font-ui-small.'); })()"
+          },
+          "why": "check the filter panel at the new size"
+        },
+        {
+          "do": {
+            "pause": 1.5
+          },
+          "why": "hold on the filter panel"
+        },
+        {
+          "do": {
+            "click": ".modal button[title=\"Filter by type\"]"
+          },
+          "why": "close the type filter"
+        },
+        {
+          "do": {
+            "click": ".modal button[title^=\"Sort by\"]"
+          },
+          "why": "open the sort menu"
+        },
+        {
+          "do": {
+            "wait_for": ".modal div.absolute.top-full"
+          },
+          "why": "wait for the panel"
+        },
+        {
+          "do": {
+            "pause": 1.5
+          },
+          "why": "hold on the sort panel"
+        }
+      ],
+      "intent": "In Obsidian Settings → Appearance, change the font size to the smallest and then the largest setting. Reopen the node search dialog each time and check the toolbar, filter panel and sort panel.",
+      "expect": {
+        "js": "(async () => { const probe = (prop, v) => { const e = document.createElement('div'); e.style[prop] = 'var(' + v + ')'; document.body.appendChild(e); const out = getComputedStyle(e)[prop]; e.remove(); return out; }; const px = (n) => parseFloat(n); const near = (a, b) => Math.abs(a - b) <= 1; const app = window.app; try { const field = document.querySelector('.modal [role=\"textbox\"]'); proof.assert(field, 'No search field.'); proof.assert(getComputedStyle(field.parentElement).fontSize === probe('fontSize', '--font-ui-medium'), 'The search field is not --font-ui-medium.'); const panel = document.querySelector('.modal div.absolute.top-full'); proof.assert(panel, 'The sort panel is not open.'); proof.assert(getComputedStyle(panel.querySelector('[role=\"menuitemradio\"]')).fontSize === probe('fontSize', '--font-ui-small'), 'The sort rows are not --font-ui-small.'); proof.assert(getComputedStyle(panel.querySelector('div.text-muted')).fontSize === probe('fontSize', '--font-ui-smaller'), 'The Sort by header is not --font-ui-smaller.'); proof.assert(getComputedStyle(document.body).getPropertyValue('--font-ui-small').trim() === window.__dg2267UiSmall, '--font-ui-small changed with the font size.'); } finally { if (typeof window.__dg2267FontSize === 'number') { app.vault.setConfig('baseFontSize', window.__dg2267FontSize); app.updateFontSize(); } await proof.obsidian.closeModals(); } })()"
+      },
+      "decision": {
+        "status": "approved",
+        "by": "Claude, for sid",
+        "at": "2026-10-05T07:12:09.214Z"
+      },
+      "surface": "s-themes-and-appearance-font-settings",
+      "checks": "With the Appearance font size changed, the toolbar and both panels still use Obsidian's --font-ui values, which do not move; the original size is put back afterwards."
+    },
+    {
+      "id": "qa-dark-mode-and-a-community-theme",
+      "title": "Dark mode and a community theme",
+      "steps": [
+        {
+          "do": {
+            "js": "(async () => { const app = window.app; if (typeof app.changeTheme !== 'function') throw new Error('This Obsidian has no app.changeTheme, so the base theme cannot be switched from here.'); await proof.obsidian.closeModals(); window.__dg2267Theme = document.body.classList.contains('theme-dark') ? 'obsidian' : 'moonstone'; app.changeTheme('obsidian'); await proof.waitFor(() => document.body.classList.contains('theme-dark'), { what: 'the dark theme', timeout: 5000 }); })()"
+          },
+          "why": "switch to the dark theme"
+        },
+        {
+          "do": {
+            "command_palette": "Open node search"
+          },
+          "why": "open node search in dark"
+        },
+        {
+          "do": {
+            "wait_for": ".modal button[title=\"Filter by type\"]"
+          },
+          "why": "wait for the toolbar"
+        },
+        {
+          "do": {
+            "click": ".modal button[title=\"Filter by type\"]"
+          },
+          "why": "open the type filter"
+        },
+        {
+          "do": {
+            "wait_for": ".modal div.absolute.top-full"
+          },
+          "why": "wait for the panel"
+        },
+        {
+          "do": {
+            "js": "(() => { const probe = (prop, v) => { const e = document.createElement('div'); e.style[prop] = 'var(' + v + ')'; document.body.appendChild(e); const out = getComputedStyle(e)[prop]; e.remove(); return out; }; const px = (n) => parseFloat(n); const near = (a, b) => Math.abs(a - b) <= 1; const panel = document.querySelector('.modal div.absolute.top-full'); proof.assert(panel, 'The filter panel is not open.'); const cs = getComputedStyle(panel); proof.assert(cs.borderTopStyle === 'solid' && px(cs.borderTopWidth) > 0, 'The panel has no border.'); proof.assert(cs.borderTopColor === probe('borderTopColor', '--background-modifier-border') && cs.backgroundColor === probe('backgroundColor', '--background-primary'), 'The panel colours are not Obsidian\\'s variables.'); window.__dg2267DarkBorder = cs.borderTopColor; })()"
+          },
+          "why": "check the filter panel in dark"
+        },
+        {
+          "do": {
+            "pause": 2
+          },
+          "why": "hold on the dark panel"
+        },
+        {
+          "do": {
+            "js": "(async () => { const app = window.app; await proof.obsidian.closeModals(); app.changeTheme('moonstone'); await proof.waitFor(() => document.body.classList.contains('theme-light'), { what: 'the light theme', timeout: 5000 }); })()"
+          },
+          "why": "switch to the light theme"
+        },
+        {
+          "do": {
+            "command_palette": "Open node search"
+          },
+          "why": "open node search in light"
+        },
+        {
+          "do": {
+            "wait_for": ".modal button[title=\"Filter by type\"]"
+          },
+          "why": "wait for the toolbar"
+        },
+        {
+          "do": {
+            "click": ".modal button[title=\"Filter by type\"]"
+          },
+          "why": "open the type filter"
+        },
+        {
+          "do": {
+            "wait_for": ".modal div.absolute.top-full"
+          },
+          "why": "wait for the panel"
+        },
+        {
+          "do": {
+            "pause": 2
+          },
+          "why": "hold on the light panel"
+        }
+      ],
+      "intent": "Switch between the light and dark base themes, then switch to a community theme. Open the node search dialog and both panels each time.",
+      "expect": {
+        "js": "(async () => { const probe = (prop, v) => { const e = document.createElement('div'); e.style[prop] = 'var(' + v + ')'; document.body.appendChild(e); const out = getComputedStyle(e)[prop]; e.remove(); return out; }; const px = (n) => parseFloat(n); const near = (a, b) => Math.abs(a - b) <= 1; const app = window.app; try { const panel = document.querySelector('.modal div.absolute.top-full'); proof.assert(panel, 'The filter panel is not open.'); const cs = getComputedStyle(panel); proof.assert(cs.borderTopStyle === 'solid' && px(cs.borderTopWidth) > 0, 'The panel has no border.'); proof.assert(cs.borderTopColor === probe('borderTopColor', '--background-modifier-border') && cs.backgroundColor === probe('backgroundColor', '--background-primary'), 'The panel colours are not Obsidian\\'s variables.'); proof.assert(cs.borderTopColor !== window.__dg2267DarkBorder, 'The panel border is the same in light and dark.'); } finally { if (window.__dg2267Theme) app.changeTheme(window.__dg2267Theme); await proof.obsidian.closeModals(); await proof.obsidian.removeNodeTypes([\"PK 2267 Alpha\", \"PK 2267 Beta\", \"PK 2267 Gamma\", \"PK 2267 Delta\", \"PK 2267 Epsilon\", \"PK 2267 Zeta\", \"PK 2267 Eta\", \"PK 2267 Theta\"]); } })()"
+      },
+      "decision": {
+        "status": "approved",
+        "by": "Claude, for sid",
+        "at": "2026-10-05T07:12:09.214Z"
+      },
+      "surface": "s-themes-and-appearance-font-settings",
+      "checks": "The filter panel's border and colours follow Obsidian's variables in dark and in light, and differ between them; the original theme and the PK 2267 node types are put back at the end."
+    }
+  ],
   "title": "Native-Obsidian styling pass for advanced node search",
+  "claim": "Advanced node search's toolbar and its filter and sort panels take their sizes, spacing and corners from Obsidian's own variables, and the panels draw the border they were always meant to.",
+  "given": "Obsidian is open on the test vault with the plugin's build from this PR installed, and no modal is open.",
   "target": {
     "app": "obsidian",
     "cdp": "http://127.0.0.1:9223",
@@ -23,98 +895,72 @@
       "apply": {
         "js": "proof.obsidian.closeModals()"
       }
+    },
+    {
+      "id": "pk-2267-node-types",
+      "why": "eight PK 2267 node types, so the filter panel shows its type search (it appears above seven types) and the chips have names to complete",
+      "phase": "in-session",
+      "check": {
+        "js": "(() => { const names = [\"PK 2267 Alpha\", \"PK 2267 Beta\", \"PK 2267 Gamma\", \"PK 2267 Delta\", \"PK 2267 Epsilon\", \"PK 2267 Zeta\", \"PK 2267 Eta\", \"PK 2267 Theta\"]; return names.every((name) => proof.obsidian.nodeType(name)); })()"
+      },
+      "apply": {
+        "js": "(async () => { const plugin = proof.obsidian.plugin(); const settings = plugin.settings; const now = Date.now(); for (const name of [\"PK 2267 Alpha\", \"PK 2267 Beta\", \"PK 2267 Gamma\", \"PK 2267 Delta\", \"PK 2267 Epsilon\", \"PK 2267 Zeta\", \"PK 2267 Eta\", \"PK 2267 Theta\"]) { if (settings.nodeTypes.some((type) => type.name === name)) continue; settings.nodeTypes.push({ id: 'pk-2267-' + name.split(' ').pop().toLowerCase(), name, format: name + ' - {content}', created: now, modified: now }); } await plugin.saveSettings(); return true; })()"
+      }
     }
   ],
-  "cases": [
+  "surface": [
     {
-      "id": "toolbar-sizes",
-      "title": "The search toolbar uses Obsidian's UI font size",
-      "caption": "Node search's toolbar now takes its sizes from Obsidian's own variables, so the query field and its triggers match Obsidian's menus.",
-      "steps": [
-        {
-          "do": {
-            "command_palette": "Open node search"
-          },
-          "why": "open node search the way a user would"
-        },
-        {
-          "do": {
-            "wait_for": ".modal button[title=\"Filter by type\"]"
-          },
-          "why": "wait for the toolbar"
-        },
-        {
-          "do": {
-            "pause": 2
-          },
-          "why": "hold on the toolbar"
-        }
-      ],
-      "expect": {
-        "js": "(() => { const input = document.querySelector('.modal input'); proof.assert(input, 'No search field in the modal.'); const want = getComputedStyle(document.body).getPropertyValue('--font-ui-small').trim(); proof.assert(want && getComputedStyle(input).fontSize === want, 'The search field is ' + getComputedStyle(input).fontSize + ', not --font-ui-small (' + want + ').'); })()"
-      }
+      "id": "s-node-search-dialog-layout",
+      "area": "Node search dialog layout",
+      "why": "The toolbar row's gap and padding in NodeSearchModal now come from Obsidian size variables, so the input and the two trigger buttons could shift or clip.",
+      "files": [
+        "apps/obsidian/src/components/NodeSearchModal.tsx"
+      ]
     },
     {
-      "id": "filter-panel-border",
-      "title": "The filter panel draws its border and dividers",
-      "caption": "The filter panel now draws its border and dividers, which never rendered before.",
-      "steps": [
-        {
-          "do": {
-            "click": ".modal button[title=\"Filter by type\"]"
-          },
-          "why": "open the type filter"
-        },
-        {
-          "do": {
-            "wait_for": ".modal div.absolute.top-full"
-          },
-          "why": "wait for the panel"
-        },
-        {
-          "do": {
-            "pause": 2
-          },
-          "why": "hold on the panel"
-        }
-      ],
-      "expect": {
-        "js": "(() => { const panel = document.querySelector('.modal div.absolute.top-full'); proof.assert(panel, 'The filter panel is not open.'); const style = getComputedStyle(panel); proof.assert(style.borderTopStyle === 'solid' && parseFloat(style.borderTopWidth) > 0, 'The filter panel has no border.'); const divider = panel.querySelector('.border-b'); proof.assert(!divider || getComputedStyle(divider).borderBottomStyle === 'solid', 'A filter panel divider has no border.'); })()"
-      }
+      "id": "s-node-type-chips-in-the-search-field",
+      "area": "Node type chips in the search field",
+      "why": "Chip margin, padding, font size and the Tab-completion hint spacing changed to variables, which could break inline wrapping or the focus outline.",
+      "files": [
+        "apps/obsidian/src/components/NodeTypeChipsSearchInput.tsx"
+      ]
     },
     {
-      "id": "sort-panel-border",
-      "title": "The sort panel matches Obsidian's menus too",
-      "caption": "The sort panel gets the same border and spacing.",
-      "steps": [
-        {
-          "do": {
-            "click": ".modal button[title=\"Filter by type\"]"
-          },
-          "why": "close the type filter"
-        },
-        {
-          "do": {
-            "click": ".modal button[title^=\"Sort by\"]"
-          },
-          "why": "open the sort menu"
-        },
-        {
-          "do": {
-            "wait_for": ".modal div.absolute.top-full"
-          },
-          "why": "wait for the panel"
-        },
-        {
-          "do": {
-            "pause": 2
-          },
-          "why": "hold on the panel"
-        }
-      ],
-      "expect": {
-        "js": "(() => { const panel = document.querySelector('.modal div.absolute.top-full'); proof.assert(panel, 'The sort panel is not open.'); const style = getComputedStyle(panel); proof.assert(style.borderTopStyle === 'solid' && parseFloat(style.borderTopWidth) > 0, 'The sort panel has no border.'); })()"
-      }
+      "id": "s-filter-and-sort-trigger-buttons-count",
+      "area": "Filter and sort trigger buttons (count badge)",
+      "why": "The badge offset, radius and font size now use variables, so it could clip or misalign against the trigger button.",
+      "files": [
+        "apps/obsidian/src/components/SearchDropdown.tsx"
+      ]
+    },
+    {
+      "id": "s-node-type-filter-panel",
+      "area": "Node type filter panel",
+      "why": "Row spacing, the Clear filter strip, the type search box and the empty state were all re-spaced, and the borders were forced solid.",
+      "files": [
+        "apps/obsidian/src/components/NodeTypeFilterMenu.tsx",
+        "apps/obsidian/src/components/SearchDropdown.tsx"
+      ]
+    },
+    {
+      "id": "s-sort-panel",
+      "area": "Sort panel",
+      "why": "Option rows, the Sort by header and the direction toggle use new variables and a forced solid top border.",
+      "files": [
+        "apps/obsidian/src/components/NodeSortMenu.tsx"
+      ]
+    },
+    {
+      "id": "s-themes-and-appearance-font-settings",
+      "area": "Themes and Appearance font settings",
+      "why": "All sizing now depends on Obsidian's --size-4-*, --font-ui-* and --radius-* variables, so a theme or font-size change, or a missing variable, changes the layout.",
+      "files": [
+        "apps/obsidian/src/components/NodeSearchModal.tsx",
+        "apps/obsidian/src/components/NodeSortMenu.tsx",
+        "apps/obsidian/src/components/NodeTypeFilterMenu.tsx",
+        "apps/obsidian/src/components/SearchDropdown.tsx",
+        "apps/obsidian/src/components/NodeTypeChipsSearchInput.tsx"
+      ]
     }
   ]
 }

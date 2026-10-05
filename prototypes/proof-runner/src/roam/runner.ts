@@ -315,6 +315,8 @@ export class ProofRun {
   private kit: PageKit | null = null;
   private error: string | null = null;
   private machine: Machine | null = null;
+  // Settles once the run going now has finished and logged itself.
+  private finished: Promise<void> = Promise.resolve();
   private state: MachineState | null = null;
   private earlier: { results: Record<string, Verdict>; notes: Record<string, string> } | null = null;
   private offset = 0;
@@ -557,6 +559,7 @@ export class ProofRun {
   private async act(action: PanelAction): Promise<string | null> {
     try {
       if (action.kind === "run") return await this.start(0);
+      if (action.kind === "restart") return await this.restart();
       if (action.kind === "resume") return await this.start(this.readRecord()?.nextCase ?? 0);
       if (action.kind === "load") {
         await this.env.confirmSetup();
@@ -761,11 +764,20 @@ export class ProofRun {
     this.machine = machine;
     this.state = machine.state();
     this.paint();
-    void machine
+    this.finished = machine
       .run()
       .then(() => this.finish(machine, source))
       .catch((error: unknown) => this.panel.showError(`The run stopped: ${describe(error)}`));
     return null;
+  }
+
+  // Ends the run going now, then plays every case again from setup.
+  private async restart(): Promise<string | null> {
+    if (this.running) {
+      this.machine?.stop();
+      await this.finished;
+    }
+    return this.start(0);
   }
 
   stop(): void {
