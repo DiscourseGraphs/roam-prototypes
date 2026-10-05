@@ -92,6 +92,16 @@ const CSS = `
   .ready span { margin-right: 10px; white-space: nowrap; }
   .now { font-size: 12.5px; background: #eef3fc; border-radius: 6px; padding: 5px 7px; }
   .now:empty { display: none; }
+  .testing { border: 1px solid #d5dbe5; border-left: 3px solid #2c62c9; border-radius: 6px; padding: 6px 8px;
+    font-size: 12.5px; background: #fff; max-height: 40vh; overflow-y: auto; }
+  .testing:empty { display: none; }
+  .testing .what { font-weight: 600; }
+  .testing .why { color: #3b4556; margin-top: 2px; }
+  .testing .why b { color: #1f2733; }
+  .testing ol { margin: 5px 0 0; padding-left: 20px; }
+  .testing li { color: #3b4556; }
+  .testing li.done { color: #8a93a3; }
+  .testing li.now { color: #2c62c9; font-weight: 600; }
   .claim { font-weight: 600; }
   .claim:empty, .given:empty, .where:empty { display: none; }
   .given, .muted { color: #5d6778; font-size: 12px; }
@@ -135,7 +145,9 @@ const CSS = `
 
 // The case blocks live in the light DOM, where the shadow root's styles
 // don't reach; this sheet goes in with them. Only the case running now shows
-// its steps; the others show their case:: line, verdict and note.
+// its steps; the others show their case:: line, verdict and note. The open
+// case hides its attribute lines (id::, proves::, decision:: and the rest):
+// the Testing box says what it tests in words.
 const BLOCKS_CSS = `
   .proof-blocks .proof-case { display: flex; gap: 4px; align-items: flex-start; margin: 0 0 2px; }
   .proof-blocks .proof-case-icon { flex: none; width: 1.1em; padding-top: 5px; text-align: center; color: #8a93a3; }
@@ -144,6 +156,7 @@ const BLOCKS_CSS = `
   .proof-blocks .proof-case.fail .proof-case-icon { color: #d9412e; }
   .proof-blocks .proof-case-body { flex: 1; min-width: 0; }
   .proof-blocks .proof-case:not(.current) .rm-block-children { display: none; }
+  .proof-blocks .proof-case.current .rm-block-children > .roam-block-container:has(> .rm-block-main .rm-block__input > span:first-child > .rm-attr-ref:first-child) { display: none; }
   .proof-blocks .proof-case.later { opacity: .6; }
   .proof-blocks .proof-case-note { margin: 0 0 4px 18px; font-size: 12px; color: #5d6778; white-space: pre-wrap; }
   .proof-blocks .proof-case.fail .proof-case-note { color: #b3261e; }
@@ -212,6 +225,31 @@ export const nowLine = (state: MachineState | null): string => {
   }
 };
 
+// The case running now, in words: what it proves, what decides pass or
+// fail, and its steps with the one running now marked.
+const paintTesting = (box: HTMLElement, state: MachineState | null): void => {
+  box.replaceChildren();
+  const item = state && state.phase !== "done" && state.phase !== "stopped" ? state.plan[state.caseIndex] : undefined;
+  if (!state || !item) return;
+  box.append(el("div", `Testing: ${item.title}`, "what"));
+  const line = (label: string, text: string | null): void => {
+    if (!text) return;
+    const row = el("div", undefined, "why");
+    row.append(el("b", `${label}: `), document.createTextNode(text));
+    box.append(row);
+  };
+  line("Proves", item.proves);
+  line("Checks", item.checks);
+  line("You judge", item.judge);
+  if (!item.steps.length) line("By hand", item.intent);
+  if (!item.steps.length) return;
+  const list = el("ol");
+  item.steps.forEach((step, index) => {
+    list.append(el("li", step.why, index < state.stepIndex ? "done" : index === state.stepIndex ? "now" : undefined));
+  });
+  box.append(list);
+};
+
 const ICONS: Record<string, string> = { pass: "✓", fail: "✗", skip: "⏭" };
 const MARKS: Record<CheckItem["state"], string> = { ok: "✓", working: "…", waiting: "○", "needs-you": "▶", blocked: "✗", optional: "○" };
 const MODES = ["auto", "step", "case"];
@@ -250,6 +288,7 @@ type Parts = {
   badge: HTMLElement;
   title: HTMLElement;
   now: HTMLElement;
+  testing: HTMLElement;
   checks: HTMLElement;
   claim: HTMLElement;
   given: HTMLElement;
@@ -277,6 +316,7 @@ type Bar = {
   badge: HTMLElement;
   title: HTMLElement;
   now: HTMLElement;
+  testing: HTMLElement;
   pending: HTMLElement;
   controls: HTMLElement;
   err: HTMLElement;
@@ -318,6 +358,7 @@ export class ProofPanel {
       badge,
       title,
       now: el("div", "", "now"),
+      testing: el("div", undefined, "testing"),
       checks: el("div", undefined, "checks"),
       claim: el("div", "", "claim"),
       given: el("div", "", "given"),
@@ -345,7 +386,7 @@ export class ProofPanel {
     parts.blocks.slot = "blocks";
     parts.blocks.append(sheet);
     host.append(parts.blocks);
-    panel.append(head, parts.now, parts.checks, parts.claim, parts.given, parts.where, parts.notices, parts.plan, parts.pending, parts.feed, parts.controls, parts.err);
+    panel.append(head, parts.now, parts.testing, parts.checks, parts.claim, parts.given, parts.where, parts.notices, parts.plan, parts.pending, parts.feed, parts.controls, parts.err);
     root.append(style, panel);
     // Roam handles mouse and key events on blocks; keep ours to ourselves so a
     // click on Run doesn't also open the block for editing. The case blocks'
@@ -454,6 +495,7 @@ export class ProofPanel {
     parts.badge.textContent = BADGES[phase] ?? phase;
     parts.title.textContent = view.title;
     parts.now.textContent = nowLine(state);
+    paintTesting(parts.testing, state);
     this.paintChecklist(parts, view);
     parts.claim.textContent = state?.claim ? `Proving: ${state.claim}` : "";
     parts.given.textContent = state?.given ? `Given: ${state.given}` : "";
@@ -525,12 +567,13 @@ export class ProofPanel {
       badge: el("span", "", "badge"),
       title: el("span", "", "title"),
       now: el("div", "", "now"),
+      testing: el("div", undefined, "testing"),
       pending: el("div", undefined, "pending"),
       controls: el("div", undefined, "row controls"),
       err: el("div", "", "err"),
     };
     head.append(bar.badge, bar.title, button("⇆", "bar-side", { title: "Move the bar to the other side" }));
-    panel.append(head, bar.now, bar.pending, bar.controls, bar.err);
+    panel.append(head, bar.now, bar.testing, bar.pending, bar.controls, bar.err);
     root.append(style, panel);
     for (const type of ["mousedown", "mouseup", "click", "keydown", "keyup", "keypress", "pointerdown"]) {
       panel.addEventListener(type, (event) => event.stopPropagation());
@@ -559,6 +602,7 @@ export class ProofPanel {
     bar.badge.textContent = BADGES[phase] ?? phase;
     bar.title.textContent = view.title;
     bar.now.textContent = nowLine(state);
+    paintTesting(bar.testing, state);
     this.paintPending(bar.pending, view);
     this.paintControls(bar.controls, view);
     bar.err.textContent = [view.error, this.flash].filter(Boolean).join("\n");

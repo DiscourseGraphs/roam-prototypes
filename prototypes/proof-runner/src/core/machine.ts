@@ -54,6 +54,8 @@ export type PlanCase = {
   title: string;
   proves: string | null;
   checks: string | null;
+  // What a person judges at the end (expect.text), when the case has one.
+  judge: string | null;
   intent: string | null;
   verdict: Verdict | null;
   note: string | null;
@@ -319,6 +321,7 @@ export class Machine {
         title: item.title,
         proves: item.proves ?? null,
         checks: item.checks ?? null,
+        judge: item.expect?.text ?? null,
         intent: item.intent ?? null,
         verdict: this.verdicts[item.id] ?? null,
         note: this.verdictNotes[item.id] ?? null,

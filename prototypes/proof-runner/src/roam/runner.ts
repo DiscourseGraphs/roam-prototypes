@@ -476,6 +476,7 @@ export class ProofRun {
               title: item.title,
               proves: item.proves ?? null,
               checks: item.checks ?? null,
+              judge: item.expect?.text ?? null,
               intent: item.intent ?? null,
               verdict: this.earlier?.results[item.id] ?? null,
               note: this.earlier?.notes[item.id] ?? null,
