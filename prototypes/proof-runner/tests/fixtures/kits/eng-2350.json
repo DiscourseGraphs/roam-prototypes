@@ -86,7 +86,7 @@
     },
     {
       "id": "database-session",
-      "why": "the extension has a local database session for this graph, since the local create-space edge function is down",
+      "why": "the extension has a proof database session for this graph; the proof database runs without edge functions, so this signs in the way create-space would",
       "phase": "before-load",
       "check": {
         "js": "proof.supabase.signedIn()"
@@ -101,7 +101,7 @@
     {
       "id": "obsidian-type-brings-its-template",
       "title": "Importing an Obsidian node creates its node type with the template",
-      "proves": "Done When 1: a missing node type is created with its template, here from Obsidian",
+      "proves": "Done When 2: A new Obsidian-origin node type imports with its template visible in settings.",
       "checks": "PK Hypothesis exists, its Template has the Prediction and How to test it sections, and no frontmatter came across",
       "caption": "This graph has no Hypothesis type. Importing a hypothesis shared from Obsidian creates the type and brings its template along, without the Obsidian frontmatter.",
       "steps": [
@@ -176,7 +176,7 @@
     {
       "id": "roam-type-brings-its-template",
       "title": "Importing a Roam node creates its node type with the template",
-      "proves": "Done When 2: it works for types shared from Roam too",
+      "proves": "Done When 1: A new Roam-origin node type imports with its template visible in settings.",
       "checks": "PK Prediction exists with Expected result and How we will know in its Template",
       "caption": "It works for node types shared from Roam too. The Prediction type arrives with its template.",
       "steps": [

@@ -30,6 +30,38 @@ const describeElement = (element: Element): string => {
   return `<${element.tagName.toLowerCase()}${classes ? `.${classes}` : ""}>`;
 };
 
+// What a person would see, in plain text: the open page, then the dialogs,
+// popovers and toasts on top of it.
+export const snapshotPage = (): string => {
+  const title = document.querySelector(".roam-article .rm-title-display");
+  const layers = Array.from(document.querySelectorAll(".bp3-dialog, .bp3-popover, .bp3-toast, .rm-modal-dialog")).filter(isVisible);
+  const lines = [
+    `page: ${title ? (title.textContent ?? "").trim() : "(no page title)"}`,
+    ...layers.map((layer) => `${describeElement(layer)} ${(layer.textContent ?? "").replace(/\s+/g, " ").trim().slice(0, 600)}`),
+  ];
+  return lines.join("\n").slice(0, SNAPSHOT_LIMIT);
+};
+
+const CONTROLS = "button, [role=button], [role=tab], [role=menuitem], .bp3-menu-item, .bp3-tab, input, textarea, select, a[href]";
+const CONTROLS_SHOWN = 80;
+
+// The controls a step could act on, for an agent writing selectors: those
+// in the topmost dialog or popover when one is open, else the page's.
+export const controlsOnPage = (): string[] => {
+  const layers = Array.from(document.querySelectorAll(".bp3-dialog, .bp3-popover, .rm-modal-dialog")).filter(isVisible);
+  const scope = layers.at(-1) ?? document.querySelector(".roam-app") ?? document.body;
+  return Array.from(scope.querySelectorAll(CONTROLS))
+    .filter(isVisible)
+    .slice(0, CONTROLS_SHOWN)
+    .map((element) => {
+      const label = (element.getAttribute("aria-label") ?? element.textContent ?? (element as HTMLInputElement).placeholder ?? "")
+        .replace(/\s+/g, " ")
+        .trim()
+        .slice(0, 80);
+      return `${describeElement(element)}${label ? ` "${label}"` : ""}`;
+    });
+};
+
 // Indirect eval runs in global scope, the way page.evaluate runs a string,
 // so kit js sees window.proof as proof. A promise is awaited.
 export const evaluate = async (js: string): Promise<unknown> => {
@@ -230,19 +262,8 @@ export const makePageExecutor = (options: PageExecutorOptions): Executor => {
     check: async (js) => {
       await evaluate(options.fill(js));
     },
-    // What a person would see, for a failure report: the open page, dialogs,
-    // popovers and toasts, in plain text.
-    snapshot: async () => {
-      const title = document.querySelector(".roam-article .rm-title-display");
-      const layers = Array.from(
-        document.querySelectorAll(".bp3-dialog, .bp3-popover, .bp3-toast, .rm-modal-dialog"),
-      ).filter(isVisible);
-      const lines = [
-        `page: ${title ? (title.textContent ?? "").trim() : "(no page title)"}`,
-        ...layers.map((layer) => `${describeElement(layer)} ${(layer.textContent ?? "").replace(/\s+/g, " ").trim().slice(0, 600)}`),
-      ];
-      return lines.join("\n").slice(0, SNAPSHOT_LIMIT);
-    },
+    // What a person would see, for a failure report.
+    snapshot: async () => snapshotPage(),
     render: async (state) => options.render(state),
   };
 };

@@ -8,6 +8,7 @@ import {
   type KitTarget,
   type Need,
   type Step,
+  type SurfaceArea,
   type TestCase,
 } from "../core/kit";
 
@@ -29,6 +30,14 @@ import {
 //         use:: discover.open                        action under it (collapsed)
 //       expect:: the warning shows                   what a person checks
 //       expect js:: `proof.waitFor(...)`             what the runner checks
+//       area:: s-node-search                         the surface area it checks
+//       decision:: rejected                          proposed, approved or rejected
+//       reason:: covered by the import case          (with decided by:: and decided at::)
+//     surface                                       areas next to the change
+//       Node search dialog                            one child per area: its name,
+//         id:: s-node-search                          with id::, why:: and files::
+//         why:: it reads the same node index
+//         files:: `src/a.ts`, `src/b.ts`
 //
 // An action is `use:: recipe` (with `with:: {json}`), `kind:: value` for any
 // action kind, or a code block: ```javascript for js, ```json for any action.
@@ -62,6 +71,7 @@ export const isProofRoot = (text: string): boolean =>
 const KIT_KEYS = [
   "kit",
   "title",
+  "ticket",
   "build",
   "pr",
   "claim",
@@ -79,9 +89,14 @@ const CASE_KEYS = [
   "note",
   "expect",
   "expect js",
+  "area",
+  "decision",
+  "decided by",
+  "decided at",
+  "reason",
 ] as const;
 // Containers: blocks whose children the parser reads, or skips on purpose.
-const KIT_SECTIONS = ["prepare", "target", "needs", "runs"];
+const KIT_SECTIONS = ["prepare", "target", "needs", "surface", "runs"];
 const ACTION_ALIASES: Record<string, string> = {
   palette: "command_palette",
   "command palette": "command_palette",
@@ -196,6 +211,47 @@ const readStep = (node: BlockNode, where: string): Record<string, unknown> => {
   return step;
 };
 
+// One step block read on its own, as a raw step for the machine, e.g. a step
+// fixed on the page during a run. Its id stays the machine's to give.
+export const stepFromBlock = (node: BlockNode): Record<string, unknown> => {
+  const { id: _id, ...step } = readStep(node, `step "${node.string.trim()}"`);
+  return step;
+};
+
+// What a block and everything under it say, to tell whether it was edited.
+export const blockText = (node: BlockNode): string =>
+  JSON.stringify([node.string, childrenOf(node).map(blockText)]);
+
+// Where a run's cases and steps sit on the page, taken when it starts, and
+// what each step block said then, so Retry can tell a step fixed since. Steps
+// are by position: the run only swaps a failed step for its fix, one for one.
+export type RunBlocks = {
+  cases: Record<string, string>;
+  steps: Record<string, Array<string | null>>;
+  text: Record<string, string>;
+};
+
+export const runBlocksFor = (page: PageKit, tree: BlockNode, kit: Kit): RunBlocks => {
+  const nodes = new Map<string, BlockNode>();
+  const index = (node: BlockNode): void => {
+    if (node.uid) nodes.set(node.uid, node);
+    for (const child of node.children ?? []) index(child);
+  };
+  index(tree);
+  const blocks: RunBlocks = { cases: {}, steps: {}, text: {} };
+  for (const testCase of kit.cases) {
+    const caseUid = page.blocks.cases[testCase.id];
+    if (caseUid) blocks.cases[testCase.id] = caseUid;
+    blocks.steps[testCase.id] = testCase.steps.map((step) => {
+      const uid = page.blocks.steps[`${testCase.id}/${step.id}`] ?? null;
+      const node = uid ? nodes.get(uid) : undefined;
+      if (uid && node) blocks.text[uid] = blockText(node);
+      return uid;
+    });
+  }
+  return blocks;
+};
+
 const readCase = (
   node: BlockNode,
   title: string,
@@ -206,10 +262,21 @@ const readCase = (
   const stepUids: (string | undefined)[] = [];
   const notes: string[] = [];
   const expect: Record<string, string> = {};
+  const decision: Record<string, string> = {};
   childrenOf(node).forEach((child, index) => {
     const attr = attribute(child.string);
     if (attr && (CASE_KEYS as readonly string[]).includes(attr.key)) {
-      if (attr.key === "expect js") {
+      if (attr.key === "decision") {
+        decision.status = unquote(attr.value).toLowerCase();
+      } else if (attr.key === "decided by") {
+        decision.by = attr.value;
+      } else if (attr.key === "decided at") {
+        decision.at = unquote(attr.value);
+      } else if (attr.key === "reason") {
+        decision.reason = attr.value;
+      } else if (attr.key === "area") {
+        raw.surface = unquote(attr.value);
+      } else if (attr.key === "expect js") {
         const code = codeChild(child);
         expect.js = attr.value ? unquote(attr.value) : (code?.code ?? "");
       } else if (attr.key === "expect") {
@@ -237,6 +304,7 @@ const readCase = (
   if (steps.length) raw.steps = steps;
   if (expect.js || expect.text) raw.expect = expect;
   if (notes.length) raw.notes = notes;
+  if (Object.keys(decision).length) raw.decision = decision;
   return { raw, stepUids };
 };
 
@@ -252,6 +320,27 @@ const readFixtures = (node: BlockNode): Record<string, unknown>[] =>
       return [{ ...value, why: child.string.trim() }];
     }
     return [value];
+  });
+
+// Each child is an area: its name, with id::, why:: and files:: under it.
+const readSurface = (node: BlockNode): Record<string, unknown>[] =>
+  childrenOf(node).flatMap((child) => {
+    const name = child.string.trim();
+    if (!name) return [];
+    const area: Record<string, unknown> = { area: name };
+    for (const grandchild of childrenOf(child)) {
+      const attr = attribute(grandchild.string);
+      if (!attr) continue;
+      if (attr.key === "id") area.id = unquote(attr.value);
+      else if (attr.key === "why") area.why = attr.value;
+      else if (attr.key === "files") {
+        area.files = attr.value
+          .split(",")
+          .map((file) => unquote(file))
+          .filter(Boolean);
+      }
+    }
+    return [area];
   });
 
 const readNeeds = (value: string, node: BlockNode): Need[] => {
@@ -330,6 +419,7 @@ export const pageKit = (root: BlockNode): PageKit => {
     if (KIT_SECTIONS.includes(section) || (attr && KIT_SECTIONS.includes(attr.key))) {
       const key = attr ? attr.key : section;
       if (key === "prepare") raw.prepare = readFixtures(child);
+      else if (key === "surface") raw.surface = readSurface(child);
       else if (key === "needs") raw.needs = readNeeds("", child);
       else if (key === "target") {
         const code = codeChild(child) ?? (attr?.value ? codeBlock(attr.value) : null);
@@ -400,11 +490,12 @@ const actionBlocks = (action: Action): BlockNode[] => {
   return [jsonBlock(action)];
 };
 
-const stepBlock = (step: Step, index: number, previous: Step[]): BlockNode => {
+// A step as a block: its why, with its action folded under it.
+export const stepBlockOf = (step: Pick<Step, "why" | "do" | "use" | "with">): BlockNode =>
+  block(step.why, stepAction(step), false);
+
+const stepAction = (step: Pick<Step, "do" | "use" | "with">): BlockNode[] => {
   const children: BlockNode[] = [];
-  if (step.id !== nextStepId(previous.slice(0, index))) {
-    children.push(block(`id:: ${inline(step.id)}`));
-  }
   if (step.use) {
     const json =
       step.with && Object.keys(step.with).length ? JSON.stringify(step.with) : null;
@@ -417,7 +508,12 @@ const stepBlock = (step: Step, index: number, previous: Step[]): BlockNode => {
   } else if (step.do) {
     children.push(...actionBlocks(step.do));
   }
-  return block(step.why, children, false);
+  return children;
+};
+
+const stepBlock = (step: Step, index: number, previous: Step[]): BlockNode => {
+  const id = step.id !== nextStepId(previous.slice(0, index)) ? [block(`id:: ${inline(step.id)}`)] : [];
+  return block(step.why, [...id, ...stepAction(step)], false);
 };
 
 const caseBlock = (testCase: TestCase): BlockNode => {
@@ -427,6 +523,13 @@ const caseBlock = (testCase: TestCase): BlockNode => {
     if (value) children.push(block(`${key}:: ${value}`));
   }
   for (const note of testCase.notes ?? []) children.push(block(`note:: ${note}`));
+  if (testCase.surface) children.push(block(`area:: ${inline(testCase.surface)}`));
+  if (testCase.decision) {
+    children.push(block(`decision:: ${testCase.decision.status}`));
+    if (testCase.decision.by) children.push(block(`decided by:: ${testCase.decision.by}`));
+    if (testCase.decision.at) children.push(block(`decided at:: ${inline(testCase.decision.at)}`));
+    if (testCase.decision.reason) children.push(block(`reason:: ${testCase.decision.reason}`));
+  }
   testCase.steps.forEach((step, index) => {
     children.push(stepBlock(step, index, testCase.steps));
   });
@@ -442,6 +545,13 @@ const caseBlock = (testCase: TestCase): BlockNode => {
   return block(`case:: ${testCase.title}`, children);
 };
 
+const surfaceBlock = (area: SurfaceArea): BlockNode =>
+  block(area.area, [
+    block(`id:: ${inline(area.id)}`),
+    block(`why:: ${area.why}`),
+    ...(area.files?.length ? [block(`files:: ${area.files.map(inline).join(", ")}`)] : []),
+  ]);
+
 const fixtureBlock = (fixture: Fixture): BlockNode => {
   const { why, ...rest } = fixture;
   return block(why, [jsonBlock(rest)], false);
@@ -455,6 +565,7 @@ export const kitBlocks = (
 ): BlockNode => {
   const children: BlockNode[] = [block(`kit:: ${kit.name}`)];
   if (kit.title) children.push(block(`title:: ${kit.title}`));
+  if (kit.ticket) children.push(block(`ticket:: ${kit.ticket}`));
   if (build) children.push(block(`build:: ${build}`));
   if (kit.target?.pr) children.push(block(`pr:: ${kit.target.pr}`));
   if (kit.claim) children.push(block(`claim:: ${kit.claim}`));
@@ -476,6 +587,7 @@ export const kitBlocks = (
     const { pr: _pr, ...rest } = kit.target;
     if (Object.keys(rest).length) children.push(block("target", [jsonBlock(rest)], false));
   }
+  if (kit.surface?.length) children.push(block("surface", kit.surface.map(surfaceBlock)));
   for (const testCase of kit.cases) children.push(caseBlock(testCase));
   return block(`{{proof}} ${kit.title ?? kit.name}`, children);
 };

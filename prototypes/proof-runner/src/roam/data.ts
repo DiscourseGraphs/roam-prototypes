@@ -6,6 +6,7 @@ import recipeSearch from "../recipes/search.json";
 import recipeSettings from "../recipes/settings.json";
 import recipeSharing from "../recipes/sharing.json";
 import baselineDgBaseline1 from "../baselines/dg-baseline@1.json";
+import baselineDgBaseline2 from "../baselines/dg-baseline@2.json";
 
 export const recipeFiles: Record<string, unknown> = {
   "dialogs.json": recipeDialogs,
@@ -19,4 +20,5 @@ export const recipeFiles: Record<string, unknown> = {
 // By ref, e.g. dg-baseline@1.
 export const baselineFiles: Record<string, unknown> = {
   "dg-baseline@1": baselineDgBaseline1,
+  "dg-baseline@2": baselineDgBaseline2,
 };

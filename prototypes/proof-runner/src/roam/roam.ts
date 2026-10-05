@@ -28,6 +28,7 @@ export type RoamApi = {
     block: {
       create(args: { location: { "parent-uid": string; order: number | "last" }; block: { string: string; uid?: string; open?: boolean } }): Promise<void>;
       update(args: { block: { uid: string; string?: string; open?: boolean } }): Promise<void>;
+      move(args: { location: { "parent-uid": string; order: number | "last" }; block: { uid: string } }): Promise<void>;
       delete(args: { block: { uid: string } }): Promise<void>;
     };
     page: {
@@ -49,6 +50,10 @@ export type RoamApi = {
     commandPalette: {
       addCommand(args: { label: string; callback: () => unknown; [key: string]: unknown }): Promise<void> | void;
       removeCommand(args: { label: string }): Promise<void> | void;
+    };
+    components: {
+      renderBlock(args: { uid: string; el: HTMLElement; "zoom-path?"?: boolean; "open?"?: boolean }): Promise<unknown>;
+      unmountNode(args: { el: HTMLElement }): void;
     };
   };
 };

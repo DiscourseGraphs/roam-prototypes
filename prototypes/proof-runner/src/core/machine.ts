@@ -573,8 +573,17 @@ export class Machine {
         ? this.findCase(args.caseId)
         : this.currentCase();
     if (!testCase) throw new Error("No such case is running.");
+    // The in-Roam panel sends a step fixed on the kit's page as "kit": it's
+    // the kit's own text and runs like the rest of it. Only the HUD may say
+    // so; the live HUD can't send steps at all, and the socket never can.
     const by: StepSource =
-      source === "hud" || args.by === "you" ? "you" : "model";
+      source === "hud"
+        ? args.by === "kit"
+          ? "kit"
+          : "you"
+        : args.by === "you"
+          ? "you"
+          : "model";
     const steps = validateSteps(args.steps, "steps", testCase.steps, by);
     if (steps.length === 0) throw new Error("Send at least one step.");
     for (const step of steps) this.checkOrigin(step);

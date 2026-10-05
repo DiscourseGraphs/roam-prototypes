@@ -1,18 +1,24 @@
+import { LOCAL_BUILDS_URL, PROOF_DB_URL, databaseUrlOf, pointAtProofDatabase } from "../core/database";
 import { roam } from "./roam";
 
-// Loads a Discourse Graph build that CI put on Vercel Blob, the way Roam
-// Depot would, but from a page: fetch extension.js, check which commit it
-// is, run it, and add its stylesheet. The CDN ignores query strings and can
-// lag an upload by a minute, so the commit inside the file is the only
-// trustworthy name for what loaded.
+// Loads a Discourse Graph build the way Roam Depot would, but from a page:
+// fetch extension.js, check which commit it is and which database it talks
+// to, run it, and add its stylesheet. Builds come from CI (Vercel Blob,
+// compiled against the hosted database); for kits that touch a database the
+// runner points the CI build at the proof database before it runs. The CDN
+// ignores query strings and can lag an upload by a minute, so the commit
+// inside the file is the only trustworthy name for what loaded.
 
 export const BLOB_ROOT = "https://6b4k1ntlti17rkf1.public.blob.vercel-storage.com/releases/roam";
 export const DG_REPO = "DiscourseGraphs/discourse-graph";
 
 export type LoadedBuild = {
   branch: string;
-  // The database it talks to (see backendOf).
+  // The database it talks to: its URL, and its first host label (see backendOf).
+  database: string | null;
   backend: string | null;
+  // A CI build pointed at the proof database (pointBuild).
+  pointed: boolean;
   // The PR the page named, when it named one.
   pr: number | null;
   commit: string | null;
@@ -222,10 +228,10 @@ const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout
 const CSS_ID = "proof-dg-build-css";
 
 // The first part of the Supabase host a build talks to, as DG keys its
-// session: the hosted project for CI builds, "127" for a local dist.
+// session: the hosted project for CI builds, "127" for a local one.
 export const backendOf = (source: string): string | null => {
-  if (/127\.0\.0\.1:54321/.test(source)) return "127";
-  return /https:\/\/([a-z0-9]+)\.supabase\.co/.exec(source)?.[1] ?? null;
+  const url = databaseUrlOf(source);
+  return url ? new URL(url).hostname.split(".")[0] : null;
 };
 
 export type FetchedBuild = {
@@ -234,8 +240,44 @@ export type FetchedBuild = {
   source: string;
   css: string;
   commit: string | null;
+  database: string | null;
   backend: string | null;
+  pointed: boolean;
 };
+
+// The local helper (`roam/cli.ts local`, which the panel's Connect button
+// starts): the proof database's keys, or why it has none; null when it
+// isn't running.
+export type LocalServer = {
+  database: { url: string; publishableKey: string; serviceKey: string } | null;
+  // Still bringing the database and the stub up, or why it couldn't.
+  starting?: boolean;
+  error?: string | null;
+};
+
+export const localServer = async (): Promise<LocalServer | null> => {
+  try {
+    const response = await fetch(`${LOCAL_BUILDS_URL}/status`, { cache: "no-store" });
+    return response.ok ? ((await response.json()) as LocalServer) : null;
+  } catch {
+    return null;
+  }
+};
+
+// Asks the local helper to stop, with what it started.
+export const stopLocalServer = async (): Promise<void> => {
+  await fetch(`${LOCAL_BUILDS_URL}/stop`, { method: "POST", cache: "no-store" }).catch(() => undefined);
+};
+
+// A CI build pointed at the proof database (see pointAtProofDatabase), so a
+// kit that needs a database runs on the PR's own build without a rebuild.
+export const pointBuild = (fetched: FetchedBuild, publishableKey: string): FetchedBuild => ({
+  ...fetched,
+  source: pointAtProofDatabase(fetched.source, publishableKey),
+  database: PROOF_DB_URL,
+  backend: "127",
+  pointed: true,
+});
 
 // Downloads a build without running it, so the runner knows its commit and
 // database before deciding on setup.
@@ -256,7 +298,16 @@ export const fetchBuild = async (branch: string): Promise<FetchedBuild> => {
   const css = await fetch(`${url}extension.css?proof=${Date.now()}`, { cache: "no-store" })
     .then((reply) => (reply.ok ? reply.text() : ""))
     .catch(() => "");
-  return { branch, url, source, css, commit: commitOf(source), backend: backendOf(source) };
+  return {
+    branch,
+    url,
+    source,
+    css,
+    commit: commitOf(source),
+    database: databaseUrlOf(source),
+    backend: backendOf(source),
+    pointed: false,
+  };
 };
 
 export const loadBuild = async ({
@@ -322,5 +373,16 @@ export const loadBuild = async ({
     await cleanUp().catch(() => undefined);
     throw error;
   }
-  return { branch, backend: fetched.backend, pr, commit, prHead: head, url, loadedAt: Date.now(), unload: cleanUp };
+  return {
+    branch,
+    database: fetched.database,
+    backend: fetched.backend,
+    pointed: fetched.pointed,
+    pr,
+    commit,
+    prHead: head,
+    url,
+    loadedAt: Date.now(),
+    unload: cleanUp,
+  };
 };

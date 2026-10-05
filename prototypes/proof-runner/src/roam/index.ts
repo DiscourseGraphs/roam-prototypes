@@ -1,9 +1,23 @@
+import { isProofDatabase } from "../core/database";
 import { HELPERS_INIT_SCRIPT } from "../core/helpers";
 import { validateBaseline, validateKit, type Baseline, type Kit } from "../core/kit";
 import { parseRecipes, type RecipeBook } from "../core/recipes";
 import type { TemplateContext } from "../core/template";
-import { PaletteRegistry, dgRunning, fetchBuild, loadBuild, prHead, type ExtensionAPI, type FetchedBuild } from "./build-loader";
+import {
+  PaletteRegistry,
+  dgRunning,
+  fetchBuild,
+  loadBuild,
+  localServer,
+  pointBuild,
+  prHead,
+  stopLocalServer,
+  type ExtensionAPI,
+  type FetchedBuild,
+} from "./build-loader";
+import { registerAgentTools, type AgentHost } from "./agent-tools";
 import { baselineFiles, recipeFiles } from "./data";
+import { CONNECT_LINK, RUNNER_URL, agentLink, agentPrompt } from "./links";
 import { evaluate } from "./executor";
 import { isProofRoot, kitBlocks, pageKit, rootConfig } from "./page-kit";
 import {
@@ -20,10 +34,13 @@ import {
   sidebarShows,
 } from "./roam";
 import {
+  CONNECTING_FLAGS,
   ProofRun,
   applyBeforeLoad,
   contextFor,
   fixturesFor,
+  helperState,
+  kitNeedsDatabase,
   PRODUCTION_REFUSAL,
   planBeforeLoad,
   retryPlan,
@@ -52,11 +69,16 @@ const SECRETS_KEY = "proof:secrets";
 const TIMEOUT_MS = 15_000;
 const VERSION = process.env.VERSION ?? "dev";
 
-// Where the runner is published, for the line under each kit that tells a
-// first-time visitor how to turn it on.
-export const RUNNER_URL = "https://discoursegraphs.com/releases/prototypes/proof-runner/";
-const HINT_START = "First time here?";
-export const RUNNER_HINT = `${HINT_START} Turn on the proof runner once for this graph: Settings > Roam Depot > Developer extensions (turn on developer mode) > Load from URL, paste ${RUNNER_URL} and reload this page. It loads this kit's build and its run panel.`;
+// The setup note: the first block on a kit page, for a visitor without the
+// runner (nothing else on the page can speak to them). With the runner on,
+// it hides, and the panel's checklist starts with the runner instead.
+export const RUNNER_HINT = `To run this kit, turn on the proof runner once for this graph: Settings > Roam Depot > Developer extensions (turn on developer mode) > Load from URL, paste ${RUNNER_URL} and reload this page. This line hides itself once the runner is on.`;
+// The note's openings, today's and earlier ones, so older pages are found.
+const HINT_STARTS = ["To run this kit", "First time here?"];
+const HINTS_STYLE_ID = "proof-runner-hints";
+// How long Connect waits for this machine's helper: the proof database
+// takes about 20 s to start, longer when it migrates.
+const CONNECT_TIMEOUT_MS = 120_000;
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -124,6 +146,8 @@ class ProofRunner {
   readonly runs = new Map<string, ProofRun>();
   readonly env: RunnerEnv;
   private readonly opened = new Set<string>();
+  private readonly hints = new Set<string>();
+  private connecting = false;
   private readonly timers = new Set<ReturnType<typeof setTimeout>>();
   private observer: MutationObserver | null = null;
   private loading: Promise<void> | null = null;
@@ -131,6 +155,9 @@ class ProofRunner {
     void this.loadIfNone().then(async () => this.openSidebarFor(await openUid()));
   };
   private originalProof: ProofWindow["proof"];
+  // The proof database's keys from the local server, for kits' {{env.X}};
+  // held in this tab only.
+  private localKeys: Record<string, string> = {};
 
   constructor(private readonly extensionAPI?: ExtensionAPI) {
     this.env = {
@@ -146,10 +173,17 @@ class ProofRunner {
       recipes: loadRecipeBook(),
       baselines: loadBaselines(),
       timeout: TIMEOUT_MS,
-      secrets: readSecrets,
+      secrets: () => ({ ...readSecrets(), ...this.localKeys }),
       loadTrace: [],
       loading: false,
       database: null,
+      version: VERSION,
+      helper: null,
+      connect: () => this.connect(),
+      disconnect: () => this.disconnect(),
+      checkDatabase: () => this.checkDatabase(),
+      askAgent: (rootUid) => this.askAgent(rootUid),
+      agentSeenAt: 0,
     };
   }
 
@@ -238,22 +272,51 @@ class ProofRunner {
     } catch (error) {
       this.trace(`the kit didn't parse, so no fixtures run: ${describe(error)}`);
     }
-    // Download the build first: its commit and its database decide the plan.
+    const fixtures = kit ? fixturesFor(kit, this.env) : [];
+    const needsDatabase = kit ? kitNeedsDatabase(kit, fixtures) : false;
+    const flags = win.proof as unknown as { flags: { get(name: string): boolean } };
+    const flagsOn = CONNECTING_FLAGS.filter((name) => flags.flags.get(name));
+    // Whether the kit would put the graph on a database decides the build:
+    // CI's builds talk to production, so a kit that would connect runs on
+    // the PR's CI build pointed at the proof database, whose keys this
+    // machine's helper hands over. Without the helper nothing loads; the
+    // checklist offers to connect it.
+    const needsProof = wouldConnect({
+      needsDatabase,
+      flagsOn,
+      apply: kit ? (await planBeforeLoad(fixtures, contextFor(kit.name, this.env, "load"), "127")).apply : [],
+    });
     let fetched: FetchedBuild;
     try {
-      this.trace(`fetching ${branch}`);
-      fetched = await fetchBuild(branch as string);
+      if (needsProof) {
+        const server = await localServer();
+        this.env.helper = helperState(server);
+        if (!server?.database) {
+          this.trace(`waiting for this machine: ${this.env.helper.detail}`);
+          return;
+        }
+        this.localKeys = {
+          SUPABASE_URL: server.database.url,
+          SUPABASE_PUBLISHABLE_KEY: server.database.publishableKey,
+          SUPABASE_SERVICE_ROLE_KEY: server.database.serviceKey,
+        };
+        this.trace(`fetching ${branch} to point it at the proof database`);
+        fetched = pointBuild(await fetchBuild(branch as string), server.database.publishableKey);
+      } else {
+        this.env.helper = null;
+        this.trace(`fetching ${branch}`);
+        fetched = await fetchBuild(branch as string);
+      }
     } catch (error) {
       this.env.buildError = describe(error);
       return;
     }
     win.__proofBackend = { ref: fetched.backend ?? "127" };
-    this.trace(`build ${fetched.commit?.slice(0, 7) ?? "?"} talks to database ${fetched.backend ?? "unknown"}`);
+    this.trace(`build ${fetched.commit?.slice(0, 7) ?? "?"} talks to database ${fetched.database ?? "none"}`);
     const context = contextFor(kit?.name ?? "kit", this.env, "load");
     const found = kit
-      ? await planBeforeLoad(fixturesFor(kit, this.env), context, fetched.backend)
+      ? await planBeforeLoad(fixtures, context, fetched.backend)
       : { apply: [], skip: [], kept: [], byBuild: [] };
-    const needsDatabase = Boolean(kit?.needs?.includes("supabase")) || found.byBuild.length > 0;
     const plan: SetupPlan = {
       rootUid: root.uid,
       kit: kit?.name ?? "kit",
@@ -264,12 +327,11 @@ class ProofRunner {
       needsDatabase,
       fetched,
     };
-    const flags = win.proof as unknown as { flags: { get(name: string): boolean } };
-    const connectingFlagOn =
-      flags.flags.get("Suggestive mode overlay enabled") || flags.flags.get("Enable node sharing");
-    if (fetched.backend !== "127" && wouldConnect({ needsDatabase, connectingFlagOn, apply: plan.apply })) {
+    // Whatever was decided above, a build that isn't on the proof database
+    // never starts for a kit that would connect.
+    if (!isProofDatabase(fetched.database) && wouldConnect({ needsDatabase, flagsOn, apply: plan.apply })) {
       this.env.buildError = PRODUCTION_REFUSAL;
-      this.trace(`refused: ${fetched.backend ?? "unknown"} is not a local database`);
+      this.trace(`refused: ${fetched.database ?? "no database"} is not the proof database`);
       return;
     }
     if (plan.apply.length) {
@@ -294,8 +356,9 @@ class ProofRunner {
     const { branch, head } = plan;
     try {
       this.trace(`loading ${branch}`);
+      if (!plan.fetched) throw new Error("The build wasn't fetched before setup; reload the page.");
       this.env.build = await loadBuild({
-        fetched: plan.fetched ?? (await fetchBuild(branch)),
+        fetched: plan.fetched,
         pr: plan.pr,
         graph: this.env.graph,
         palette: this.env.palette,
@@ -310,16 +373,21 @@ class ProofRunner {
     if (plan.needsDatabase) await this.checkDatabase();
   }
 
-  // Waits for DG's session on the build's database. DG signs itself in
-  // shortly after loading when sync or node sharing is on (creating the
-  // graph's space the first time); kits that need the database stay
-  // un-runnable until it has.
+  // Waits for DG's session on the proof database: the kit's database-session
+  // fixture signs in before load, and DG picks the session up when sync or
+  // node sharing is on. Kits that need the database stay un-runnable until
+  // the proof database accepts that session.
   async checkDatabase(timeoutMs = 45_000): Promise<void> {
     const proof = win.proof as unknown as {
-      supabase: { signedIn(): boolean; session(): { user?: { email?: string } } | null; backend(): string };
+      supabase: {
+        hasSession(): boolean;
+        signedIn(): Promise<boolean>;
+        session(): { user?: { email?: string } } | null;
+        backend(): string;
+      };
       flags: { get(name: string): boolean };
     };
-    const ref = proof.supabase.backend();
+    const ref = this.env.build?.database ?? proof.supabase.backend();
     this.env.database = { state: "checking", detail: `${ref} for ${this.env.graph}` };
     this.refreshAll();
     // DG reports a failed sign-in on the console; keep what it says.
@@ -332,18 +400,21 @@ class ProofRunner {
     };
     try {
       const deadline = Date.now() + timeoutMs;
-      while (!proof.supabase.signedIn() && Date.now() < deadline) await sleep(500);
+      while (!proof.supabase.hasSession() && Date.now() < deadline) await sleep(500);
     } finally {
       console.error = original;
     }
-    if (proof.supabase.signedIn()) {
+    const accepted = proof.supabase.hasSession() && (await proof.supabase.signedIn());
+    if (accepted) {
       const email = proof.supabase.session()?.user?.email ?? "the space account";
       this.env.database = { state: "ok", detail: `signed in to ${ref} as ${email}` };
     } else {
       const syncing = proof.flags.get("Suggestive mode overlay enabled") || proof.flags.get("Enable node sharing");
       this.env.database = {
         state: "missing",
-        detail: !syncing
+        detail: proof.supabase.hasSession()
+          ? `The graph's session isn't one ${ref} knows (it's from another stack, or from before a reset). Reload: the kit's database-session fixture signs in again.`
+          : !syncing
           ? "DG only signs in to its database when sync or node sharing is on, and both are off in this graph."
           : heard.length
             ? `DG tried and failed: ${heard[0]}`
@@ -368,6 +439,72 @@ class ProofRunner {
       this.env.loading = false;
       this.refreshAll();
     }
+  }
+
+  // The checklist's Connect: opens the dg-proof:// link, which starts this
+  // machine's helper (the proof database, the embeddings stub and the keys
+  // server), waits for it to answer, then carries on loading the kit.
+  private async connect(): Promise<void> {
+    if (this.connecting) return;
+    this.connecting = true;
+    this.env.helper = { state: "connecting", detail: "Starting the proof database and the embeddings stub on this machine (about 20 s)…" };
+    this.env.buildError = null;
+    this.refreshAll();
+    openLink(CONNECT_LINK);
+    try {
+      const deadline = Date.now() + CONNECT_TIMEOUT_MS;
+      let server = await localServer();
+      while ((!server || server.starting) && Date.now() < deadline) {
+        await sleep(1500);
+        server = await localServer();
+      }
+      this.env.helper = server
+        ? helperState(server)
+        : { state: "unanswered", detail: "Nothing answered after the dg-proof:// link opened." };
+    } finally {
+      this.connecting = false;
+      this.refreshAll();
+    }
+    if (this.env.helper?.state === "ok") await this.loadIfNone();
+  }
+
+  // The checklist's Stop: the helper stops what it started.
+  private async disconnect(): Promise<void> {
+    await stopLocalServer();
+    this.localKeys = {};
+    this.env.helper = { state: "missing", detail: "Stopped. This kit needs the proof database, which runs on this machine." };
+    this.refreshAll();
+  }
+
+  // The checklist's Ask your agent: the dg-proof:// link opens the person's
+  // agent on this kit, and the prompt goes on the clipboard for an agent
+  // that's already open.
+  private async askAgent(rootUid: string): Promise<string | null> {
+    openLink(agentLink(this.env.graph, rootUid));
+    try {
+      await navigator.clipboard.writeText(agentPrompt(this.env.graph, rootUid));
+    } catch {
+      // The link still opens the agent.
+    }
+    return null;
+  }
+
+  // With the runner on, a kit page's setup note moves to the top for the
+  // next visitor without it, and hides here.
+  private async tidyHint(pageUid: string | null): Promise<void> {
+    if (!pageUid || !(await proofRootFor(pageUid))) return;
+    const uid = await placeRunnerHint(pageUid, { create: false }).catch(() => null);
+    if (!uid) return;
+    this.hints.add(uid);
+    let style = document.getElementById(HINTS_STYLE_ID);
+    if (!style) {
+      style = document.createElement("style");
+      style.id = HINTS_STYLE_ID;
+      document.head.append(style);
+    }
+    style.textContent = [...this.hints]
+      .map((hint) => `.roam-block-container:has(> .rm-block-main .rm-block__input[id$="-${hint}"]) { display: none; }`)
+      .join("\n");
   }
 
   // Swaps each rendered {{proof}} button for a run panel. A {{proof}} written
@@ -396,6 +533,7 @@ class ProofRunner {
   // Opens the open page's kit in the right sidebar, pinned to the top, once
   // per kit per tab, so the controls stay put while a run drives the page.
   async openSidebarFor(uid: string | null): Promise<void> {
+    void this.tidyHint(uid);
     const root = uid ? await proofRootFor(uid) : null;
     if (!root?.uid || this.opened.has(root.uid)) return;
     this.opened.add(root.uid);
@@ -491,6 +629,24 @@ class ProofRunner {
     window.addEventListener("hashchange", this.onHashChange);
   }
 
+  // What the runner's agent tools act through: a kit's run by its page
+  // (title or uid, else the open page), and the agent's presence.
+  agentHost(): AgentHost {
+    return {
+      runFor: async (page?: string) => {
+        const uid = !page ? undefined : /^[\w-]{9}$/.test(page) ? page : await pageUid(page);
+        if (page && !uid) throw new Error(`No page titled "${page}".`);
+        const run = this.runFor(await this.rootFor(uid ?? undefined));
+        if (!run.pageKit) await run.refresh();
+        return run;
+      },
+      seen: () => {
+        this.env.agentSeenAt = Date.now();
+        this.refreshAll();
+      },
+    };
+  }
+
   async rootFor(uid?: string): Promise<string> {
     const target = uid ?? (await openUid());
     const root = target ? await proofRootFor(target) : null;
@@ -501,7 +657,10 @@ class ProofRunner {
   // Everything the runner added, taken away again: Roam calls this when the
   // extension unloads or reloads.
   async stop(installedHelpers: boolean): Promise<void> {
-    for (const run of this.runs.values()) run.stop();
+    for (const run of this.runs.values()) {
+      run.stop();
+      run.panel.dispose();
+    }
     this.observer?.disconnect();
     window.removeEventListener("hashchange", this.onHashChange);
     for (const timer of this.timers) clearTimeout(timer);
@@ -512,6 +671,7 @@ class ProofRunner {
       button.removeAttribute("data-roamjs-proof");
     }
     document.getElementById("proof-run-marks")?.remove();
+    document.getElementById(HINTS_STYLE_ID)?.remove();
     if (!this.extensionAPI) {
       for (const label of Object.values(PALETTE)) await roam().ui.commandPalette.removeCommand({ label });
     }
@@ -566,10 +726,10 @@ class ProofRunner {
         }
         const root = { ...kitBlocks(kit, { build: options.build ?? null }), uid: roam().util.generateUID() };
         await createTree(uid, [root], 0);
-        await addRunnerHint(uid);
+        await placeRunnerHint(uid, { create: true });
         return { pageUid: uid, rootUid: root.uid, title };
       },
-      addRunnerHint,
+      placeRunnerHint: (pageUid: string) => placeRunnerHint(pageUid, { create: true }),
       setSecret: (name: string, value: string) => {
         const secrets = readSecrets();
         secrets[name] = value;
@@ -582,17 +742,33 @@ class ProofRunner {
   }
 }
 
-// Until someone turns the runner on, a kit page shows only a bare "proof"
-// button. A line under the kit (outside it, so the sidebar view stays
-// clean) says how; an older wording is replaced.
-const addRunnerHint = async (pageUid: string): Promise<void> => {
-  const tree = await readTree(pageUid);
-  const hint = (tree?.children ?? []).find((child) => child.string.startsWith(HINT_START));
-  if (hint?.uid) {
-    if (hint.string !== RUNNER_HINT) await roam().data.block.update({ block: { uid: hint.uid, string: RUNNER_HINT } });
-    return;
+// Puts the setup note first on a kit page, in today's words, creating it
+// when asked; returns its uid.
+const placeRunnerHint = async (pageUid: string, { create }: { create: boolean }): Promise<string | null> => {
+  const children = (await readTree(pageUid))?.children ?? [];
+  const index = children.findIndex((child) => HINT_STARTS.some((start) => child.string.startsWith(start)));
+  const hint = children[index];
+  if (!hint?.uid) {
+    if (!create) return null;
+    const uid = roam().util.generateUID();
+    await roam().data.block.create({ location: { "parent-uid": pageUid, order: 0 }, block: { string: RUNNER_HINT, uid } });
+    return uid;
   }
-  await roam().data.block.create({ location: { "parent-uid": pageUid, order: "last" }, block: { string: RUNNER_HINT } });
+  if (hint.string !== RUNNER_HINT) await roam().data.block.update({ block: { uid: hint.uid, string: RUNNER_HINT } });
+  if (index !== 0) await roam().data.block.move({ location: { "parent-uid": pageUid, order: 0 }, block: { uid: hint.uid } });
+  return hint.uid;
+};
+
+// Opens a dg-proof:// link the way a click on one does, which hands it to
+// the machine's handler (the browser asks first).
+const openLink = (href: string): void => {
+  const link = document.createElement("a");
+  link.href = href;
+  link.rel = "noopener";
+  link.style.display = "none";
+  document.body.append(link);
+  link.click();
+  link.remove();
 };
 
 export type Runner = { stop(): Promise<void> };
@@ -609,6 +785,7 @@ export const startRunner = async ({ extensionAPI }: { extensionAPI?: ExtensionAP
   win.proofRunner = runner.api();
   runner.keepKitWindows();
   await runner.registerCommands();
+  if (registerAgentTools(extensionAPI, runner.agentHost())) console.log("[proof] agent tools registered with Roam's AI API.");
   await runner.loadIfNone();
   runner.observe();
   runner.listen();

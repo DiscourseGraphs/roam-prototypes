@@ -17,7 +17,7 @@
   "prepare": [
     {
       "id": "database-session",
-      "why": "the extension has a local database session for this graph, since the local create-space edge function is down",
+      "why": "the extension has a proof database session for this graph; the proof database runs without edge functions, so this signs in the way create-space would",
       "phase": "before-load",
       "check": {
         "js": "proof.supabase.signedIn()"
@@ -40,6 +40,7 @@
     {
       "id": "only-sizes-to-label",
       "title": "Each Only button sizes to its label at the right edge of its row",
+      "proves": "Done When 1: The Only button stays compact and right-aligned when a node-type row is hovered, with no stretching or layout shift.",
       "caption": "In the node summoning menu's type filter, the Only button now fits its label and sits at the right edge of each row, instead of taking half the row.",
       "steps": [
         {

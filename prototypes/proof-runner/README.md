@@ -16,18 +16,24 @@ browser console.
 
 1. The runner reads the page's `{{proof}}` block. `pr:: 1506` looks the PR's branch up on GitHub;
    `build:: <branch>` names one directly.
-2. It runs the kit's before-load fixtures, the flags and node types Discourse Graph reads once at
-   startup. When any of them would change the graph, the panel lists what will change and waits for
-   **Set up and load**; otherwise it loads straight away.
-3. It loads the branch's CI build from `discoursegraphs.com/releases/roam/<branch>/` and checks the
+2. The panel shows a checklist of what the kit needs before Run, one line per need that applies:
+   the runner, this machine (for a kit that needs a database), the graph setup, the build, the
+   database session, and an agent (for by-hand cases). A met line is a check mark; one that isn't
+   shows the one button that meets it. When every line is met they fold into one, and Run is one
+   press.
+3. It runs the kit's before-load fixtures, the flags and node types Discourse Graph reads once at
+   startup. When any of them would change the graph, the checklist lists what will change and waits
+   for **Set up and load**; otherwise it loads straight away.
+4. It loads the branch's CI build from `discoursegraphs.com/releases/roam/<branch>/` and checks the
    commit inside it against the PR head. The panel says when CI hasn't caught up yet. With URL
    loading, the build gets this extension's `extensionAPI`, with its settings stored under a `dg:`
    prefix. From `roam/js` it gets a stand-in that keeps settings in the browser.
-4. **Run** plays the in-session fixtures, the baseline smoke checks, then the cases. It clicks,
+5. **Run** plays the in-session fixtures, the baseline smoke checks, then the cases. It clicks,
    types, presses keys and runs palette commands in the page, and runs each case's check. A case
    written only as an `intent` is done by hand: the panel says what to do, and you press Done, then
-   Pass or Fail. A finished run adds a line to the kit's `runs` list: the verdicts, the build and
-   commit, the time, and who ran it.
+   Pass or Fail. During a run the panel shows the page's own case blocks, so editing a step there
+   edits the page, and Retry runs a failed step as its block reads now. A finished run adds a line
+   to the kit's `runs` list: the verdicts, the build and commit, the time, and who ran it.
 
 If Discourse Graph is already running in the graph (installed from Roam Depot), the runner doesn't
 start a second copy and says so. Turn that copy off for the graph to test builds there.
@@ -67,10 +73,24 @@ so a typo can't leave a case without its check.
   kit's `runs` list.
 - The CI build itself writes Discourse Graph's settings on load, as any install does.
 
-CI builds are compiled against the production database, and tests never run there. The runner
-refuses to start a CI build for a kit that needs a database, or that has or turns on sync or node
-sharing; those kits need a local build of the PR against a local Supabase. Kits that only exercise
-UI run on CI builds with sync and sharing off.
+CI builds are compiled against the production database, and tests never run there. For a kit that
+needs a database, or that has or turns on sync or node sharing, the runner points the PR's CI build
+at the proof database before it runs: it swaps the Supabase URL and key for the proof database's and
+Discourse Graph's website API for the embeddings stub, and refuses the build if anything of the
+hosted stack is left. The proof database runs on the tester's machine: the checklist's **Connect
+this machine** opens a `dg-proof://connect` link, which that machine's handler (set up once from
+the proof tools in dg-demo-videos) answers by starting the database and handing the runner its
+keys. Kits that only exercise UI (`dg-baseline@2`) run on CI builds as they are, for anyone.
+
+## Agent tools
+
+With Roam's AI API (`extensionAPI.ai.addTool`), the runner registers tools an agent connected to the
+graph can call: `proof_status`, `proof_snapshot`, `proof_control`, `proof_add_steps` and
+`proof_fix_step`. An agent can read a kit and its run, see the page's dialogs and controls, run and
+pause, write steps for a by-hand case onto the page, and fix a failed step. Js an agent writes waits
+for an Allow in the panel, and verdicts stay with the person. The checklist's **Ask your agent**
+opens a `dg-proof://agent` link that starts one. From `roam/js` there is no `extensionAPI`, so no
+tools.
 
 Kit pages run their own js when you press Run, so keep kits in graphs shared with people you trust,
 as with `roam/js`.

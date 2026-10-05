@@ -30,6 +30,31 @@ export type CaseResult = {
   note?: string;
 };
 
+// Whether a case runs. qa.ts proposes cases from the PR's diff; a person
+// approves or rejects each one, and a rejected case stays in the kit with its
+// reason, so the record shows what was left out and why. A case with no
+// decision was written into the kit by hand and counts as approved.
+export type DecisionStatus = "proposed" | "approved" | "rejected";
+
+export type CaseDecision = {
+  status: DecisionStatus;
+  // Who proposed or decided it: the model for a proposal, a person's name for
+  // a decision.
+  by?: string;
+  at?: string;
+  // Why it was rejected (required) or approved (optional).
+  reason?: string;
+};
+
+// An area next to the change that it could break, beyond the PR's own Done
+// When, with the files that tie it to the diff.
+export type SurfaceArea = {
+  id: string;
+  area: string;
+  why: string;
+  files?: string[];
+};
+
 export type TestCase = {
   id: string;
   title: string;
@@ -46,6 +71,9 @@ export type TestCase = {
   expect?: Expectation;
   notes?: string[];
   last?: CaseResult;
+  decision?: CaseDecision;
+  // The id of the surface area this case covers.
+  surface?: string;
 };
 
 export type KitTarget = {
@@ -104,6 +132,9 @@ export type Fixture = {
 export type Kit = {
   name: string;
   title?: string;
+  // The Linear ticket whose Done When the cases cover, e.g. ENG-2348. When
+  // it's left out, prove.ts reads it from the kit's name or the PR's branch.
+  ticket?: string;
   // The one sentence the kit proves, and the state its setup leaves, both in
   // plain words. The live panel leads with them.
   claim?: string;
@@ -112,6 +143,8 @@ export type Kit = {
   target?: KitTarget;
   needs?: Need[];
   prepare?: Fixture[];
+  // What the change could break beyond its Done When (qa.ts propose).
+  surface?: SurfaceArea[];
   cases: TestCase[];
 };
 
@@ -429,7 +462,74 @@ export const validateCase = (
   if (isRecord(value.last) && typeof value.last.verdict === "string") {
     testCase.last = value.last as CaseResult;
   }
+  if (value.decision !== undefined) {
+    testCase.decision = validateDecision(value.decision, `${where}.decision`);
+  }
+  if (value.surface !== undefined) {
+    if (!isText(value.surface)) throw new Error(`${where}.surface is a surface area's id.`);
+    testCase.surface = value.surface.trim();
+  }
   return testCase;
+};
+
+const DECISIONS: DecisionStatus[] = ["proposed", "approved", "rejected"];
+
+const validateDecision = (value: unknown, where: string): CaseDecision => {
+  if (!isRecord(value) || !DECISIONS.includes(value.status as DecisionStatus)) {
+    throw new Error(`${where}: a decision is { status: proposed | approved | rejected, by?, at?, reason? }.`);
+  }
+  const decision: CaseDecision = { status: value.status as DecisionStatus };
+  for (const key of ["by", "at", "reason"] as const) {
+    if (value[key] === undefined) continue;
+    if (!isText(value[key])) throw new Error(`${where}.${key} must be text.`);
+    decision[key] = (value[key] as string).trim();
+  }
+  if (decision.status === "rejected" && !decision.reason) {
+    throw new Error(`${where}: a rejected case keeps its reason, so the record says why it was left out.`);
+  }
+  return decision;
+};
+
+const validateSurface = (value: unknown): SurfaceArea[] => {
+  if (!Array.isArray(value)) throw new Error("surface must be an array.");
+  const ids = new Set<string>();
+  return value.map((raw, index) => {
+    const at = `surface[${index}]`;
+    if (!isRecord(raw) || !isText(raw.id) || !isText(raw.area) || !isText(raw.why)) {
+      throw new Error(`${at}: a surface area is { id, area, why, files? }.`);
+    }
+    if (ids.has(raw.id)) throw new Error(`${at}: duplicate surface id "${raw.id}".`);
+    ids.add(raw.id);
+    const area: SurfaceArea = { id: raw.id.trim(), area: raw.area.trim(), why: raw.why.trim() };
+    if (raw.files !== undefined) {
+      if (!Array.isArray(raw.files) || !raw.files.every(isText)) {
+        throw new Error(`${at}.files must be a list of paths.`);
+      }
+      area.files = (raw.files as string[]).map((file) => file.trim());
+    }
+    return area;
+  });
+};
+
+// A case runs when it was written by hand or someone approved it.
+export const decisionOf = (testCase: TestCase): DecisionStatus => testCase.decision?.status ?? "approved";
+
+export const isRunnable = (testCase: TestCase): boolean => decisionOf(testCase) === "approved";
+
+// The kit as a run sees it: only the cases that run.
+export const runnableKit = (kit: Kit): Kit => ({ ...kit, cases: kit.cases.filter(isRunnable) });
+
+// After a run, the cases it left out go back where they were, so a baked kit
+// keeps the whole list, proposed and rejected cases included. Cases added
+// during the run go at the end.
+export const withHeldCases = (run: Kit, full: Kit): Kit => {
+  const ran = new Map(run.cases.map((testCase) => [testCase.id, testCase]));
+  const known = new Set(full.cases.map((testCase) => testCase.id));
+  const cases = full.cases.map((testCase) =>
+    isRunnable(testCase) ? (ran.get(testCase.id) ?? testCase) : testCase,
+  );
+  for (const testCase of run.cases) if (!known.has(testCase.id)) cases.push(testCase);
+  return { ...run, cases };
 };
 
 const validateCases = (
@@ -639,6 +739,12 @@ export const validateKit = (value: unknown): Kit => {
     cases: validateCases(value.cases, "cases", "c"),
   };
   if (isText(value.title)) kit.title = value.title.trim();
+  if (value.ticket !== undefined) {
+    if (!isText(value.ticket) || !/^[A-Za-z]+-\d+$/.test(value.ticket.trim())) {
+      throw new Error('ticket is a Linear id like "ENG-2348".');
+    }
+    kit.ticket = value.ticket.trim().toUpperCase();
+  }
   if (isText(value.claim)) kit.claim = value.claim.trim();
   if (isText(value.given)) kit.given = value.given.trim();
   if (value.baseline !== undefined) {
@@ -656,6 +762,15 @@ export const validateKit = (value: unknown): Kit => {
   if (needs) kit.needs = needs;
   if (value.prepare !== undefined) {
     kit.prepare = validateFixtures(value.prepare, "prepare");
+  }
+  if (value.surface !== undefined) {
+    kit.surface = validateSurface(value.surface);
+  }
+  const surfaceIds = new Set((kit.surface ?? []).map((area) => area.id));
+  for (const testCase of kit.cases) {
+    if (testCase.surface && !surfaceIds.has(testCase.surface)) {
+      throw new Error(`Case ${testCase.id} names surface "${testCase.surface}", which the kit's surface list doesn't have.`);
+    }
   }
   if (kit.target?.app === "obsidian") {
     if (!kit.target.vault) throw new Error("An Obsidian kit needs target.vault.");
@@ -680,4 +795,38 @@ export const validateBaseline = (value: unknown): Baseline => {
   };
   if (isText(value.why)) baseline.why = value.why.trim();
   return baseline;
+};
+
+// What a report says beyond the run: the cases left out (rejected with their
+// reason, or still waiting for a decision) and the areas next to the change,
+// each with the approved cases that cover it.
+export const kitScopeLines = (kit: Kit): string[] => {
+  const lines: string[] = [];
+  const rejected = kit.cases.filter((testCase) => decisionOf(testCase) === "rejected");
+  const proposed = kit.cases.filter((testCase) => decisionOf(testCase) === "proposed");
+  if (rejected.length) {
+    lines.push("Rejected, not run:");
+    for (const testCase of rejected) {
+      const who = testCase.decision?.by ? ` (${testCase.decision.by})` : "";
+      lines.push(`- **${testCase.title}**: ${testCase.decision?.reason ?? "no reason given"}${who}`);
+    }
+    lines.push("");
+  }
+  if (proposed.length) {
+    lines.push("Proposed, waiting for a decision:");
+    for (const testCase of proposed) lines.push(`- **${testCase.title}**`);
+    lines.push("");
+  }
+  if (kit.surface?.length) {
+    lines.push("Areas next to the change:");
+    for (const area of kit.surface) {
+      const covering = kit.cases.filter((testCase) => testCase.surface === area.id && isRunnable(testCase));
+      const coverage = covering.length
+        ? `covered by ${covering.map((testCase) => `"${testCase.title}"`).join(", ")}`
+        : "no approved case covers it";
+      lines.push(`- **${area.area}**: ${area.why} ${coverage}.`);
+    }
+    lines.push("");
+  }
+  return lines;
 };

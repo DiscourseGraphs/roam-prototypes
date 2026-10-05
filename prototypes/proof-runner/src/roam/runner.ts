@@ -1,27 +1,24 @@
+import { CONNECTING_FLAGS, connectingFlagsAfter } from "../core/database";
 import { inSessionSteps, smokeSteps } from "../core/fixtures";
 import { Journal } from "../core/journal";
-import type { Baseline, Fixture, Kit, Verdict } from "../core/kit";
+import { decisionOf, runnableKit, validateSteps, type Baseline, type Fixture, type Kit, type Verdict } from "../core/kit";
 import { Machine, type MachineState } from "../core/machine";
 import { makeExpander, type RecipeBook } from "../core/recipes";
 import { fill, fillDeep, type TemplateContext } from "../core/template";
 import type { ExtensionAPI, FetchedBuild, LoadedBuild, PaletteRegistry } from "./build-loader";
+import { checklist, runBlocked, type CheckItem } from "./checklist";
 import { evaluate, makePageExecutor } from "./executor";
-import { pageKit, rootConfig, type BlockNode, type PageKit } from "./page-kit";
+import { blockText, pageKit, rootConfig, runBlocksFor, stepBlockOf, stepFromBlock, type BlockNode, type PageKit, type RunBlocks } from "./page-kit";
 import { ProofPanel, type PanelAction, type PanelView } from "./panel";
 import { createTree, readTree, roam, userName } from "./roam";
+import type { DatabaseState, FixtureOutcome, HelperState } from "./status";
+
+export { HANDLER_SETUP_COMMAND, helperState, type DatabaseState, type FixtureOutcome, type HelperState } from "./status";
 
 // One {{proof}} block's runs: reads the kit off the page, runs it on the
 // machine the live rehearsal uses, shows it in every panel mounted for the
 // block, marks the case and step blocks, keeps enough to resume after a
 // reload, and writes a line to the block's run log when a run finishes.
-
-export type FixtureOutcome = {
-  id: string;
-  why: string;
-  // build: the build does it itself (a CI build signs in to its own database).
-  outcome: "ok" | "kept" | "skipped" | "failed" | "build";
-  detail?: string;
-};
 
 // Before-load fixtures that would change the graph, waiting for a person to
 // say go before the build loads.
@@ -43,9 +40,6 @@ export type SetupPlan = {
   fetched?: FetchedBuild;
 };
 
-// Whether DG has a session on the build's database, checked after load.
-export type DatabaseState = { state: "checking" | "ok" | "missing"; detail: string };
-
 export type RunnerEnv = {
   graph: string;
   extensionAPI?: ExtensionAPI;
@@ -65,6 +59,17 @@ export type RunnerEnv = {
   loadTrace: string[];
   loading: boolean;
   database: DatabaseState | null;
+  // The runner's version, for the checklist's first line.
+  version: string;
+  // The local helper, when the kit that picked the build needs it.
+  helper: HelperState | null;
+  connect: () => Promise<void>;
+  disconnect: () => Promise<void>;
+  checkDatabase: () => Promise<void>;
+  // Opens the person's local agent on this kit.
+  askAgent: (rootUid: string) => Promise<string | null>;
+  // When an agent last called one of the runner's tools.
+  agentSeenAt: number;
 };
 
 type RunRecord = {
@@ -121,10 +126,15 @@ export const contextFor = (kit: string, env: RunnerEnv, run: string): TemplateCo
 // a local-database sign-in doesn't apply to it).
 type Plan = Pick<SetupPlan, "apply" | "skip" | "kept" | "byBuild">;
 
-// proof.supabase.signIn signs in to a local database with its service key,
-// a stand-in for the create-space call a local stack lacked. A hosted build
+// proof.supabase.signIn signs in to the proof database with its service
+// key, a stand-in for the create-space call it runs without. A hosted build
 // makes that call itself, so for one the fixture is the build's to do.
 const LOCAL_SIGN_IN = /proof\.supabase\.signIn\b/;
+
+// Whether a kit needs a database session: it says so, or it signs in.
+export const kitNeedsDatabase = (kit: Kit, fixtures: Fixture[]): boolean =>
+  Boolean(kit.needs?.includes("supabase")) ||
+  fixtures.some((fixture) => "js" in fixture.apply && LOCAL_SIGN_IN.test(fixture.apply.js));
 
 export const planBeforeLoad = async (
   fixtures: Fixture[],
@@ -191,8 +201,10 @@ export const retryPlan = (plan: SetupPlan, outcomes: FixtureOutcome[]): SetupPla
 export type BuildStatus = {
   // The branch (or "PR #n" before it's resolved) the page asks for.
   wanted: string | null;
-  // Why the loaded build isn't the page's, offering a reload.
-  mismatch: string | null;
+  // The tab loaded another page's build.
+  other: boolean;
+  // The PR's head is ahead of the build loaded.
+  behind: string | null;
   // Why Run is off; null when the kit can run.
   blocked: string | null;
 };
@@ -224,58 +236,58 @@ export const buildStatus = ({
     loaded && (config.build ? loaded.branch === config.build : config.pr ? mine || loaded.pr === config.pr : true),
   );
   const wanted = config.build ?? (config.pr ? (loaded && matches ? loaded.branch : `PR #${config.pr}`) : null);
-  if (!requested) return { wanted, mismatch: null, blocked: null };
-  if (loading) return { wanted, mismatch: null, blocked: "The build is still loading." };
-  if (setup) return { wanted, mismatch: null, blocked: "Set up and load the build first." };
+  const status = { wanted, other: false, behind: null as string | null };
+  if (!requested) return { ...status, blocked: null };
+  if (loading) return { ...status, blocked: "The build is still loading." };
+  if (setup) return { ...status, blocked: "Set up and load the build first." };
   if (loaded && !matches) {
-    return { wanted, mismatch: `this page wants ${wanted}`, blocked: `This tab has ${loaded.branch}; reload on this page to load ${wanted}.` };
+    return { ...status, other: true, blocked: `This tab has ${loaded.branch}; reload on this page to load ${wanted}.` };
   }
   if (!loaded) {
-    return {
-      wanted,
-      mismatch: buildError ? null : "reload to load it",
-      blocked: buildError ? "The page's build didn't load (see above)." : `${wanted} isn't loaded in this tab.`,
-    };
+    return { ...status, blocked: buildError ? "The page's build didn't load." : `${wanted} isn't loaded in this tab.` };
   }
-  const behind = loaded.prHead && loaded.commit && !loaded.prHead.startsWith(loaded.commit.slice(0, 7));
-  const mismatch = behind ? `PR head is ${loaded.prHead?.slice(0, 7)}; CI may still be building it` : null;
+  const behind =
+    loaded.prHead && loaded.commit && !loaded.prHead.startsWith(loaded.commit.slice(0, 7))
+      ? `PR head is ${loaded.prHead.slice(0, 7)}; CI may still be building it`
+      : null;
   // A kit that needs the database proves nothing without a session on it.
   if (needsDatabase && database?.state !== "ok") {
     return {
-      wanted,
-      mismatch,
+      ...status,
+      behind,
       blocked:
-        database?.state === "missing"
-          ? `No database session: ${database.detail}`
-          : "Waiting for DG to sign in to its database.",
+        database?.state === "missing" ? `No database session: ${database.detail}` : "Waiting for DG to sign in to its database.",
     };
   }
-  return { wanted, mismatch, blocked: null };
+  return { ...status, behind, blocked: null };
 };
 
-// The flags that make DG connect to its database when it loads.
-const CONNECTING_FLAGS = /Suggestive mode overlay enabled|Enable node sharing/;
-
-// Whether loading this build would put the graph on the build's database:
-// the kit needs one, sync or node sharing is on, or setup would turn one on.
+// Whether loading this build would put the graph on a database: the kit
+// needs one, or sync or node sharing is on once its setup has run (on in
+// the graph now and not turned off, or turned on).
 export const wouldConnect = ({
   needsDatabase,
-  connectingFlagOn,
+  flagsOn,
   apply,
 }: {
   needsDatabase: boolean;
-  connectingFlagOn: boolean;
+  // The connecting flags on in the graph now.
+  flagsOn: readonly string[];
   apply: Fixture[];
 }): boolean =>
   needsDatabase ||
-  connectingFlagOn ||
-  apply.some((fixture) => "js" in fixture.apply && CONNECTING_FLAGS.test(fixture.apply.js) && /\btrue\b/.test(fixture.apply.js));
+  connectingFlagsAfter(
+    flagsOn,
+    apply.flatMap((fixture) => ("js" in fixture.apply ? [fixture.apply.js] : [])),
+  ).length > 0;
 
-// CI compiles PR builds against the production database. Tests never run
-// there: a build that isn't on a local database (127) doesn't start for a
-// kit that would connect.
+export { CONNECTING_FLAGS };
+
+// CI compiles PR builds against the production database, and tests never
+// run there: a kit that would connect runs on the PR's CI build pointed at
+// the proof database (pointBuild), and on nothing else.
 export const PRODUCTION_REFUSAL =
-  "This build talks to the production database, and this kit would connect to it (it needs a database, or turns on sync or node sharing). Kits like this run only on a local build of the PR against a local Supabase.";
+  "This build talks to the production database, and this kit would connect to it (it needs a database, or turns on sync or node sharing). It runs only pointed at the proof database.";
 
 // A saved partial run only resumes on the kit and the commit it started on;
 // verdicts from another commit can't stand for this one.
@@ -293,6 +305,10 @@ export const fixturesFor = (kit: Kit, env: RunnerEnv): Fixture[] => {
 
 const MARKS_ID = "proof-run-marks";
 
+// An agent that called one of the runner's tools this recently is there.
+const AGENT_FRESH_MS = 45_000;
+const AGENT_CONTROLS = ["pause", "resume", "next", "skip-step", "skip-case", "stop"];
+
 export class ProofRun {
   readonly panel: ProofPanel;
   private tree: BlockNode | null = null;
@@ -302,6 +318,7 @@ export class ProofRun {
   private state: MachineState | null = null;
   private earlier: { results: Record<string, Verdict>; notes: Record<string, string> } | null = null;
   private offset = 0;
+  private runBlocks: RunBlocks | null = null;
   private lastRun: string | null = null;
 
   constructor(
@@ -318,7 +335,7 @@ export class ProofRun {
   private readRecord(): RunRecord | null {
     try {
       const record = JSON.parse(localStorage.getItem(this.storageKey) ?? "null") as RunRecord | null;
-      return this.kit && recordFits(record, hash(this.kit.kit), this.env.build?.commit ?? null) ? record : null;
+      return this.runKit && recordFits(record, hash(this.runKit), this.env.build?.commit ?? null) ? record : null;
     } catch {
       return null;
     }
@@ -335,6 +352,11 @@ export class ProofRun {
 
   get running(): boolean {
     return Boolean(this.state && this.state.phase !== "done" && this.state.phase !== "stopped");
+  }
+
+  // The cases a run plays: written by hand, or approved.
+  private get runKit(): Kit | null {
+    return this.kit ? runnableKit(this.kit.kit) : null;
   }
 
   get pageKit(): PageKit | null {
@@ -360,13 +382,11 @@ export class ProofRun {
   private warnings(): string[] {
     const notes: string[] = [];
     const env = this.env;
-    if (env.buildError) notes.push(env.buildError);
     const kit = this.kit?.kit;
     if (!kit) return notes;
     if (env.buildFor === this.rootUid) {
       for (const outcome of env.beforeLoad) {
         if (outcome.outcome === "skipped") notes.push(`Skipped fixture ${outcome.id}: ${outcome.detail}.`);
-        if (outcome.outcome === "failed") notes.push(`Fixture ${outcome.id} failed before load: ${outcome.detail}`);
       }
     } else if (env.build && (kit.prepare?.some((fixture) => fixture.phase === "before-load") || kit.baseline)) {
       notes.push("This tab loaded its build for another kit, before this kit's before-load fixtures ran. Reload on this page to apply them.");
@@ -374,6 +394,13 @@ export class ProofRun {
     const outside = (kit.prepare ?? []).filter((fixture) => fixture.phase === "outside");
     if (outside.length) {
       notes.push(`Needs a dev machine for ${outside.map((fixture) => fixture.id).join(", ")} (database or shell work); those fixtures are skipped here.`);
+    }
+    const proposed = kit.cases.filter((testCase) => decisionOf(testCase) === "proposed").length;
+    const rejected = kit.cases.filter((testCase) => decisionOf(testCase) === "rejected").length;
+    if (proposed || rejected) {
+      notes.push(
+        `Run plays the approved cases. ${[proposed ? `${proposed} proposed ${proposed === 1 ? "case waits" : "cases wait"} for a decision` : "", rejected ? `${rejected} rejected ${rejected === 1 ? "case stays" : "cases stay"} on the page with ${rejected === 1 ? "its" : "their"} reason` : ""].filter(Boolean).join("; ")}.`,
+      );
     }
     return notes;
   }
@@ -394,17 +421,47 @@ export class ProofRun {
 
   private needsDatabase(): boolean {
     const kit = this.kit?.kit;
-    if (!kit) return false;
-    if (kit.needs?.includes("supabase")) return true;
-    return fixturesFor(kit, this.env).some((fixture) => "js" in fixture.apply && LOCAL_SIGN_IN.test(fixture.apply.js));
+    return kit ? kitNeedsDatabase(kit, fixturesFor(kit, this.env)) : false;
+  }
+
+  // What this kit needs before Run, one line per need that applies.
+  checklist(): CheckItem[] {
+    const config = this.tree ? rootConfig(this.tree) : { build: null, pr: null, kit: null };
+    const env = this.env;
+    const mine = env.buildFor === this.rootUid;
+    const loaded = env.build;
+    const setup = env.setup?.rootUid === this.rootUid ? env.setup : null;
+    const status = this.buildStatus();
+    const pending = this.state?.pending;
+    return checklist({
+      version: env.version,
+      requested: Boolean(config.build || config.pr),
+      wanted: status.wanted,
+      loading: env.loading,
+      loaded: loaded ? { branch: loaded.branch, commit: loaded.commit, pointed: loaded.pointed } : null,
+      other: status.other,
+      behind: status.behind,
+      buildError: mine ? env.buildError : null,
+      helper: mine ? env.helper : null,
+      setup: setup
+        ? {
+            branch: setup.branch,
+            apply: setup.apply.map((fixture) => fixture.why),
+            skip: setup.skip.map(({ fixture, reason }) => `${fixture.why} (${reason})`),
+          }
+        : null,
+      beforeLoad: mine ? env.beforeLoad.filter((item) => item.outcome !== "skipped") : [],
+      database: mine && this.needsDatabase() ? (env.database ?? { state: "checking", detail: "" }) : null,
+      byHand: this.runKit?.cases.filter((item) => item.steps.length === 0 && item.intent).length ?? 0,
+      waitingOnAgent: pending?.kind === "steps" || pending?.kind === "failure",
+      agentSeen: Date.now() - env.agentSeenAt < AGENT_FRESH_MS,
+    });
   }
 
   view(): PanelView {
     const config = this.tree ? rootConfig(this.tree) : { build: null, pr: null, kit: null };
-    const loaded = this.env.build;
-    const setup = this.env.setup?.rootUid === this.rootUid ? this.env.setup : null;
-    const status = this.buildStatus();
     const record = this.state ? null : this.readRecord();
+    const items = this.checklist();
     const merged = this.state
       ? {
           ...this.state,
@@ -412,7 +469,7 @@ export class ProofRun {
           caseCount: this.state.caseCount + this.offset,
           results: { ...(this.earlier?.results ?? {}), ...this.state.results },
           plan: [
-            ...(this.kit?.kit.cases.slice(0, this.offset) ?? []).map((item) => ({
+            ...(this.runKit?.cases.slice(0, this.offset) ?? []).map((item) => ({
               id: item.id,
               title: item.title,
               proves: item.proves ?? null,
@@ -429,32 +486,25 @@ export class ProofRun {
     return {
       title: this.kit?.kit.title ?? this.kit?.kit.name ?? config.kit ?? "Proof kit",
       kitName: this.kit?.kit.name ?? null,
-      build: {
-        wanted: status.wanted,
-        loaded: loaded?.branch ?? null,
-        commit: loaded?.commit ?? null,
-        pr: config.pr,
-        mismatch: status.mismatch,
-        loading: this.env.loading,
-      },
-      blocked: status.blocked,
-      database: this.env.buildFor === this.rootUid && this.needsDatabase() ? this.env.database : null,
-      setup: setup
-        ? {
-            branch: setup.branch,
-            apply: setup.apply.map((fixture) => fixture.why),
-            skip: setup.skip.map(({ fixture, reason }) => `${fixture.why} (${reason})`),
-          }
-        : null,
+      checklist: items,
+      blocked: runBlocked(items),
       error: this.error,
       warnings: this.warnings(),
       machine: merged,
+      blocks: { cases: this.runBlocks?.cases ?? {}, step: this.stepUid() },
       resumable:
-        record && record.nextCase > 0 && record.nextCase < (this.kit?.kit.cases.length ?? 0)
+        record && record.nextCase > 0 && record.nextCase < (this.runKit?.cases.length ?? 0)
           ? { caseIndex: record.nextCase, results: record.results }
           : null,
       lastRun: this.lastRun,
     };
+  }
+
+  // The block of the step running now (or failed), if it has one.
+  private stepUid(): string | null {
+    const state = this.state;
+    if (!state?.caseId || state.caseIndex < 0) return null;
+    return this.runBlocks?.steps[state.caseId]?.[state.stepIndex] ?? null;
   }
 
   paint(): void {
@@ -463,9 +513,10 @@ export class ProofRun {
     this.mark(view.machine);
   }
 
-  // Colors the case blocks by verdict and tints the step block running now,
-  // with one stylesheet keyed by block uid, so Roam re-rendering a block
-  // doesn't wipe the marks.
+  // Colors the case blocks by verdict, tints the step block running now and
+  // dims the steps done, with one stylesheet keyed by block uid: it marks
+  // every rendering of a block, the panel's and the page's, and Roam
+  // re-rendering a block doesn't wipe it.
   private mark(view: PanelView["machine"]): void {
     let style = document.getElementById(MARKS_ID) as HTMLStyleElement | null;
     if (!style) {
@@ -473,30 +524,32 @@ export class ProofRun {
       style.id = MARKS_ID;
       document.head.append(style);
     }
-    const kit = this.kit;
-    if (!kit || !view) {
+    const blocks = this.runBlocks;
+    if (!blocks || !view) {
       style.textContent = "";
       return;
     }
+    const input = (uid: string): string => `.rm-block__input[id$="-${uid}"]`;
     const colors: Record<string, string> = { pass: "#15805a", fail: "#d9412e", skip: "#9aa3b2" };
     const rules: string[] = [];
     for (const item of view.plan) {
-      const uid = kit.blocks.cases[item.id];
-      if (uid && item.verdict) {
-        rules.push(`.rm-block__input[id$="-${uid}"] { box-shadow: inset 3px 0 0 ${colors[item.verdict]}; }`);
-      }
+      const uid = blocks.cases[item.id];
+      if (uid && item.verdict) rules.push(`${input(uid)} { box-shadow: inset 3px 0 0 ${colors[item.verdict]}; }`);
     }
-    const caseId = this.state?.caseId;
-    const testCase = caseId ? kit.kit.cases.find((item) => item.id === caseId) : null;
-    if (testCase && this.state && this.running) {
-      const caseUid = kit.blocks.cases[testCase.id];
-      if (caseUid) rules.push(`.rm-block__input[id$="-${caseUid}"] { box-shadow: inset 3px 0 0 #2c62c9; }`);
-      const step = testCase.steps[this.state.stepIndex];
-      const stepUid = step ? kit.blocks.steps[`${testCase.id}/${step.id}`] : null;
-      if (stepUid) {
-        const color = this.state.phase === "step-failed" ? "rgba(217, 65, 46, .14)" : "rgba(44, 98, 201, .12)";
-        rules.push(`.rm-block__input[id$="-${stepUid}"] { background: ${color}; border-radius: 4px; }`);
-      }
+    const state = this.state;
+    if (state?.caseId && this.running) {
+      const caseUid = blocks.cases[state.caseId];
+      if (caseUid) rules.push(`${input(caseUid)} { box-shadow: inset 3px 0 0 #2c62c9; }`);
+      const judging = state.phase === "waiting-verdict";
+      (blocks.steps[state.caseId] ?? []).forEach((uid, index) => {
+        if (!uid) return;
+        if (judging || index < state.stepIndex) {
+          rules.push(`${input(uid)} { opacity: .55; }`);
+        } else if (index === state.stepIndex) {
+          const color = state.phase === "step-failed" ? "rgba(217, 65, 46, .14)" : "rgba(44, 98, 201, .12)";
+          rules.push(`${input(uid)} { background: ${color}; border-radius: 4px; }`);
+        }
+      });
     }
     style.textContent = rules.join("\n");
   }
@@ -513,12 +566,26 @@ export class ProofRun {
         location.reload();
         return null;
       }
+      if (action.kind === "connect") {
+        await this.env.connect();
+        return null;
+      }
+      if (action.kind === "disconnect") {
+        await this.env.disconnect();
+        return null;
+      }
+      if (action.kind === "check-database") {
+        await this.env.checkDatabase();
+        return null;
+      }
+      if (action.kind === "ask-agent") return await this.env.askAgent(this.rootUid);
       if (action.kind === "reset") {
         this.writeRecord(null);
         this.state = null;
         this.machine = null;
         this.earlier = null;
         this.offset = 0;
+        this.runBlocks = null;
         this.paint();
         return null;
       }
@@ -530,18 +597,121 @@ export class ProofRun {
           steps: [{ why: "done by hand", do: { pause: 0 } }],
         });
       }
+      if (action.kind !== "command") return null;
+      if (action.cmd === "retry") return await this.retry();
       return this.command(action.cmd, action.args ?? {});
     } catch (error) {
       return describe(error);
     }
   }
 
-  command(cmd: string, args: Record<string, unknown> = {}): string | null {
+  // Retry runs the failed step as its block reads now, so a step fixed in the
+  // panel runs fixed. The rest of the run keeps the kit it started with.
+  private async retry(): Promise<string | null> {
+    const state = this.state;
+    const pending = state?.pending;
+    if (!this.machine || !state || pending?.kind !== "failure") return "No failed step to retry.";
+    const uid = this.stepUid();
+    const node = uid ? await readTree(uid) : null;
+    if (!uid || !node || !this.runBlocks || blockText(node) === this.runBlocks.text[uid]) return this.command("retry");
+    let step: Record<string, unknown>;
+    try {
+      step = stepFromBlock(node);
+    } catch (error) {
+      return `The step's block doesn't read as a step: ${describe(error)}`;
+    }
+    const error = this.command("steps", { caseId: pending.caseId, how: "replace-failed", by: "kit", steps: [step] });
+    if (!error) this.runBlocks.text[uid] = blockText(node);
+    return error;
+  }
+
+  // A command to the run: from the panel ("hud"), or from an agent through
+  // the runner's tools ("socket"), which can't allow js or give a verdict.
+  command(cmd: string, args: Record<string, unknown> = {}, source: "hud" | "socket" = "hud"): string | null {
     if (!this.machine) return "Nothing is running. Press Run.";
-    const result = this.machine.command("hud", cmd, args);
+    const result = this.machine.command(source, cmd, args);
     this.state = this.machine.state();
     this.paint();
     return result.ok ? null : result.error;
+  }
+
+  // What an agent reads first: the kit's cases, what's needed before Run,
+  // and where the run stands.
+  agentStatus(): Record<string, unknown> {
+    const view = this.view();
+    const state = this.state;
+    return {
+      kit: this.kit?.kit.name ?? null,
+      title: view.title,
+      rootUid: this.rootUid,
+      error: view.error,
+      checklist: view.checklist.map(({ label, state: met, detail }) => ({ label, state: met, detail })),
+      runBlocked: view.blocked,
+      cases: (this.runKit?.cases ?? []).map((item) => ({
+        id: item.id,
+        title: item.title,
+        intent: item.intent ?? null,
+        expect: item.expect ?? null,
+        steps: item.steps.map((step) => step.why),
+        verdict: view.machine?.results[item.id] ?? null,
+      })),
+      run: state
+        ? {
+            phase: state.phase,
+            caseId: state.caseId,
+            step: state.stepWhy,
+            pending: state.pending,
+            feed: state.feed.slice(-8).map((entry) => `${entry.kind}: ${entry.text}`),
+          }
+        : null,
+      lastRun: view.lastRun,
+    };
+  }
+
+  // Run controls an agent may use; verdicts and allowing js stay with the
+  // person at the panel.
+  async agentControl(action: string): Promise<string | null> {
+    if (action === "run") return this.start(0);
+    if (action === "retry") return this.retry();
+    if (!AGENT_CONTROLS.includes(action)) return `Not a run control: ${action}. Use one of run, ${AGENT_CONTROLS.join(", ")}, retry.`;
+    return this.command(action, {}, "socket");
+  }
+
+  // An agent's steps for the case waiting on them: written under the case's
+  // block so the page keeps them, then handed to the run, where js waits
+  // for an Allow in the panel.
+  async agentAddSteps(caseId: string, raw: unknown): Promise<string | null> {
+    const pending = this.state?.pending;
+    if (!this.machine || pending?.kind !== "steps" || pending.caseId !== caseId) return `Case ${caseId} isn't waiting for steps.`;
+    const steps = validateSteps(raw, "steps", [], "model");
+    const caseUid = this.runBlocks?.cases[caseId];
+    if (caseUid && this.runBlocks) {
+      const nodes = steps.map((step) => ({ ...stepBlockOf(step), uid: roam().util.generateUID() }));
+      await createTree(caseUid, nodes);
+      this.runBlocks.steps[caseId] = nodes.map((node) => node.uid);
+      for (const node of nodes) this.runBlocks.text[node.uid] = blockText(node);
+    }
+    return this.command("steps", { caseId, steps: raw, by: "model" }, "socket");
+  }
+
+  // An agent's fix for the failed step: the step's block rewritten (its why,
+  // and its action under it), then run in place of the failed one.
+  async agentFixStep(raw: unknown): Promise<string | null> {
+    const pending = this.state?.pending;
+    if (!this.machine || pending?.kind !== "failure" || !pending.caseId) return "No step has failed.";
+    const { id: _id, ...fix } = (raw ?? {}) as Record<string, unknown>;
+    const [step] = validateSteps([fix], "step", [], "model");
+    const uid = this.stepUid();
+    if (uid && this.runBlocks) {
+      const block = stepBlockOf(step);
+      for (const child of (await readTree(uid))?.children ?? []) {
+        if (child.uid) await roam().data.block.delete({ block: { uid: child.uid } });
+      }
+      await roam().data.block.update({ block: { uid, string: block.string } });
+      await createTree(uid, block.children ?? []);
+      this.runBlocks.text[uid] = blockText(block);
+    }
+    return this.command("steps", { caseId: pending.caseId, how: "replace-failed", steps: [fix], by: "model" }, "socket");
   }
 
   // Starts a run at case `from` (0 for all of them).
@@ -549,10 +719,13 @@ export class ProofRun {
     if (this.running) return "A run is already going.";
     await this.refresh();
     if (!this.kit) return this.error ?? "This page has no kit.";
-    const blocked = this.buildStatus().blocked;
+    const blocked = runBlocked(this.checklist());
     if (blocked) return blocked;
-    const source = this.kit.kit;
+    // Proposed and rejected cases stay on the page and don't run.
+    const source = runnableKit(this.kit.kit);
+    if (source.cases.length === 0) return "No case on this page is approved yet, so there's nothing to run.";
     const kit: Kit = JSON.parse(JSON.stringify(source)) as Kit;
+    this.runBlocks = this.tree ? runBlocksFor(this.kit, this.tree, source) : null;
     const record = from > 0 ? this.readRecord() : null;
     this.offset = from > 0 ? Math.min(from, kit.cases.length - 1) : 0;
     kit.cases = kit.cases.slice(this.offset);
@@ -683,7 +856,7 @@ export class ProofRun {
       kit: this.kit?.kit.name ?? null,
       running: this.running,
       state: view.machine,
-      setup: view.setup,
+      checklist: view.checklist,
       warnings: this.warnings(),
     };
   }

@@ -67,7 +67,7 @@
     },
     {
       "id": "database-session",
-      "why": "the extension has a local database session for this graph, since the local create-space edge function is down",
+      "why": "the extension has a proof database session for this graph; the proof database runs without edge functions, so this signs in the way create-space would",
       "phase": "before-load",
       "check": {
         "js": "proof.supabase.signedIn()"

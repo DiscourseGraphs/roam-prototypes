@@ -3,8 +3,13 @@
 // clickers: proof.waitFor(...), proof.callout("Stored relations are disabled"),
 // proof.setSwitch("Enable stored relations", false, { confirm: ["Deactivate"] }).
 // Plain JS in a string: tsx would inject helpers into serialized functions.
+import { PROOF_DB_URL } from "./database";
+
 export const HELPERS_INIT_SCRIPT = String.raw`(() => {
   if (window.proof) return;
+
+  // The proof database (core/database.ts), the only one proof talks to.
+  const PROOF_DB_URL = ${JSON.stringify(PROOF_DB_URL)};
 
   const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -101,8 +106,8 @@ export const HELPERS_INIT_SCRIPT = String.raw`(() => {
     return dialogs().length === 0;
   };
 
-  // The local REST API. Pass the key from the kit, {{env.SUPABASE_SERVICE_ROLE_KEY}},
-  // so it is filled in only while the step runs.
+  // The proof database's REST API. Pass the key from the kit,
+  // {{env.SUPABASE_SERVICE_ROLE_KEY}}, so it is filled in only while the step runs.
   const rest = async (path, options) => {
     const opts = options || {};
     if (!opts.key) throw new Error("proof.rest needs { key }.");
@@ -112,7 +117,7 @@ export const HELPERS_INIT_SCRIPT = String.raw`(() => {
       "content-type": "application/json",
     };
     if (opts.prefer) headers.prefer = opts.prefer;
-    const response = await fetch("http://127.0.0.1:54321" + path, {
+    const response = await fetch(PROOF_DB_URL + path, {
       method: opts.method || "GET",
       headers,
       body: opts.body === undefined ? undefined : JSON.stringify(opts.body),
@@ -442,12 +447,10 @@ export const HELPERS_INIT_SCRIPT = String.raw`(() => {
     },
   };
 
-  // The local database session the extension reads at load. Without one it
-  // asks the create-space edge function for a space, and the local edge
-  // runtime is down, so sign in the way createLoggedInClient does: as the
-  // space's anon account with the password the graph stores. If the local
-  // account's password differs, the service key resets it to the graph's.
-  const SUPABASE_URL = "http://127.0.0.1:54321";
+  // The proof database session the extension reads at load. Without one it
+  // asks the create-space edge function for a space, and the proof database
+  // runs without edge functions, so sign in the way createLoggedInClient
+  // does: as the space's anon account with the password the graph stores.
 
   const storedSession = (storageKey) => {
     try {
@@ -467,41 +470,87 @@ export const HELPERS_INIT_SCRIPT = String.raw`(() => {
     );
   };
 
+  // Whether the proof database knows the stored session's user. A session
+  // from another local stack (DG keys them all "sb-127:") or from before a
+  // reset passes sessionValid and then fails every query.
+  const sessionWorks = async (storageKey, platform) => {
+    if (!sessionValid(storageKey, platform)) return false;
+    const session = storedSession(storageKey);
+    try {
+      const response = await fetch(PROOF_DB_URL + "/auth/v1/user", {
+        headers: { authorization: "Bearer " + session.access_token },
+      });
+      if (!response.ok) return false;
+      const user = await response.json();
+      return Boolean(user && user.id === session.user.id);
+    } catch (error) {
+      return false;
+    }
+  };
+
   // Signs in as the space's anon account and stores the session where
   // createSingletonClient looks for it ("sb-127:<name without non-word
-  // characters>-auth-token"). If the local account's password differs from
-  // the one the app stores, the service key resets it to the app's.
-  const signInAnon = async ({ storageKey, spaceUrl, platform, password, serviceKey, publishableKey }) => {
+  // characters>-auth-token"). Whatever the create-space edge function would
+  // have made and isn't there yet (the Space row, the anon account with the
+  // app's password, its PlatformAccount and editor access), the service key
+  // makes; an account whose password differs is reset to the app's.
+  const signInAnon = async ({ storageKey, spaceUrl, name, platform, password, serviceKey, publishableKey }) => {
     if (typeof password !== "string" || !password) {
       throw new Error("The app has no space password yet; let it connect to sync once first.");
     }
     const service = { apikey: serviceKey, authorization: "Bearer " + serviceKey, "content-type": "application/json" };
-    const spaces = await (
-      await fetch(SUPABASE_URL + "/rest/v1/Space?select=id&url=eq." + encodeURIComponent(spaceUrl), { headers: service })
-    ).json();
-    if (!Array.isArray(spaces) || !spaces.length) {
-      throw new Error("No Space row for " + spaceUrl + " in the local database.");
+    const merge = Object.assign({ prefer: "resolution=merge-duplicates,return=representation" }, service);
+    const admin = async (path, init) => {
+      const response = await fetch(PROOF_DB_URL + path, Object.assign({ headers: service }, init));
+      const text = await response.text();
+      if (!response.ok) throw new Error(((init && init.method) || "GET") + " " + path + " -> " + response.status + ": " + text.slice(0, 200));
+      return text ? JSON.parse(text) : null;
+    };
+    const platformName = platform === "roam" ? "Roam" : "Obsidian";
+    let spaces = await admin("/rest/v1/Space?select=id&url=eq." + encodeURIComponent(spaceUrl));
+    if (!spaces.length) {
+      spaces = await admin("/rest/v1/Space?on_conflict=url&select=id", {
+        method: "POST",
+        headers: merge,
+        body: JSON.stringify({ url: spaceUrl, name, platform: platformName }),
+      });
     }
-    const email = platform + "-" + spaces[0].id + "-anon@database.discoursegraphs.com";
+    const spaceId = spaces[0].id;
+    const email = platform + "-" + spaceId + "-anon@database.discoursegraphs.com";
     const token = () =>
-      fetch(SUPABASE_URL + "/auth/v1/token?grant_type=password", {
+      fetch(PROOF_DB_URL + "/auth/v1/token?grant_type=password", {
         method: "POST",
         headers: { apikey: publishableKey, "content-type": "application/json" },
         body: JSON.stringify({ email, password }),
       });
     let response = await token();
     if (!response.ok) {
-      const listed = await (
-        await fetch(SUPABASE_URL + "/auth/v1/admin/users?page=1&per_page=1000", { headers: service })
-      ).json();
-      const user = ((listed && listed.users) || []).find((item) => item.email === email);
-      if (!user) throw new Error("No local auth user " + email + ".");
-      const reset = await fetch(SUPABASE_URL + "/auth/v1/admin/users/" + user.id, {
-        method: "PUT",
-        headers: service,
-        body: JSON.stringify({ password }),
+      const listed = await admin("/auth/v1/admin/users?page=1&per_page=1000");
+      let user = ((listed && listed.users) || []).find((item) => item.email === email);
+      if (user) {
+        await admin("/auth/v1/admin/users/" + user.id, { method: "PUT", body: JSON.stringify({ password }) });
+      } else {
+        user = await admin("/auth/v1/admin/users", {
+          method: "POST",
+          body: JSON.stringify({ email, password, email_confirm: true }),
+        });
+      }
+      await admin("/rest/v1/PlatformAccount?on_conflict=account_local_id,platform", {
+        method: "POST",
+        headers: merge,
+        body: JSON.stringify({
+          platform: platformName,
+          account_local_id: email,
+          name: "Anonymous of space " + spaceId,
+          agent_type: "anonymous",
+          dg_account: user.id,
+        }),
       });
-      if (!reset.ok) throw new Error("Could not reset " + email + ": " + (await reset.text()).slice(0, 200));
+      await admin("/rest/v1/SpaceAccess?on_conflict=account_uid,space_id", {
+        method: "POST",
+        headers: merge,
+        body: JSON.stringify({ space_id: spaceId, account_uid: user.id, permissions: "editor" }),
+      });
       response = await token();
     }
     const session = await response.json();
@@ -510,7 +559,7 @@ export const HELPERS_INIT_SCRIPT = String.raw`(() => {
     }
     if (!session.expires_at) session.expires_at = Math.floor(Date.now() / 1000) + (session.expires_in || 3600);
     localStorage.setItem(storageKey, JSON.stringify(session));
-    return spaces[0].id;
+    return spaceId;
   };
 
   // The database the loaded build talks to, by the first part of its
@@ -525,7 +574,10 @@ export const HELPERS_INIT_SCRIPT = String.raw`(() => {
     storageKey: () => "sb-" + backendRef() + ":" + api().graph.name.replace(/\W/g, "") + "-auth-token",
     spaceUrl: () => "https://roamresearch.com/#/app/" + api().graph.name,
     session: () => storedSession(supabase.storageKey()),
-    signedIn: () => sessionValid(supabase.storageKey(), "roam"),
+    // A stored session that hasn't expired; no request.
+    hasSession: () => sessionValid(supabase.storageKey(), "roam"),
+    // A stored session the proof database accepts (a promise).
+    signedIn: () => sessionWorks(supabase.storageKey(), "roam"),
     password: async () => {
       const pageUid = uid(CONFIG_PAGE);
       if (!pageUid) throw new Error("No " + CONFIG_PAGE + " page; load the extension once first.");
@@ -545,6 +597,7 @@ export const HELPERS_INIT_SCRIPT = String.raw`(() => {
       return signInAnon({
         storageKey: supabase.storageKey(),
         spaceUrl: supabase.spaceUrl(),
+        name: api().graph.name,
         platform: "roam",
         password: await supabase.password(),
         serviceKey,
@@ -569,14 +622,15 @@ export const HELPERS_INIT_SCRIPT = String.raw`(() => {
       });
     },
     storageKey: () => "sb-127:" + window.app.vault.getName().replace(/\W/g, "") + "-auth-token",
-    signedIn: () => sessionValid(obsidian.storageKey(), "obsidian"),
+    signedIn: () => sessionWorks(obsidian.storageKey(), "obsidian"),
     // Same as proof.supabase.signIn, for the vault's space. Kept when signed in.
     signIn: async ({ serviceKey, publishableKey }) =>
-      obsidian.signedIn()
+      (await obsidian.signedIn())
         ? "kept"
         : signInAnon({
             storageKey: obsidian.storageKey(),
             spaceUrl: "obsidian:" + window.app.appId,
+            name: window.app.vault.getName(),
             platform: "obsidian",
             password: obsidian.plugin() && obsidian.plugin().settings.spacePassword,
             serviceKey,

@@ -13,13 +13,13 @@ describe("when a kit can run", () => {
 
   it("won't run a PR kit on another kit's build", () => {
     const status = buildStatus({ ...base, config: { build: null, pr: 9 }, loaded: loadedFor("eng-1-other", 1506) });
-    expect(status.mismatch).toBe("this page wants PR #9");
+    expect(status.other).toBe(true);
     expect(status.blocked).toMatch(/reload on this page/);
   });
 
   it("runs a PR kit on the build loaded for it", () => {
     const status = buildStatus({ ...base, mine: true, config: { build: null, pr: 1506 }, loaded: loadedFor("eng-2348-x", 1506) });
-    expect(status).toEqual({ wanted: "eng-2348-x", mismatch: null, blocked: null });
+    expect(status).toEqual({ wanted: "eng-2348-x", other: false, behind: null, blocked: null });
   });
 
   it("won't run while the build failed, is loading, or waits for setup", () => {
@@ -31,7 +31,7 @@ describe("when a kit can run", () => {
 
   it("says when CI hasn't caught up with the PR head, and still runs", () => {
     const status = buildStatus({ ...base, mine: true, config: { build: null, pr: 1506 }, loaded: loadedFor("eng-2348-x", 1506, "ac09d76aaaa", "ffff000bbbb") });
-    expect(status.mismatch).toMatch(/PR head is ffff000/);
+    expect(status.behind).toMatch(/PR head is ffff000/);
     expect(status.blocked).toBeNull();
   });
 });
