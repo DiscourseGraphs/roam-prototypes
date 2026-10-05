@@ -16,15 +16,17 @@ export type FixtureOutcome = {
 export type DatabaseState = { state: "checking" | "ok" | "missing"; detail: string };
 
 // This machine's part in a kit that needs the proof database: the local
-// helper (roam/cli.ts local) answering with the database's keys. The
+// helper (helper/cli.ts start) answering with the database's keys. The
 // panel's Connect starts it; until it answers, nothing loads.
 export type HelperState = {
   state: "missing" | "connecting" | "ok" | "unanswered" | "failed";
   detail: string;
 };
 
-// Registers the dg-proof:// link the panel's Connect button opens; once per machine.
-export const HANDLER_SETUP_COMMAND = "npx tsx /mnt/data/projects/dg-demo-videos/proof/roam/cli.ts install-handler";
+// Sets this machine up for the panel's Connect, once: the proof helper,
+// shipped with the runner in roam-prototypes.
+export const HANDLER_SETUP_COMMAND =
+  "in roam-prototypes/prototypes/proof-runner (Node 22 or later), run: pnpm helper setup --dg <your discourse-graph checkout>";
 
 export const helperState = (server: LocalServer | null): HelperState =>
   !server

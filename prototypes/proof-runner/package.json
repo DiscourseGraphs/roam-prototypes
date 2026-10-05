@@ -7,7 +7,8 @@
   "scripts": {
     "dev": "roam-prototype dev",
     "build": "roam-prototype build",
-    "test": "vitest run --passWithNoTests"
+    "test": "vitest run --passWithNoTests",
+    "helper": "node --experimental-strip-types --no-warnings=ExperimentalWarning helper/cli.ts"
   },
   "dependencies": {
     "roamjs-components": "catalog:",

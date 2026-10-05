@@ -1,7 +1,7 @@
 // What the page and this machine share: where the runner is published, the
 // dg-proof:// links the panel opens, and the prompt an agent starts from.
-// The links reach the machine's handler (roam/cli.ts open, registered by
-// cli.ts install-handler), which takes nothing from a link but these names
+// The links reach the machine's handler (the helper's open, registered by
+// its setup), which takes nothing from a link but these names
 // and ids, so a web page can't make it run anything else.
 
 // The runner's published build. The stable address

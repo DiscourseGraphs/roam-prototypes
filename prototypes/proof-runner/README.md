@@ -78,9 +78,27 @@ needs a database, or that has or turns on sync or node sharing, the runner point
 at the proof database before it runs: it swaps the Supabase URL and key for the proof database's and
 Discourse Graph's website API for the embeddings stub, and refuses the build if anything of the
 hosted stack is left. The proof database runs on the tester's machine: the checklist's **Connect
-this machine** opens a `dg-proof://connect` link, which that machine's handler (set up once from
-the proof tools in dg-demo-videos) answers by starting the database and handing the runner its
-keys. Kits that only exercise UI (`dg-baseline@2`) run on CI builds as they are, for anyone.
+this machine** opens a `dg-proof://connect` link, which that machine's proof helper answers by
+starting the database and handing the runner its address and the kits' keys. Kits that only
+exercise UI (`dg-baseline@2`) run on CI builds as they are, for anyone.
+
+## Set up your machine for Connect
+
+Once per machine, from this folder, with Node 22 or later and a discourse-graph checkout:
+
+```bash
+pnpm helper setup --dg <path to your discourse-graph checkout>
+```
+
+Setup remembers the checkout (its migrations make the proof database's schema), runs Supabase in
+Docker when Docker answers and as native processes otherwise (`--runtime docker|native`), keeps
+the database's files under `~/.local/share/dg-proof` (macOS: `~/Library/Application
+Support/dg-proof`), and registers `dg-proof://` links: through xdg on Linux, through a small
+AppleScript app on macOS. The proof database is a separate Supabase project (`dg-proof`, API on
+`127.0.0.1:55321`), so it never touches the database you develop against. After that, a kit page's
+**Connect this machine** starts it, and **Disconnect** stops what Connect started. By hand:
+`pnpm helper start`, `stop`, `status`, `uninstall`. The helper answers only roamresearch.com pages,
+on `127.0.0.1:8766`.
 
 ## Agent tools
 

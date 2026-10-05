@@ -245,7 +245,7 @@ export type FetchedBuild = {
   pointed: boolean;
 };
 
-// The local helper (`roam/cli.ts local`, which the panel's Connect button
+// The local helper (`helper/cli.ts start`, which the panel's Connect button
 // starts): the proof database's keys, or why it has none; null when it
 // isn't running.
 export type LocalServer = {
