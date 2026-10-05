@@ -26,7 +26,7 @@ export type HelperState = {
 // Sets this machine up for the panel's Connect, once: the proof helper,
 // shipped with the runner in roam-prototypes.
 export const HANDLER_SETUP_COMMAND =
-  "in roam-prototypes/prototypes/proof-runner (Node 22 or later), run: pnpm helper setup --dg <your discourse-graph checkout>";
+  "in roam-prototypes/prototypes/proof-runner (Node 22.6 or later), run pnpm helper setup --dg <your discourse-graph checkout>. Its README, Getting set up, has the rest.";
 
 export const helperState = (server: LocalServer | null): HelperState =>
   !server

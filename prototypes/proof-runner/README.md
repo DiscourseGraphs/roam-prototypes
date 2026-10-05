@@ -12,6 +12,59 @@ machine, recipes and baselines are shared with the Playwright proof runner that 
 so the same kit runs in both. Check the build you are running with `proofRunner.version` in the
 browser console.
 
+## Getting set up
+
+Two things, once each. After that, opening a kit page's link is all it takes.
+
+**1. Turn the runner on in Roam**, once per graph in each browser: Settings > Roam Depot >
+Developer extensions (turn on developer mode) > Load from URL, and paste the runner's address from
+[Install from a URL](#install-from-a-url). The first block on every kit page says the same, and
+hides once the runner is on.
+
+**2. Set up your machine**, once. Kits that use a database (most of them) need it; kits that
+don't, run without it. You need:
+
+- Node 22.6 or later (`node --version`): the helper is TypeScript that Node runs directly.
+- Docker, running (Docker Desktop on macOS and Windows). On Linux and macOS, `--runtime native`
+  runs Supabase without Docker instead.
+- A discourse-graph checkout: the proof database's schema comes from its migrations.
+- This repository. No `pnpm install` is needed; the helper uses only Node.
+
+Then, from `prototypes/proof-runner`:
+
+```bash
+pnpm helper setup --dg <path to your discourse-graph checkout>
+# or, without pnpm:
+node --experimental-strip-types helper/cli.ts setup --dg <path to your discourse-graph checkout>
+```
+
+Setup remembers the checkout and how Supabase runs (Docker when it answers, native otherwise;
+`--runtime docker|native` chooses), keeps the proof database's files in a folder of its own
+(Linux `~/.local/share/dg-proof`, macOS `~/Library/Application Support/dg-proof`, Windows
+`%LOCALAPPDATA%\dg-proof`), and registers `dg-proof://` links so the page's buttons can reach your
+machine: through xdg on Linux, a small AppleScript app in `~/Applications` on macOS, and registry
+keys under your own user (no admin) on Windows. Run setup again to change what it remembered;
+`pnpm helper uninstall` removes the links. The proof database is a Supabase project of its own
+(`dg-proof`, API on `127.0.0.1:55321`), so it never touches the database you develop against, and
+never production.
+
+**Then, on a kit page**, the panel lists what the kit needs. Press **Connect this machine**: your
+browser asks once to open the link and once to let roamresearch.com reach your machine; allow both.
+The first start installs the Supabase CLI into that folder and downloads Supabase, which takes a few
+minutes; later starts take about 20 seconds. Press **Set up and load** if the kit asks, then
+**Run**. **Disconnect** stops what Connect started.
+
+**When something doesn't work:**
+
+- `pnpm helper status` says whether the helper and the proof database are running.
+- `handler.log`, in the folder above, has what the helper did after a click.
+- `pnpm helper start` runs the helper in your terminal, so you can watch it; `pnpm helper stop`
+  stops it.
+- "Discourse Graph is already running" on the panel: DG is installed from Roam Depot in that graph.
+  Turn it off there, or use a test graph without it.
+- So far the links and the helper have run on Linux only. The macOS and Windows registration and
+  Docker mode are written and tested as plans, but haven't run on those machines yet.
+
 ## What opening a kit page does
 
 1. The runner reads the page's `{{proof}}` block. `pr:: 1506` looks the PR's branch up on GitHub;
@@ -82,24 +135,6 @@ this machine** opens a `dg-proof://connect` link, which that machine's proof hel
 starting the database and handing the runner its address and the kits' keys. Kits that only
 exercise UI (`dg-baseline@2`) run on CI builds as they are, for anyone.
 
-## Set up your machine for Connect
-
-Once per machine, from this folder, with Node 22 or later and a discourse-graph checkout:
-
-```bash
-pnpm helper setup --dg <path to your discourse-graph checkout>
-```
-
-Setup remembers the checkout (its migrations make the proof database's schema), runs Supabase in
-Docker when Docker answers and as native processes otherwise (`--runtime docker|native`), keeps
-the database's files under `~/.local/share/dg-proof` (macOS: `~/Library/Application
-Support/dg-proof`), and registers `dg-proof://` links: through xdg on Linux, through a small
-AppleScript app on macOS. The proof database is a separate Supabase project (`dg-proof`, API on
-`127.0.0.1:55321`), so it never touches the database you develop against. After that, a kit page's
-**Connect this machine** starts it, and **Disconnect** stops what Connect started. By hand:
-`pnpm helper start`, `stop`, `status`, `uninstall`. The helper answers only roamresearch.com pages,
-on `127.0.0.1:8766`.
-
 ## Agent tools
 
 With Roam's AI API (`extensionAPI.ai.addTool`), the runner registers tools an agent connected to the
@@ -120,6 +155,9 @@ In Roam, use **Load Developer Extensions from URL** with:
 ```text
 https://discoursegraphs.com/releases/prototypes/proof-runner/
 ```
+
+Until the pull request that adds this prototype merges, use its preview instead:
+`https://discoursegraphs.com/releases/prototypes/previews/proof-runner/proof-runner/`.
 
 Roam supplies the extension API, loads `extension.css`, and unloads the extension in this mode.
 

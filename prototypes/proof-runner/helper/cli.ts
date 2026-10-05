@@ -65,7 +65,13 @@ const setup = async (flags: Record<string, string | boolean>): Promise<void> => 
   log("dg-proof:// links are registered. Open a kit page and press Connect this machine; the browser asks once before opening the link.");
 };
 
-const commandExists = (name: string): boolean => spawnSync("sh", ["-c", `command -v ${name}`], { stdio: "ignore" }).status === 0;
+const commandExists = (name: string): boolean =>
+  process.platform === "win32"
+    ? spawnSync("where", [name], { stdio: "ignore" }).status === 0
+    : spawnSync("sh", ["-c", `command -v ${name}`], { stdio: "ignore" }).status === 0;
+
+// A PowerShell single-quoted string: nothing in it is expanded.
+const powershellLiteral = (value: string): string => `'${value.replace(/'/g, "''")}'`;
 
 // A terminal with claude on the kit, in the checkout. The prompt goes in
 // through the environment (or a file on macOS), never through a shell.
@@ -74,6 +80,13 @@ const openAgent = async (graph: string, uid: string, checkout: string): Promise<
   const title = `proof agent · ${graph}`;
   const shell = process.env.SHELL ?? "/bin/sh";
   const run = 'claude "$PROOF_AGENT_PROMPT"; exec "$SHELL"';
+  if (process.platform === "win32") {
+    const file = path.join(os.tmpdir(), `dg-proof-agent-${uid}.txt`);
+    await fs.writeFile(file, prompt);
+    const script = `Set-Location -LiteralPath ${powershellLiteral(checkout)}; claude (Get-Content -Raw -LiteralPath ${powershellLiteral(file)})`;
+    spawn("cmd", ["/c", "start", title, "powershell", "-NoExit", "-Command", script], { detached: true, stdio: "ignore" }).unref();
+    return;
+  }
   if (process.platform === "darwin") {
     const file = path.join(os.tmpdir(), `dg-proof-agent-${uid}.txt`);
     await fs.writeFile(file, prompt);

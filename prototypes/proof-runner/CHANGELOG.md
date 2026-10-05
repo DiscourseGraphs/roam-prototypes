@@ -9,4 +9,4 @@
 - Show what a kit needs before Run as a checklist, each unmet need with the one button that meets it.
 - Point a pull request's CI build at the proof database for kits that need one, and start that database from the panel with Connect this machine.
 - Register agent tools with Roam's AI API, and open the person's agent on a kit with Ask your agent.
-- Ship the proof helper a tester's machine runs for Connect: `pnpm helper setup` once, Docker or native Supabase, Linux and macOS links.
+- Ship the proof helper a tester's machine runs for Connect: `pnpm helper setup` once, Docker or native Supabase, links on Linux, macOS and Windows.

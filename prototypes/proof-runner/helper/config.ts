@@ -11,15 +11,17 @@ import type { Place, Runtime } from "./database.ts";
 const appDir = (): string =>
   process.platform === "darwin"
     ? path.join(os.homedir(), "Library/Application Support/dg-proof")
-    : path.join(process.env.XDG_DATA_HOME ?? path.join(os.homedir(), ".local/share"), "dg-proof");
+    : process.platform === "win32"
+      ? path.join(process.env.LOCALAPPDATA ?? path.join(os.homedir(), "AppData", "Local"), "dg-proof")
+      : path.join(process.env.XDG_DATA_HOME ?? path.join(os.homedir(), ".local/share"), "dg-proof");
 
 export const helperPaths = () => {
   const app = appDir();
   const config =
     process.env.DG_PROOF_CONFIG ??
-    (process.platform === "darwin"
-      ? path.join(app, "config.json")
-      : path.join(process.env.XDG_CONFIG_HOME ?? path.join(os.homedir(), ".config"), "dg-proof", "config.json"));
+    (process.platform === "linux"
+      ? path.join(process.env.XDG_CONFIG_HOME ?? path.join(os.homedir(), ".config"), "dg-proof", "config.json")
+      : path.join(app, "config.json"));
   return { app, config, workdir: path.join(app, "db"), log: path.join(app, "handler.log") };
 };
 
@@ -68,8 +70,11 @@ export const resolvePlace = async (
       `${checkout ? `${checkout} isn't a discourse-graph checkout` : "No discourse-graph checkout found next to this one"}: pass --dg <path to your discourse-graph checkout>.`,
     );
   }
-  const runtime = (flags.runtime ?? saved?.runtime ?? (dockerAnswers() ? "docker" : "native")) as Runtime;
+  // Supabase's native stack runs on Linux and macOS; Windows runs it in Docker.
+  const windows = process.platform === "win32";
+  const runtime = (flags.runtime ?? saved?.runtime ?? (windows || dockerAnswers() ? "docker" : "native")) as Runtime;
   if (runtime !== "docker" && runtime !== "native") throw new Error("--runtime is docker or native.");
+  if (windows && runtime === "native") throw new Error("On Windows the proof database runs in Docker (Docker Desktop); leave out --runtime.");
   return {
     checkout: checkout && path.resolve(checkout),
     runtime,

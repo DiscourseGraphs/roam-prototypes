@@ -8,15 +8,17 @@ import path from "node:path";
 // runs the helper's `open` in the background, so the browser's click returns
 // at once. Linux registers through xdg (a desktop entry); macOS through a
 // small AppleScript app that receives the link as an event, since macOS
-// doesn't hand links to plain scripts. The plans are data, so both are
-// tested on any machine.
+// doesn't hand links to plain scripts; Windows through registry keys under
+// the user's own classes, which need no admin. The plans are data, so each
+// is tested on any machine.
 
 export type HandlerPlan = {
   files: Array<{ path: string; text: string; mode?: number }>;
   // Run in order after the files are written.
   commands: string[][];
-  // What the uninstall removes.
+  // What the uninstall removes, and runs.
   remove: string[];
+  undo?: string[][];
 };
 
 const quote = (value: string): string => `'${value.replace(/'/g, "'\\''")}'`;
@@ -78,10 +80,36 @@ export const macHandler = ({ home, command, app }: { home: string; command: stri
   };
 };
 
+const WINDOWS_KEY = "HKCU\\Software\\Classes\\dg-proof";
+
+// The registry runs the launcher with the link; it starts the helper in its
+// own minimized window, so the browser's click returns, and closing that
+// window stops the helper.
+export const windowsHandler = ({ command, app }: { command: string[]; app: string }): HandlerPlan => {
+  const launcher = path.win32.join(app, "open.cmd");
+  const quoteCmd = (value: string): string => `"${value.replace(/"/g, '""')}"`;
+  return {
+    files: [
+      {
+        path: launcher,
+        text: ["@echo off", "rem Written by the proof helper's setup: answers dg-proof:// links.", `start "proof helper" /min ${command.map(quoteCmd).join(" ")} open %1`, ""].join("\r\n"),
+      },
+    ],
+    commands: [
+      ["reg", "add", WINDOWS_KEY, "/ve", "/d", "URL:DG Proof", "/f"],
+      ["reg", "add", WINDOWS_KEY, "/v", "URL Protocol", "/d", "", "/f"],
+      ["reg", "add", `${WINDOWS_KEY}\\shell\\open\\command`, "/ve", "/d", `"${launcher}" "%1"`, "/f"],
+    ],
+    remove: [launcher],
+    undo: [["reg", "delete", WINDOWS_KEY, "/f"]],
+  };
+};
+
 export const handlerFor = (platform: NodeJS.Platform, options: { home: string; command: string[]; app: string }): HandlerPlan => {
   if (platform === "linux") return linuxHandler(options);
   if (platform === "darwin") return macHandler(options);
-  throw new Error(`dg-proof:// links can't be registered on ${platform} yet (Linux and macOS can).`);
+  if (platform === "win32") return windowsHandler(options);
+  throw new Error(`dg-proof:// links can't be registered on ${platform} (Linux, macOS and Windows can).`);
 };
 
 // update-desktop-database isn't on every Linux desktop; xdg-mime's default
@@ -104,6 +132,13 @@ export const installHandler = async (plan: HandlerPlan): Promise<void> => {
 
 export const uninstallHandler = async (plan: HandlerPlan): Promise<void> => {
   for (const target of plan.remove) await fs.rm(target, { recursive: true, force: true });
+  for (const [command, ...args] of plan.undo ?? []) {
+    try {
+      execFileSync(command, args, { stdio: "inherit" });
+    } catch {
+      // Already gone.
+    }
+  }
 };
 
 export const thisMachine = (command: string[], app: string): HandlerPlan => handlerFor(process.platform, { home: os.homedir(), command, app });

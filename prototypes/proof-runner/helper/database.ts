@@ -36,13 +36,14 @@ type Result = { code: number; stdout: string; stderr: string };
 const run = (
   command: string,
   args: string[],
-  options: { cwd?: string; env?: NodeJS.ProcessEnv; echo?: boolean; input?: string } = {},
+  options: { cwd?: string; env?: NodeJS.ProcessEnv; echo?: boolean; input?: string; shell?: boolean } = {},
 ): Promise<Result> =>
   new Promise((resolve) => {
     const child = spawn(command, args, {
       cwd: options.cwd,
       env: options.env ?? process.env,
       stdio: [options.input === undefined ? "ignore" : "pipe", "pipe", "pipe"],
+      shell: options.shell,
     });
     let stdout = "";
     let stderr = "";
@@ -65,7 +66,9 @@ const files = (place: Place) => ({
   supabase: path.join(place.workdir, "supabase"),
   env: path.join(place.workdir, ".env"),
   state: path.join(place.workdir, "state.json"),
-  cli: path.join(place.workdir, "node_modules/.bin/supabase"),
+  // The CLI package's own launcher, run with Node: the same on every OS,
+  // where node_modules/.bin holds shell or .cmd shims.
+  cli: path.join(place.workdir, "node_modules", "supabase", "dist", "supabase.js"),
 });
 
 // The CLI maps every SUPABASE_* variable onto its config, so keys exported
@@ -91,10 +94,11 @@ const cli = async (place: Place, args: string[], echo = false): Promise<Result> 
         `${JSON.stringify({ name: "proof-db", private: true, devDependencies: { supabase: SUPABASE_CLI_VERSION } }, null, 2)}\n`,
       );
     }
-    const install = await run("npm", ["install", "--no-audit", "--no-fund"], { cwd: place.workdir });
+    // npm is a .cmd on Windows, which Node only runs through a shell.
+    const install = await run("npm", ["install", "--no-audit", "--no-fund"], { cwd: place.workdir, shell: process.platform === "win32" });
     if (install.code !== 0) throw new Error(`npm install in ${place.workdir} failed:\n${install.stderr.slice(-1500)}`);
   }
-  return run(bin, [...args, "--workdir", place.workdir, "--agent", "no"], { env: cliEnv(place), echo });
+  return run(process.execPath, [bin, ...args, "--workdir", place.workdir, "--agent", "no"], { env: cliEnv(place), echo });
 };
 
 const failed = (what: string, result: Result): Error =>
