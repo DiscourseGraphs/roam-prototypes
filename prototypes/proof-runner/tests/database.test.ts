@@ -82,7 +82,7 @@ describe("the proof database", () => {
       state: "failed",
       detail: "Couldn't start the proof database: port taken",
     });
-    expect(helperState({ database: { url: PROOF_DB_URL, publishableKey: "pk", serviceKey: "sk" } }).state).toBe("ok");
+    expect(helperState({ database: { url: PROOF_DB_URL, publishableKey: "pk" }, env: { SUPABASE_URL: PROOF_DB_URL } }).state).toBe("ok");
   });
 
   it("is needed by a kit that says so or signs in", () => {

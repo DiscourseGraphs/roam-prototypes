@@ -295,11 +295,7 @@ class ProofRunner {
           this.trace(`waiting for this machine: ${this.env.helper.detail}`);
           return;
         }
-        this.localKeys = {
-          SUPABASE_URL: server.database.url,
-          SUPABASE_PUBLISHABLE_KEY: server.database.publishableKey,
-          SUPABASE_SERVICE_ROLE_KEY: server.database.serviceKey,
-        };
+        this.localKeys = { ...(server.env ?? {}) };
         this.trace(`fetching ${branch} to point it at the proof database`);
         fetched = pointBuild(await fetchBuild(branch as string), server.database.publishableKey);
       } else {

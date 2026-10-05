@@ -249,7 +249,10 @@ export type FetchedBuild = {
 // starts): the proof database's keys, or why it has none; null when it
 // isn't running.
 export type LocalServer = {
-  database: { url: string; publishableKey: string; serviceKey: string } | null;
+  database: { url: string; publishableKey: string } | null;
+  // The kits' {{env.X}} values for the proof database, named by the helper,
+  // which holds them; the page passes them on without naming them.
+  env?: Record<string, string> | null;
   // Still bringing the database and the stub up, or why it couldn't.
   starting?: boolean;
   error?: string | null;

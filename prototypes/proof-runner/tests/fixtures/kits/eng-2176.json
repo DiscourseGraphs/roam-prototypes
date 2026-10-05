@@ -213,6 +213,54 @@
       "surface": "s-sync-and-sharing-of-nodes-to-the"
     },
     {
+      "id": "scan-and-builder-share-a-grammar",
+      "title": "A literal {v2} in a format no longer shifts which part is the content",
+      "proves": "Done When 2: One shared, unit-tested implementation of builder + extractor (at minimum: scan and builder share one grammar constant per app), and `DiscourseContextView` renders the same content string the converter publishes.",
+      "checks": "Sharing `Claim {v2} - Coffee helps focus` publishes the core_title `Coffee helps focus`. Roam's old scan counted {v2} as a placeholder that its builder never captured, and published the whole title.",
+      "caption": "Roam's placeholder scan and pattern builder now share one grammar: a literal v2 in braces no longer shifts the content, so sharing publishes Coffee helps focus.",
+      "steps": [
+        {
+          "use": "ui.quiet",
+          "why": "start from a quiet screen"
+        },
+        {
+          "use": "share.current-node",
+          "with": {
+            "title": "Claim {v2} - Coffee helps focus"
+          },
+          "why": "share the PK Versioned Claim page"
+        },
+        {
+          "do": {
+            "js": "proof.setSwitch('eng-2329-demo', true)"
+          },
+          "why": "pick the eng-2329-demo group"
+        },
+        {
+          "do": {
+            "click": ".bp3-dialog:visible .bp3-dialog-footer button:has-text(\"Publish\")"
+          },
+          "why": "publish it"
+        },
+        {
+          "do": {
+            "wait_for": ".bp3-toast"
+          },
+          "why": "wait for the publish result"
+        },
+        {
+          "do": {
+            "pause": 1.5
+          },
+          "why": "hold on the result"
+        }
+      ],
+      "expect": {
+        "js": "(async () => { const uid = proof.uid(\"Claim {v2} - Coffee helps focus\"); proof.assert(uid, 'The page is missing.'); const row = (await proof.waitFor(async () => (await proof.rest('/rest/v1/Concept?select=literal_content&is_schema=eq.false&space_id=eq.120237&source_local_id=eq.' + encodeURIComponent(uid), { key: '{{env.SUPABASE_SERVICE_ROLE_KEY}}' }))[0], { what: 'the published concept', timeout: 15000, interval: 500 })); proof.assert(row.literal_content.core_title === \"Coffee helps focus\", 'The published core_title is ' + JSON.stringify(row.literal_content.core_title) + '.'); })()"
+      },
+      "surface": "s-sync-and-sharing-of-nodes-to-the"
+    },
+    {
       "id": "default-formats-still-match",
       "title": "The default node types still recognize their pages",
       "steps": [],
@@ -288,51 +336,74 @@
       "title": "Sharing an Evidence page with a source publishes only its content",
       "steps": [
         {
-          "id": "s1",
-          "why": "start from a quiet screen",
-          "source": "kit",
-          "use": "ui.quiet"
+          "use": "ui.quiet",
+          "why": "start from a quiet screen"
         },
         {
-          "id": "s2",
-          "why": "share the baseline evidence",
-          "source": "kit",
+          "use": "share.current-node",
+          "with": {
+            "title": "@PK baseline source"
+          },
+          "why": "share the baseline source first, so the evidence's source resolves"
+        },
+        {
+          "do": {
+            "js": "proof.setSwitch('eng-2329-demo', true)"
+          },
+          "why": "pick the eng-2329-demo group"
+        },
+        {
+          "do": {
+            "click": ".bp3-dialog:visible .bp3-dialog-footer button:has-text(\"Publish\")"
+          },
+          "why": "publish it"
+        },
+        {
+          "do": {
+            "wait_for": ".bp3-toast"
+          },
+          "why": "wait for the publish result"
+        },
+        {
+          "do": {
+            "pause": 1.5
+          },
+          "why": "hold on the result"
+        },
+        {
+          "use": "ui.quiet",
+          "why": "start from a quiet screen"
+        },
+        {
           "use": "share.current-node",
           "with": {
             "title": "[[EVD]] - PK baseline evidence - [[@PK baseline source]]"
-          }
+          },
+          "why": "share the baseline evidence"
         },
         {
-          "id": "s3",
-          "why": "pick the eng-2329-demo group",
-          "source": "kit",
           "do": {
             "js": "proof.setSwitch('eng-2329-demo', true)"
-          }
+          },
+          "why": "pick the eng-2329-demo group"
         },
         {
-          "id": "s4",
-          "why": "publish it",
-          "source": "kit",
           "do": {
             "click": ".bp3-dialog:visible .bp3-dialog-footer button:has-text(\"Publish\")"
-          }
+          },
+          "why": "publish it"
         },
         {
-          "id": "s5",
-          "why": "wait for the publish result",
-          "source": "kit",
           "do": {
             "wait_for": ".bp3-toast"
-          }
+          },
+          "why": "wait for the publish result"
         },
         {
-          "id": "s6",
-          "why": "hold on the result",
-          "source": "kit",
           "do": {
             "pause": 1.5
-          }
+          },
+          "why": "hold on the result"
         }
       ],
       "proves": "Done When 3: Formats without metacharacters behave identically to today.",
@@ -344,46 +415,347 @@
       "surface": "s-evidence-source-slot"
     },
     {
-      "id": "obsidian-content-line",
-      "title": "Obsidian: the Content line reads the content of a Draft Claim note",
+      "id": "qa-format-with-star-pipe-caret-dollar",
+      "title": "Format with star, pipe, caret, dollar, braces",
       "steps": [],
-      "intent": "In Obsidian (Sid-Obsidian-test with the ENG-2176 build): in Settings > Discourse Graphs > Node types, add Draft Claim with the format `Claim (draft) - {content}`. Run Create discourse node, pick Draft Claim and enter `Sleep improves memory consolidation`. Open the new note and run Toggle discourse context.",
-      "proves": "Done When 1: `Claim (draft) - {content}` matches its titles and extracts `content` in both apps.",
       "expect": {
-        "text": "The note is named `Claim (draft) - Sleep improves memory consolidation`, and the discourse context shows the Draft Claim type with Content: Sleep improves memory consolidation."
+        "js": "(() => { const qb = window.roamjs.extension.queryBuilder; proof.assert(qb.isDiscourseNode(proof.uid(\"Q* | ^why do we sleep$\")), 'The PK Pipe Question page is not recognized.'); proof.assert(!qb.isDiscourseNode(proof.uid(\"Q why do we sleep\")), 'The look-alike matches the PK Pipe Question format.'); })()"
       },
-      "surface": "s-obsidian-node-creation-and-discourse"
-    },
-    {
-      "id": "obsidian-content-matches-roam",
-      "title": "Obsidian's Content line matches what Roam published for the same title",
-      "steps": [],
-      "intent": "Compare the Content line in Obsidian from the last case with the core_title that 'Sharing the Draft Claim page publishes only its content' checked in Roam. Both come from the same title and format.",
-      "proves": "Done When 2: One shared, unit-tested implementation of builder + extractor (at minimum: scan and builder share one grammar constant per app), and `DiscourseContextView` renders the same content string the converter publishes.",
-      "expect": {
-        "text": "Both read exactly `Sleep improves memory consolidation`: the discourse context shows the same string the shared extractor publishes."
+      "decision": {
+        "status": "approved",
+        "by": "sid597",
+        "at": "2026-10-05T02:40:15.963Z"
       },
-      "surface": "s-obsidian-node-creation-and-discourse"
+      "surface": "s-existing-formats-that-relied-on",
+      "checks": "The PK Pipe Question page is a discourse node; `Q why do we sleep`, which the old pattern matched through its | alternation, is not."
     },
     {
-      "id": "obsidian-default-format-unchanged",
-      "title": "Obsidian: a default Claim note's Content line is unchanged",
-      "steps": [],
-      "intent": "In Obsidian, open the note `CLM - This is a test Claim` and look at the discourse context.",
-      "proves": "Done When 3: Formats without metacharacters behave identically to today.",
+      "id": "qa-format-containing-a-backslash",
+      "title": "Format containing a backslash",
+      "steps": [
+        {
+          "use": "ui.quiet",
+          "why": "start from a quiet screen"
+        },
+        {
+          "use": "settings.open-home",
+          "why": "open the Discourse settings"
+        },
+        {
+          "do": {
+            "click": ".bp3-dialog:visible .bp3-tab:has-text(\"Nodes\") >> nth=0"
+          },
+          "why": "go to the node types"
+        },
+        {
+          "do": {
+            "click": ".bp3-dialog:visible td:has-text(\"PK Backslash Note\") >> nth=0"
+          },
+          "why": "open the PK Backslash Note type"
+        },
+        {
+          "do": {
+            "click": ".bp3-dialog:visible .bp3-tab:has-text(\"Index\") >> nth=0"
+          },
+          "why": "open its index, which runs the type's query"
+        },
+        {
+          "do": {
+            "pause": 2
+          },
+          "why": "hold on the index"
+        }
+      ],
       "expect": {
-        "text": "The discourse context shows the Claim type with Content: This is a test Claim, as before this PR."
-      }
+        "js": "(async () => { await proof.waitFor(() => proof.dialogText().includes(\"Note\\\\ an idea worth keeping\"), { what: 'the backslash page in the index', timeout: 15000 }); proof.assert(!proof.dialogText().includes(\"Note an idea worth keeping\"), 'The index lists the look-alike without the backslash.'); proof.assert(window.roamjs.extension.queryBuilder.isDiscourseNode(proof.uid(\"Note\\\\ an idea worth keeping\")), 'The backslash page is not recognized.'); })()"
+      },
+      "decision": {
+        "status": "approved",
+        "by": "sid597",
+        "at": "2026-10-05T02:40:15.963Z"
+      },
+      "surface": "s-discourse-node-queries-datalog-query",
+      "checks": "The PK Backslash Note index, which runs Roam's query, lists `Note\\ an idea worth keeping` and leaves out `Note an idea worth keeping`."
     },
     {
-      "id": "obsidian-format-without-content",
-      "title": "Obsidian: a format without {content} now shows the whole title",
-      "steps": [],
-      "intent": "In Obsidian's developer console, run `(async()=>{const p=app.plugins.plugins['@discourse-graph/obsidian'];const now=Date.now();if(!p.settings.nodeTypes.some(t=>t.id==='pk-2176-no-content')){p.settings.nodeTypes.push({id:'pk-2176-no-content',name:'No content type',format:'NCT - {question}',color:'#0EA5E9',created:now,modified:now});await p.saveSettings();}if(!app.vault.getAbstractFileByPath('NCT - why do we sleep.md'))await app.vault.create('NCT - why do we sleep.md','---\\nnodeTypeId: pk-2176-no-content\\n---\\n');})()`. It adds a node type whose format has no {content}, the way an import can, and a note in it. Open `NCT - why do we sleep` and look at the discourse context.",
-      "proves": "The PR's declared behavior change, not tied to a bullet: a format with placeholders but no {content}, which only import can create, now yields the whole title.",
+      "id": "qa-create-relation-dialog-offers",
+      "title": "Create Relation dialog offers parenthesised nodes",
+      "steps": [
+        {
+          "use": "ui.quiet",
+          "why": "start from a quiet screen"
+        },
+        {
+          "use": "page.open",
+          "with": {
+            "title": "[[EVD]] - PK baseline evidence - [[@PK baseline source]]"
+          },
+          "why": "open the baseline evidence"
+        },
+        {
+          "do": {
+            "js": "(async () => { const caret = await proof.waitFor('.discourse-graph-title-additions .rm-caret', { what: 'the discourse context caret' }); if (!document.querySelector('.discourse-graph-title-additions button')) caret.click(); })()"
+          },
+          "why": "open its discourse context"
+        },
+        {
+          "do": {
+            "click": ".discourse-graph-title-additions button:has-text(\"Add relation\") >> nth=0"
+          },
+          "why": "open Add relation"
+        },
+        {
+          "do": {
+            "wait_for": ".roamjs-canvas-dialog"
+          },
+          "why": "wait for the dialog"
+        },
+        {
+          "do": {
+            "click": ".roamjs-canvas-dialog .bp3-button:has(.bp3-icon-double-caret-vertical)"
+          },
+          "why": "open the relation list"
+        },
+        {
+          "do": {
+            "click": ".bp3-popover .bp3-menu-item:has-text(\"PK cites draft\")"
+          },
+          "why": "pick PK cites draft, whose targets are Draft Claims"
+        },
+        {
+          "do": {
+            "type": {
+              "into": ".roamjs-canvas-dialog input",
+              "text": "Claim",
+              "delay_ms": 80
+            }
+          },
+          "why": "search the targets"
+        },
+        {
+          "do": {
+            "pause": 1.5
+          },
+          "why": "hold on the target list"
+        }
+      ],
       "expect": {
-        "text": "Content: shows the whole title, NCT - why do we sleep. Before this PR it showed why do we sleep. Pass if this change is acceptable; it is the PR's open scope decision."
-      }
+        "js": "(async () => { const items = () => Array.from(document.querySelectorAll('.bp3-popover .bp3-menu-item')).map((el) => el.innerText); await proof.waitFor(() => items().some((text) => text.includes('Claim (draft) - Sleep improves memory consolidation')), { what: 'the Draft Claim page among the targets' }); proof.assert(!items().some((text) => text.includes('Naps replace a night of sleep')), 'The look-alike page is offered as a target.'); })()"
+      },
+      "decision": {
+        "status": "approved",
+        "by": "sid597",
+        "at": "2026-10-05T02:40:15.963Z"
+      },
+      "surface": "s-create-relation-dialog",
+      "checks": "With PK cites draft picked, the target list offers the Draft Claim page and not the look-alike without parentheses."
+    },
+    {
+      "id": "qa-source-placed-before-content-resolves",
+      "title": "Source placed before content resolves",
+      "steps": [
+        {
+          "use": "ui.quiet",
+          "why": "start from a quiet screen"
+        },
+        {
+          "use": "share.current-node",
+          "with": {
+            "title": "@PK baseline source"
+          },
+          "why": "share the baseline source first"
+        },
+        {
+          "do": {
+            "js": "proof.setSwitch('eng-2329-demo', true)"
+          },
+          "why": "pick the eng-2329-demo group"
+        },
+        {
+          "do": {
+            "click": ".bp3-dialog:visible .bp3-dialog-footer button:has-text(\"Publish\")"
+          },
+          "why": "publish it"
+        },
+        {
+          "do": {
+            "wait_for": ".bp3-toast"
+          },
+          "why": "wait for the publish result"
+        },
+        {
+          "do": {
+            "pause": 1.5
+          },
+          "why": "hold on the result"
+        },
+        {
+          "use": "ui.quiet",
+          "why": "start from a quiet screen"
+        },
+        {
+          "use": "share.current-node",
+          "with": {
+            "title": "PKS [[@PK baseline source]]: caffeine helps focus"
+          },
+          "why": "share the PK Source First page"
+        },
+        {
+          "do": {
+            "js": "proof.setSwitch('eng-2329-demo', true)"
+          },
+          "why": "pick the eng-2329-demo group"
+        },
+        {
+          "do": {
+            "click": ".bp3-dialog:visible .bp3-dialog-footer button:has-text(\"Publish\")"
+          },
+          "why": "publish it"
+        },
+        {
+          "do": {
+            "wait_for": ".bp3-toast"
+          },
+          "why": "wait for the publish result"
+        },
+        {
+          "do": {
+            "pause": 1.5
+          },
+          "why": "hold on the result"
+        }
+      ],
+      "expect": {
+        "js": "(async () => { const srcUid = proof.uid(\"@PK baseline source\"); const uid = proof.uid(\"PKS [[@PK baseline source]]: caffeine helps focus\"); const src = (await proof.waitFor(async () => (await proof.rest('/rest/v1/Concept?select=id&is_schema=eq.false&space_id=eq.120237&source_local_id=eq.' + encodeURIComponent(srcUid), { key: '{{env.SUPABASE_SERVICE_ROLE_KEY}}' }))[0], { what: 'the published concept', timeout: 15000, interval: 500 })); const row = (await proof.waitFor(async () => (await proof.rest('/rest/v1/Concept?select=literal_content,reference_content&is_schema=eq.false&space_id=eq.120237&source_local_id=eq.' + encodeURIComponent(uid), { key: '{{env.SUPABASE_SERVICE_ROLE_KEY}}' }))[0], { what: 'the published concept', timeout: 15000, interval: 500 })); proof.assert(row.literal_content.core_title === 'caffeine helps focus', 'The published core_title is ' + JSON.stringify(row.literal_content.core_title) + '.'); proof.assert(row.reference_content && row.reference_content.sourceDocument === src.id, 'The sourceDocument reference is ' + JSON.stringify(row.reference_content) + ', not the source concept ' + src.id + '.'); })()"
+      },
+      "decision": {
+        "status": "approved",
+        "by": "sid597",
+        "at": "2026-10-05T02:40:15.963Z"
+      },
+      "surface": "s-evidence-source-slot",
+      "checks": "Sharing `PKS [[@PK baseline source]]: caffeine helps focus` publishes the core_title `caffeine helps focus` and a sourceDocument reference to the published baseline source."
+    },
+    {
+      "id": "qa-empty-and-punctuation-heavy-content",
+      "title": "Regex characters inside the content survive sharing",
+      "steps": [
+        {
+          "use": "ui.quiet",
+          "why": "start from a quiet screen"
+        },
+        {
+          "use": "share.current-node",
+          "with": {
+            "title": "Claim (draft) - a (b) [c] - d?"
+          },
+          "why": "share the Draft Claim whose content has regex characters"
+        },
+        {
+          "do": {
+            "js": "proof.setSwitch('eng-2329-demo', true)"
+          },
+          "why": "pick the eng-2329-demo group"
+        },
+        {
+          "do": {
+            "click": ".bp3-dialog:visible .bp3-dialog-footer button:has-text(\"Publish\")"
+          },
+          "why": "publish it"
+        },
+        {
+          "do": {
+            "wait_for": ".bp3-toast"
+          },
+          "why": "wait for the publish result"
+        },
+        {
+          "do": {
+            "pause": 1.5
+          },
+          "why": "hold on the result"
+        }
+      ],
+      "expect": {
+        "js": "(async () => { const uid = proof.uid(\"Claim (draft) - a (b) [c] - d?\"); proof.assert(uid, 'The page is missing.'); const row = (await proof.waitFor(async () => (await proof.rest('/rest/v1/Concept?select=literal_content&is_schema=eq.false&space_id=eq.120237&source_local_id=eq.' + encodeURIComponent(uid), { key: '{{env.SUPABASE_SERVICE_ROLE_KEY}}' }))[0], { what: 'the published concept', timeout: 15000, interval: 500 })); proof.assert(row.literal_content.core_title === \"a (b) [c] - d?\", 'The published core_title is ' + JSON.stringify(row.literal_content.core_title) + '.'); })()"
+      },
+      "decision": {
+        "status": "approved",
+        "by": "sid597",
+        "at": "2026-10-05T02:40:15.963Z"
+      },
+      "surface": "s-sync-and-sharing-of-nodes-to-the",
+      "checks": "Sharing `Claim (draft) - a (b) [c] - d?` publishes the core_title `a (b) [c] - d?`. The empty-content half is left to extractContentFromTitle's unit tests, since Roam trims a title's trailing space."
+    },
+    {
+      "id": "qa-node-type-settings-accept-a-format-with",
+      "title": "Turning the Draft Claim specification on keeps the format's matching",
+      "steps": [
+        {
+          "use": "ui.quiet",
+          "why": "start from a quiet screen"
+        },
+        {
+          "use": "settings.open-home",
+          "why": "open the Discourse settings"
+        },
+        {
+          "do": {
+            "click": ".bp3-dialog:visible .bp3-tab:has-text(\"Nodes\") >> nth=0"
+          },
+          "why": "go to the node types"
+        },
+        {
+          "do": {
+            "click": ".bp3-dialog:visible td:has-text(\"Draft Claim\") >> nth=0"
+          },
+          "why": "open the Draft Claim type"
+        },
+        {
+          "do": {
+            "click": ".bp3-dialog:visible .bp3-tab:has-text(\"Specification\") >> nth=0"
+          },
+          "why": "open the Draft Claim specification"
+        },
+        {
+          "do": {
+            "js": "(async () => { const box = await proof.waitFor('.roamjs-node-specification input[type=checkbox]', { what: 'the specification switch' }); if (box.checked !== true) document.querySelector('.roamjs-node-specification .bp3-control-indicator').click(); await proof.waitFor(() => document.querySelector('.roamjs-node-specification input[type=checkbox]').checked === true, { what: 'the specification to turn on' }); await proof.sleep(1000); })()"
+          },
+          "why": "turn the specification on, which stores a pattern built from the format"
+        },
+        {
+          "do": {
+            "js": "(() => { const qb = window.roamjs.extension.queryBuilder; proof.assert(qb.isDiscourseNode(proof.uid('Claim (draft) - Sleep improves memory consolidation')), 'The Draft Claim page is not recognized'); proof.assert(!qb.isDiscourseNode(proof.uid('Claim draft - Naps replace a night of sleep')), 'The look-alike matches') + ' with the specification on.'); })()"
+          },
+          "why": "check matching with the specification on"
+        },
+        {
+          "do": {
+            "pause": 1.5
+          },
+          "why": "hold on the specification"
+        },
+        {
+          "do": {
+            "js": "(async () => { const box = await proof.waitFor('.roamjs-node-specification input[type=checkbox]', { what: 'the specification switch' }); if (box.checked !== false) document.querySelector('.roamjs-node-specification .bp3-control-indicator').click(); await proof.waitFor(() => document.querySelector('.roamjs-node-specification input[type=checkbox]').checked === false, { what: 'the specification to turn off' }); await proof.sleep(1000); })()"
+          },
+          "why": "turn it off again, so the next run starts from the format"
+        },
+        {
+          "use": "ui.quiet",
+          "why": "close the settings"
+        }
+      ],
+      "expect": {
+        "js": "(() => { const qb = window.roamjs.extension.queryBuilder; proof.assert(qb.isDiscourseNode(proof.uid('Claim (draft) - Sleep improves memory consolidation')), 'The Draft Claim page is not recognized'); proof.assert(!qb.isDiscourseNode(proof.uid('Claim draft - Naps replace a night of sleep')), 'The look-alike matches') + ' after the specification is off again.'); })()"
+      },
+      "decision": {
+        "status": "approved",
+        "by": "sid597",
+        "at": "2026-10-05T02:40:15.963Z"
+      },
+      "surface": "s-node-type-format-in-discourse-node",
+      "checks": "With the Draft Claim specification on, which stores a pattern built from the format, the Draft Claim page is still a discourse node and the look-alike isn't; the case turns it off again and checks the same."
     },
     {
       "id": "qa-format-with-brackets-and-plus-still",
@@ -402,83 +774,6 @@
       "surface": "s-node-search-dialog-search-providers"
     },
     {
-      "id": "qa-format-with-star-pipe-caret-dollar",
-      "title": "Format with star, pipe, caret, dollar, braces",
-      "steps": [],
-      "intent": "Create a node type with format `Q* | ^{content}$`. Create a page titled `Q* | ^why$` and one titled `Q| why`. Open the node type index and use Node search.",
-      "expect": {
-        "text": "Only the page whose title literally contains those characters is listed as the type; the other page is not."
-      },
-      "decision": {
-        "status": "approved",
-        "by": "sid597",
-        "at": "2026-10-05T02:40:15.963Z"
-      },
-      "surface": "s-existing-formats-that-relied-on"
-    },
-    {
-      "id": "qa-format-containing-a-backslash",
-      "title": "Format containing a backslash",
-      "steps": [],
-      "intent": "Create a node type with format `Note\\ {content}` (a literal backslash). Create a page titled `Note\\ idea` and open the node type's index (query-based) and Node search.",
-      "expect": {
-        "text": "The page is listed in both; no query error appears and the index is not empty."
-      },
-      "decision": {
-        "status": "approved",
-        "by": "sid597",
-        "at": "2026-10-05T02:40:15.963Z"
-      },
-      "surface": "s-discourse-node-queries-datalog-query"
-    },
-    {
-      "id": "qa-create-relation-dialog-offers",
-      "title": "Create Relation dialog offers parenthesised nodes",
-      "steps": [],
-      "intent": "Define a relation whose target is Draft Claim. On another node page open the Create Relation dialog, choose that relation, and open the target picker.",
-      "expect": {
-        "text": "The Draft Claim page appears as a target; the look-alike page without parentheses does not."
-      },
-      "decision": {
-        "status": "approved",
-        "by": "sid597",
-        "at": "2026-10-05T02:40:15.963Z"
-      },
-      "surface": "s-create-relation-dialog"
-    },
-    {
-      "id": "qa-node-type-settings-accept-a-format-with",
-      "title": "Turning the Draft Claim specification on keeps the format's matching",
-      "steps": [],
-      "intent": "Run DG: Open - Discourse settings, go to Nodes > Draft Claim > Specification and turn the specification on; it stores a pattern built from `Claim (draft) - {content}`. Then open the Draft Claim page and the look-alike page. Turn the specification off again afterwards, so the next run starts from the format.",
-      "expect": {
-        "js": "(() => { const qb = window.roamjs.extension.queryBuilder; proof.assert(qb.isDiscourseNode(proof.uid('Claim (draft) - Sleep improves memory consolidation')), 'The Draft Claim page is not recognized with the specification on.'); proof.assert(!qb.isDiscourseNode(proof.uid('Claim draft - Naps replace a night of sleep')), 'The look-alike matches with the specification on.'); })()",
-        "text": "The specification turns on without an error, and the Draft Claim page still shows its discourse context while the look-alike doesn't."
-      },
-      "decision": {
-        "status": "approved",
-        "by": "sid597",
-        "at": "2026-10-05T02:40:15.963Z"
-      },
-      "surface": "s-node-type-format-in-discourse-node",
-      "checks": "With the specification on, the Draft Claim page is still a discourse node and the look-alike is not."
-    },
-    {
-      "id": "qa-source-placed-before-content-resolves",
-      "title": "Source placed before content resolves",
-      "steps": [],
-      "intent": "Make an Evidence-like type with format `{Source}: {content}` (as a type with a source slot). Create `[[@Smith 2020]]: finding` where @Smith 2020 is a Source node, then share the node.",
-      "expect": {
-        "text": "The shared node links to the Source page and its content is only `finding`."
-      },
-      "decision": {
-        "status": "approved",
-        "by": "sid597",
-        "at": "2026-10-05T02:40:15.963Z"
-      },
-      "surface": "s-evidence-source-slot"
-    },
-    {
       "id": "qa-format-without-content-syncs-the-whole",
       "title": "Format without {content} syncs the whole title",
       "steps": [],
@@ -492,57 +787,11 @@
         "at": "2026-10-05T02:40:22.839Z",
         "reason": "Roam already returned the whole title for a format without {content}; the changed side is Obsidian, covered by obsidian-format-without-content"
       }
-    },
-    {
-      "id": "qa-empty-and-punctuation-heavy-content",
-      "title": "Empty and punctuation-heavy content round trips",
-      "steps": [],
-      "intent": "With Draft Claim, create `Claim (draft) - a (b) [c] - d?` and `Claim (draft) - ` and share both.",
-      "expect": {
-        "text": "The first publishes content `a (b) [c] - d?`; the second publishes empty content without falling back to the full title or erroring."
-      },
-      "decision": {
-        "status": "approved",
-        "by": "sid597",
-        "at": "2026-10-05T02:40:15.963Z"
-      },
-      "surface": "s-sync-and-sharing-of-nodes-to-the"
-    },
-    {
-      "id": "qa-obsidian-create-a-parenthesised-node",
-      "title": "Obsidian: create a parenthesised node from the command",
-      "steps": [],
-      "intent": "In Obsidian, add a node type with format `Claim (draft) - {content}`. Select text and use Create discourse node, or run the command, then open the new note and the Discourse Context pane.",
-      "expect": {
-        "text": "The note is created with title `Claim (draft) - <text>`, is recognised as that type, and the context pane shows the node without errors."
-      },
-      "decision": {
-        "status": "rejected",
-        "by": "sid597",
-        "at": "2026-10-05T02:40:26.286Z",
-        "reason": "obsidian-content-line already creates the note with Create discourse node and checks its name and Content line"
-      },
-      "surface": "s-obsidian-node-creation-and-discourse"
-    },
-    {
-      "id": "qa-obsidian-import-dialog-finds",
-      "title": "Obsidian: Bulk identify finds notes by a pattern with parentheses",
-      "steps": [],
-      "intent": "In Obsidian, create a plain note (no node type) named `Draft (v2) - Coffee helps focus`. Run Bulk identify discourse nodes, enable Draft Claim with the pattern `Draft (v2) - {content}`, and press Scan Vault.",
-      "expect": {
-        "text": "The review list shows `Draft (v2) - Coffee helps focus` as a Draft Claim candidate, read as Coffee helps focus."
-      },
-      "decision": {
-        "status": "approved",
-        "by": "sid597",
-        "at": "2026-10-05T02:40:15.963Z"
-      },
-      "surface": "s-obsidian-node-creation-and-discourse"
     }
   ],
   "title": "Escape regex metacharacters in discourse node format expressions",
   "claim": "A node format with regex characters such as parentheses matches its own titles and yields its content in Roam and Obsidian through one shared builder and extractor, and ordinary formats behave as before.",
-  "given": "test-3-graph has the four baseline pages, a Draft Claim node type with the format `Claim (draft) - {content}`, a Draft Claim page, a look-alike page without the parentheses and a scratch page. The graph is signed in to the proof database and is in the eng-2329-demo group. The Obsidian cases are done by hand in Sid-Obsidian-test with the ENG-2176 Obsidian build.",
+  "given": "test-3-graph has the four baseline pages; Draft Claim (`Claim (draft) - {content}`), PK Pipe Question, PK Backslash Note, PK Source First and PK Versioned Claim node types with a page and a look-alike each; a PK cites draft relation type from Evidence to Draft Claim; and Stored Relations on. The graph is signed in to the proof database and is in the eng-2329-demo group. The Obsidian cases live in the eng-2176-obsidian kit.",
   "baseline": "dg-baseline@1",
   "target": {
     "slot": "3",
@@ -581,11 +830,94 @@
       }
     },
     {
+      "id": "pipe-question-type",
+      "why": "a PK Pipe Question type whose format has * | ^ and $",
+      "phase": "before-load",
+      "check": {
+        "js": "proof.nodeType.format(\"PK Pipe Question\") === \"Q* | ^{content}$\""
+      },
+      "apply": {
+        "js": "proof.nodeType.ensure({ label: \"PK Pipe Question\", format: \"Q* | ^{content}$\", shortcut: \"J\" })"
+      }
+    },
+    {
+      "id": "backslash-note-type",
+      "why": "a PK Backslash Note type whose format has a literal backslash",
+      "phase": "before-load",
+      "check": {
+        "js": "proof.nodeType.format(\"PK Backslash Note\") === \"Note\\\\ {content}\""
+      },
+      "apply": {
+        "js": "proof.nodeType.ensure({ label: \"PK Backslash Note\", format: \"Note\\\\ {content}\", shortcut: \"K\" })"
+      }
+    },
+    {
+      "id": "source-first-type",
+      "why": "a PK Source First type whose {Source} comes before {content}",
+      "phase": "before-load",
+      "check": {
+        "js": "proof.nodeType.format(\"PK Source First\") === \"PKS {Source}: {content}\""
+      },
+      "apply": {
+        "js": "proof.nodeType.ensure({ label: \"PK Source First\", format: \"PKS {Source}: {content}\", shortcut: \"X\" })"
+      }
+    },
+    {
+      "id": "versioned-claim-type",
+      "why": "a PK Versioned Claim type whose format has a non-placeholder {v2}",
+      "phase": "before-load",
+      "check": {
+        "js": "proof.nodeType.format(\"PK Versioned Claim\") === \"Claim {v2} - {content}\""
+      },
+      "apply": {
+        "js": "proof.nodeType.ensure({ label: \"PK Versioned Claim\", format: \"Claim {v2} - {content}\", shortcut: \"Z\" })"
+      }
+    },
+    {
+      "id": "draft-claim-relation",
+      "why": "a PK cites draft relation type from Evidence to Draft Claim, in the Global settings block, so the Add relation dialog filters targets by the Draft Claim format",
+      "phase": "before-load",
+      "check": {
+        "js": "(() => { const page = window.roamAlphaAPI.pull('[{:block/children [:block/uid :block/string :block/props]}]', [':node/title', 'roam/js/discourse-graph']); const global = ((page && page[':block/children']) || []).find((child) => child[':block/string'] === 'Global'); const rel = global && (proof.plain(global[':block/props'] || {}).Relations || {})['pk2176-cites-draft']; return Boolean(rel && rel.destination === proof.nodeType.uid('Draft Claim')); })()"
+      },
+      "apply": {
+        "js": "(async () => { const page = window.roamAlphaAPI.pull('[{:block/children [:block/uid :block/string :block/props]}]', [':node/title', 'roam/js/discourse-graph']); const global = ((page && page[':block/children']) || []).find((child) => child[':block/string'] === 'Global'); if (!global) throw new Error('No Global settings block.'); const draft = proof.nodeType.uid('Draft Claim'); if (!draft) throw new Error('The Draft Claim type is missing.'); const props = proof.plain(global[':block/props'] || {}); props.Relations = Object.assign({}, props.Relations, { 'pk2176-cites-draft': { label: 'PK cites draft', source: '_EVD-node', destination: draft, complement: 'PK cited by evidence', ifConditions: [] } }); await window.roamAlphaAPI.data.block.update({ block: { uid: global[':block/uid'], props } }); })()"
+      }
+    },
+    {
       "id": "draft-claim-pages",
       "why": "a page in the Draft Claim format, a look-alike title without the parentheses, and a scratch page",
       "phase": "in-session",
       "apply": {
         "js": "(async () => { await proof.page.ensure('Claim (draft) - Sleep improves memory consolidation', ['A Draft Claim page.']); await proof.page.ensure('Claim draft - Naps replace a night of sleep', ['Not a Draft Claim: no parentheses.']); await proof.page.recreate('PK format search scratch', ['']); })()"
+      }
+    },
+    {
+      "id": "qa-pages",
+      "why": "a page and a look-alike for each extra format, and a Draft Claim whose content has regex characters",
+      "phase": "in-session",
+      "apply": {
+        "js": "(async () => { for (const [title, text] of [[\"Q* | ^why do we sleep$\", \"A PK Pipe Question page.\"], [\"Q why do we sleep\", \"Not a PK Pipe Question: no * | ^ $.\"], [\"Note\\\\ an idea worth keeping\", \"A PK Backslash Note page.\"], [\"Note an idea worth keeping\", \"Not a PK Backslash Note: no backslash.\"], [\"PKS [[@PK baseline source]]: caffeine helps focus\", \"A PK Source First page.\"], [\"Claim {v2} - Coffee helps focus\", \"A PK Versioned Claim page.\"], [\"Claim (draft) - a (b) [c] - d?\", \"A Draft Claim whose content has regex characters.\"]]) { await proof.page.ensure(title, [text]); } })()"
+      }
+    },
+    {
+      "id": "stored-relations-on",
+      "why": "Stored Relations is on, so Add relation shows and a relation type without conditions counts",
+      "phase": "in-session",
+      "apply": {
+        "steps": [
+          {
+            "use": "settings.stored-relations",
+            "with": {
+              "on": true
+            },
+            "why": "turn Stored Relations on"
+          },
+          {
+            "use": "ui.quiet",
+            "why": "close the settings"
+          }
+        ]
       }
     }
   ],
@@ -643,17 +975,6 @@
       "why": "sourceIdOfNode was rewritten to use the shared matcher and a placeholder-order index, including a {Source} placed before {content}.",
       "files": [
         "apps/roam/src/utils/sourceSlot.ts"
-      ]
-    },
-    {
-      "id": "s-obsidian-node-creation-and-discourse",
-      "area": "Obsidian node creation and Discourse Context view",
-      "why": "createNode, the context pane, and QueryEngine import now use the shared builder and extractor instead of the old Obsidian copies.",
-      "files": [
-        "apps/obsidian/src/utils/createNode.ts",
-        "apps/obsidian/src/components/DiscourseContextView.tsx",
-        "apps/obsidian/src/services/QueryEngine.ts",
-        "apps/obsidian/src/utils/conceptConversion.ts"
       ]
     },
     {
