@@ -18,6 +18,12 @@ export type PageExecutorOptions = {
   // Something a person should know that isn't a failure, e.g. a skipped
   // screenshot.
   note: (text: string) => void;
+  // The element a step is about to act on, and the verb, for the ring on the
+  // page; null when the step acts on nothing a person could point at.
+  target?: (element: Element | null, verb: string) => void;
+  // How long the ring shows before the step acts, so a watcher sees the
+  // cause before the effect.
+  lead?: () => number;
 };
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
@@ -189,31 +195,46 @@ const pickFromPalette = async (label: string, timeout: number, delayMs: number):
 export const makePageExecutor = (options: PageExecutorOptions): Executor => {
   const { timeout } = options;
 
+  // Puts the ring on what the step acts on, then gives the eye a moment.
+  const show = async (element: Element | null, verb: string): Promise<void> => {
+    options.target?.(element, verb);
+    const ms = element ? (options.lead?.() ?? 0) : 0;
+    if (ms > 0) await sleep(ms);
+  };
+
   const run = async (raw: Action): Promise<void> => {
     const action = options.fill(raw);
+    if (!("click" in action || "type" in action || "fill" in action || "hover" in action || "drag" in action || "when" in action)) {
+      if (!("press" in action && typeof action.press !== "string" && action.press.selector)) options.target?.(null, "");
+    }
     if ("click" in action) {
       const spec = typeof action.click === "string" ? { selector: action.click } : action.click;
       const element = await actionable(spec.selector, timeout);
+      await show(element, spec.button === "right" ? "Right-click" : (spec.count ?? 1) > 1 ? "Double-click" : "Click");
       click(element, { button: spec.button, count: spec.count, position: spec.position });
       await enterRoamBlock(element);
     } else if ("type" in action) {
       const element = await actionable(action.type.into, timeout);
+      await show(element, "Type");
       click(element);
       await enterRoamBlock(element);
       await typeText(action.type.text, action.type.delay_ms ?? 50);
     } else if ("fill" in action) {
       const element = await actionable(action.fill.into, timeout);
+      await show(element, "Type");
       fillText(element, action.fill.text);
     } else if ("press" in action) {
       if (typeof action.press === "string") press(action.press);
       else if (action.press.selector) {
         const element = await actionable(action.press.selector, timeout);
+        await show(element, `Press ${action.press.key}`);
         (element as HTMLElement).focus();
         press(action.press.key, element);
       } else press(action.press.key);
     } else if ("hover" in action) {
       const element = await firstVisible(action.hover, timeout);
       if (!inViewport(element)) element.scrollIntoView({ block: "center", inline: "nearest" });
+      await show(element, "Hover");
       moveTo(element);
     } else if ("scroll" in action) {
       if (typeof action.scroll === "number") window.scrollBy(0, action.scroll);
@@ -241,6 +262,7 @@ export const makePageExecutor = (options: PageExecutorOptions): Executor => {
     } else if ("drag" in action) {
       if (action.drag.hover) moveTo(await firstVisible(action.drag.hover, timeout));
       const from = await firstVisible(action.drag.from, timeout);
+      await show(from, "Drag");
       const to = await firstVisible(action.drag.to, timeout);
       await drag(from, to, action.drag.toPosition);
     } else if ("command_palette" in action) {

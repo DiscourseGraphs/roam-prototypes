@@ -17,12 +17,14 @@ export type Phase =
   | "starting"
   | "running"
   | "dwell"
+  | "checking"
   | "paused"
   | "waiting-next"
   | "waiting-steps"
   | "waiting-approval"
   | "waiting-verdict"
   | "step-failed"
+  | "check-failed"
   | "done"
   | "stopped";
 
@@ -32,7 +34,7 @@ export type CommandSource = "hud" | "socket";
 
 export type Pending =
   | { kind: "steps"; caseId: string; reason: string }
-  | { kind: "failure"; caseId: string | null; stepId: string; error: string }
+  | { kind: "failure"; caseId: string | null; stepId: string; error: string; why?: string; index?: number }
   | {
       kind: "approval";
       caseId: string | null;
@@ -45,7 +47,24 @@ export type Pending =
       caseId: string;
       text: string;
       proposal?: { verdict: Verdict; reason?: string };
-    };
+    }
+  | { kind: "check-failed"; caseId: string; error: string };
+
+export type PauseCause = "you" | "page" | "between-cases" | "agent";
+
+export type How = "checked" | "judged" | "marked" | "skipped" | "unchecked";
+
+export type CaseRecord = {
+  verdict: Verdict;
+  how: How;
+  note: string | null;
+  yourNote: string | null;
+  byHand: boolean;
+  skippedSteps: string[];
+  fixedSteps: string[];
+  deniedSteps: string[];
+  retries: number;
+};
 
 // The live panel's view of the whole kit: what it proves, every case with
 // its steps and verdict, and a short feed of what just happened.
@@ -56,9 +75,11 @@ export type PlanCase = {
   checks: string | null;
   // What a person judges at the end (expect.text), when the case has one.
   judge: string | null;
+  hasCheck: boolean;
   intent: string | null;
   verdict: Verdict | null;
   note: string | null;
+  record: CaseRecord | null;
   steps: { why: string; source: StepSource }[];
 };
 
@@ -74,7 +95,9 @@ export type MachineState = {
   speed: number;
   dwellMs: number;
   paused: boolean;
+  pausedBy: PauseCause | null;
   executing: boolean;
+  stepStartedAt: number | null;
   caseIndex: number;
   caseCount: number;
   caseId: string | null;
@@ -107,7 +130,14 @@ export type CommandResult =
   | { ok: true; value?: unknown }
   | { ok: false; error: string };
 
-export type CaseOutcome = { verdict: Verdict; note?: string };
+export type CaseOutcome = { verdict: Verdict; how: How; note?: string; yourNote?: string };
+
+type Tracks = Pick<CaseRecord, "byHand" | "skippedSteps" | "fixedSteps" | "deniedSteps" | "retries">;
+
+const freshTracks = (): Tracks => ({ byHand: false, skippedSteps: [], fixedSteps: [], deniedSteps: [], retries: 0 });
+
+const joinNotes = (...notes: Array<string | null | undefined>): string =>
+  notes.filter((note): note is string => Boolean(note)).join(" · ");
 
 export const SPEEDS = [0.25, 0.5, 1, 1.5, 2, 3, 4];
 
@@ -172,6 +202,7 @@ export type MachineOptions = {
   expand?: (step: Step) => Action[];
   // Runs each time every case has a verdict, e.g. to write an interim bake.
   onIdle?: () => Promise<void>;
+  holdOnCheckFail?: boolean;
 };
 
 const firstLine = (value: unknown, limit = 160): string =>
@@ -196,6 +227,8 @@ export const feedEntry = (
       return { kind: "fail", text: `Step failed (${firstLine(payload.why, 60)}): ${firstLine(payload.error)}` };
     case "step-resolved":
       return { kind: "step", text: `Failed step: ${String(payload.resolution)}` };
+    case "check-failed":
+      return { kind: "fail", text: `Check failed: ${firstLine(payload.error)}` };
     case "case-end": {
       const verdict = String(payload.verdict);
       const kind = verdict === "pass" ? "pass" : verdict === "fail" ? "fail" : "note";
@@ -238,19 +271,28 @@ export class Machine {
   private readonly stayOpen: boolean;
   private readonly onIdle?: () => Promise<void>;
   private readonly expand: (step: Step) => Action[];
+  private readonly holdOnCheckFail: boolean;
 
   private mode: Mode;
   private speed: number;
   private dwellMs: number;
   private phase: Phase = "starting";
   private paused = false;
+  private pausedBy: PauseCause | null = null;
   private executing = false;
+  private stepStartedAt: number | null = null;
   private caseIndex = -1;
   private stepIndex = 0;
   private cursor = 0;
   private pending: Pending | null = null;
   private readonly verdicts: Record<string, Verdict> = {};
   private readonly verdictNotes: Record<string, string> = {};
+  private readonly records: Record<string, CaseRecord> = {};
+  private tracks: Tracks = freshTracks();
+  private lastFailure: { why: string; index: number; error: string } | null = null;
+  private skipNote: string | undefined;
+  private checkResolution: "retry" | "continue" | null = null;
+  private checkNote: string | undefined;
 
   private wakers: Array<() => void> = [];
   private renderChain: Promise<void> = Promise.resolve();
@@ -274,6 +316,7 @@ export class Machine {
     this.origin = options.origin;
     this.stayOpen = options.stayOpen ?? false;
     this.onIdle = options.onIdle;
+    this.holdOnCheckFail = options.holdOnCheckFail ?? false;
     this.expand =
       options.expand ??
       ((step) => {
@@ -293,6 +336,10 @@ export class Machine {
     return { ...this.verdictNotes };
   }
 
+  get caseRecords(): Record<string, CaseRecord> {
+    return { ...this.records };
+  }
+
   state(): MachineState {
     const testCase = this.currentCase();
     const steps = this.currentSteps();
@@ -303,7 +350,9 @@ export class Machine {
       speed: this.speed,
       dwellMs: this.dwellMs,
       paused: this.paused,
+      pausedBy: this.paused ? this.pausedBy : null,
       executing: this.executing,
+      stepStartedAt: this.stepStartedAt,
       caseIndex: this.caseIndex,
       caseCount: this.kit.cases.length,
       caseId: testCase?.id ?? null,
@@ -322,9 +371,11 @@ export class Machine {
         proves: item.proves ?? null,
         checks: item.checks ?? null,
         judge: item.expect?.text ?? null,
+        hasCheck: Boolean(item.expect?.js),
         intent: item.intent ?? null,
         verdict: this.verdicts[item.id] ?? null,
         note: this.verdictNotes[item.id] ?? null,
+        record: this.records[item.id] ?? null,
         steps: item.steps.map((planStep) => ({
           why: planStep.why,
           source: planStep.source ?? "kit",
@@ -402,8 +453,9 @@ export class Machine {
         this.caseIndex = index;
         await this.runCase(this.kit.cases[index]);
         index += 1;
-        if (this.mode === "case" && index < this.kit.cases.length) {
+        if (this.mode === "case" && index < this.kit.cases.length && !this.paused) {
           this.paused = true;
+          this.pausedBy = "between-cases";
         }
         continue;
       }
@@ -436,11 +488,15 @@ export class Machine {
       case "status":
         return this.status();
       case "pause":
-        this.paused = true;
-        this.log("paused", { by: source });
+        if (!this.paused) {
+          this.paused = true;
+          this.pausedBy = source === "socket" ? "agent" : args.why === "page" ? "page" : "you";
+        }
+        this.log("paused", { by: source, why: this.pausedBy });
         return this.state();
       case "resume":
         this.paused = false;
+        this.pausedBy = null;
         this.log("resumed", { by: source });
         return this.state();
       case "next":
@@ -492,16 +548,31 @@ export class Machine {
       case "skip-case": {
         const testCase = this.currentCase();
         if (!testCase) throw new Error("No case is running.");
+        const reason = typeof args.note === "string" && args.note.trim() ? args.note.trim().slice(0, 1000) : undefined;
+        this.skipNote = reason;
         this.skipCaseRequested = true;
-        this.log("skip-case", { caseId: testCase.id, by: source });
+        this.log("skip-case", { caseId: testCase.id, by: source, note: reason ?? null });
         return this.state();
       }
       case "retry":
+        if (this.pending?.kind === "check-failed") {
+          this.checkResolution = "retry";
+          return this.state();
+        }
         if (this.pending?.kind !== "failure") {
-          throw new Error("No failed step to retry.");
+          throw new Error("No failed step or check to retry.");
         }
         this.failureResolution = "retry";
         return this.state();
+      case "continue": {
+        if (this.pending?.kind !== "check-failed") {
+          throw new Error("Nothing is waiting: continue goes on after a failed check.");
+        }
+        const note = typeof args.note === "string" && args.note.trim() ? args.note.trim().slice(0, 1000) : undefined;
+        this.checkNote = note;
+        this.checkResolution = "continue";
+        return this.state();
+      }
       case "steps":
         return this.receiveSteps(source, args);
       case "add-case":
@@ -592,6 +663,7 @@ export class Machine {
     for (const step of steps) this.checkOrigin(step);
 
     const isCurrent = testCase === this.currentCase();
+    if (isCurrent && source === "hud" && this.pending?.kind === "steps") this.tracks.byHand = true;
     const list = testCase.steps;
     if (how === "append") {
       list.push(...steps);
@@ -663,12 +735,34 @@ export class Machine {
       return this.state();
     }
     if (pending?.kind === "verdict") {
-      this.humanVerdict = { verdict, note };
+      this.humanVerdict = { verdict, how: "judged", yourNote: note };
       return this.state();
     }
     const testCase = this.currentCase();
     if (!testCase) throw new Error("No case is running.");
-    this.forcedVerdict = { verdict, note };
+    // A case done by hand, with no check of its own, ends on the person's word.
+    if (pending?.kind === "steps") {
+      this.tracks.byHand = true;
+      this.forcedVerdict = { verdict, how: "judged", yourNote: note };
+      this.skipCaseRequested = true;
+      this.log("verdict-by-hand", { caseId: testCase.id, verdict, note });
+      return this.state();
+    }
+    if (verdict === "pass") {
+      throw new Error("Pass is only for a case that asks for your verdict. To end this case, fail it with a reason, or skip it.");
+    }
+    if (pending?.kind === "check-failed") {
+      this.checkNote = note;
+      this.checkResolution = "continue";
+      return this.state();
+    }
+    const failed = pending?.kind === "failure" ? this.lastFailure : null;
+    this.forcedVerdict = {
+      verdict,
+      how: "marked",
+      note: failed ? `Step ${failed.index + 1}, "${failed.why}", failed: ${failed.error}` : undefined,
+      yourNote: note,
+    };
     this.skipCaseRequested = true;
     this.log("verdict-forced", { caseId: testCase.id, verdict, note });
     return this.state();
@@ -689,6 +783,9 @@ export class Machine {
   private async runCase(testCase: TestCase): Promise<void> {
     this.skipCaseRequested = false;
     this.forcedVerdict = null;
+    this.tracks = freshTracks();
+    this.lastFailure = null;
+    this.skipNote = undefined;
     this.stepIndex = 0;
     this.cursor = 0;
     this.log("case-start", {
@@ -709,21 +806,31 @@ export class Machine {
     }
     let outcome: CaseOutcome | null;
     if (this.forcedVerdict) outcome = this.forcedVerdict;
-    else if (!finished) outcome = { verdict: "skip" };
+    else if (!finished) outcome = this.skipped();
     else outcome = await this.judge(testCase);
     if (!outcome) {
       if (this.stopRequested) {
         this.log("case-interrupted", { caseId: testCase.id });
         return;
       }
-      outcome = this.forcedVerdict ?? { verdict: "skip" };
+      outcome = this.forcedVerdict ?? this.skipped();
     }
     this.verdicts[testCase.id] = outcome.verdict;
-    if (outcome.note) this.verdictNotes[testCase.id] = outcome.note;
+    const combined = joinNotes(outcome.note, outcome.yourNote);
+    if (combined) this.verdictNotes[testCase.id] = combined;
+    this.records[testCase.id] = {
+      verdict: outcome.verdict,
+      how: outcome.how,
+      note: outcome.note ?? null,
+      yourNote: outcome.yourNote ?? null,
+      ...this.tracks,
+    };
     this.log("case-end", {
       caseId: testCase.id,
       verdict: outcome.verdict,
-      note: outcome.note ?? null,
+      note: combined || null,
+      how: outcome.how,
+      ...this.tracks,
     });
     this.skipCaseRequested = false;
     this.forcedVerdict = null;
@@ -743,6 +850,7 @@ export class Machine {
         const allowed = await this.waitForApproval(testCase, step);
         if (this.interrupted()) return false;
         if (!allowed) {
+          this.tracks.deniedSteps.push(step.why);
           steps.splice(index, 1);
           index -= 1;
           continue;
@@ -825,6 +933,7 @@ export class Machine {
   ): Promise<"ok" | "skip" | "retry" | "replaced"> {
     const ids = { caseId: testCase?.id ?? null, stepId: step.id };
     this.executing = true;
+    this.stepStartedAt = Date.now();
     this.setPhase("running");
     this.log("step-start", {
       ...ids,
@@ -833,21 +942,31 @@ export class Machine {
       ...(step.use ? { use: step.use, with: step.with ?? {} } : { do: step.do }),
     });
     try {
-      for (const action of this.expand(step)) {
-        await this.executor.run(scaleAction(action, this.speed));
+      const actions = this.expand(step);
+      for (let index = 0; index < actions.length; index += 1) {
+        if (index > 0) await this.holdMidStep();
+        if (this.interrupted()) {
+          this.log("step-interrupted", ids);
+          return "skip";
+        }
+        await this.executor.run(scaleAction(actions[index], this.speed));
       }
       this.executing = false;
       this.log("step-done", ids);
       return "ok";
     } catch (error) {
       this.executing = false;
+      this.stepStartedAt = null;
       const message = describe(error);
       const aria = await this.snapshot();
+      this.lastFailure = { why: step.why, index: this.stepIndex, error: message };
       this.pending = {
         kind: "failure",
         caseId: ids.caseId,
         stepId: step.id,
         error: message,
+        why: step.why,
+        index: this.stepIndex,
       };
       this.failureResolution = null;
       this.setPhase("step-failed");
@@ -855,15 +974,45 @@ export class Machine {
       while (!this.failureResolution && !this.interrupted()) {
         await this.signal();
       }
-      const resolution = this.failureResolution ?? "skip";
+      // The wait above sets it from a command; read it fresh, not as narrowed before the wait.
+      const resolution = (this.failureResolution as "retry" | "skip" | "replaced" | null) ?? "skip";
       this.failureResolution = null;
       this.pending = null;
+      if (resolution === "skip" && !this.interrupted()) this.tracks.skippedSteps.push(step.why);
+      if (resolution === "retry") this.tracks.retries += 1;
+      if (resolution === "replaced") this.tracks.fixedSteps.push(step.why);
       this.log("step-resolved", { ...ids, resolution });
       return resolution;
     } finally {
       this.executing = false;
+      this.stepStartedAt = null;
       void this.render();
     }
+  }
+
+  private async holdMidStep(): Promise<void> {
+    if (!this.paused || this.interrupted()) return;
+    this.executing = false;
+    while (this.paused && !this.interrupted()) {
+      if (this.stepOnce) {
+        this.stepOnce = false;
+        break;
+      }
+      this.setPhase("paused");
+      await this.signal();
+    }
+    this.executing = true;
+    this.setPhase("running");
+  }
+
+  private skipped(): CaseOutcome {
+    const failed = this.lastFailure;
+    return {
+      verdict: "skip",
+      how: "skipped",
+      note: failed ? `Skipped after step ${failed.index + 1}, "${failed.why}", failed: ${failed.error}` : undefined,
+      yourNote: this.skipNote,
+    };
   }
 
   private async waitForSteps(
@@ -908,11 +1057,33 @@ export class Machine {
   private async judge(testCase: TestCase): Promise<CaseOutcome | null> {
     const expectation = testCase.expect;
     if (expectation?.js) {
-      try {
-        await this.executor.check(expectation.js);
-        return { verdict: "pass" };
-      } catch (error) {
-        return { verdict: "fail", note: describe(error) };
+      for (;;) {
+        this.setPhase("checking");
+        let message: string;
+        try {
+          await this.executor.check(expectation.js);
+          return { verdict: "pass", how: "checked" };
+        } catch (error) {
+          message = describe(error);
+        }
+        if (!this.holdOnCheckFail || this.interrupted()) return { verdict: "fail", how: "checked", note: message };
+        this.pending = { kind: "check-failed", caseId: testCase.id, error: message };
+        this.checkResolution = null;
+        this.checkNote = undefined;
+        this.setPhase("check-failed");
+        this.log("check-failed", { caseId: testCase.id, error: message });
+        while (!this.checkResolution && !this.interrupted()) await this.signal();
+        const resolution = this.checkResolution;
+        const yourNote = this.checkNote;
+        this.checkResolution = null;
+        this.checkNote = undefined;
+        this.pending = null;
+        if (resolution === "retry") {
+          this.tracks.retries += 1;
+          continue;
+        }
+        if (resolution !== "continue") return null;
+        return { verdict: "fail", how: "checked", note: message, yourNote };
       }
     }
     if (expectation?.text) {
@@ -934,7 +1105,7 @@ export class Machine {
       this.pending = null;
       return verdict;
     }
-    return { verdict: "pass", note: "No expectation; every step ran." };
+    return { verdict: "pass", how: "unchecked", note: "No expectation; every step ran." };
   }
 
   private async snapshot(): Promise<string> {

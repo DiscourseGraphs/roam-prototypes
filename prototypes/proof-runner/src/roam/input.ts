@@ -72,6 +72,8 @@ const mouse = (
   return fire(target, new MouseEvent(type, { ...mouseInit(point, button, extra), bubbles }));
 };
 
+const RUNNER_UI = ".proof-runner-bar, .proof-runner-frame, .proof-runner-ring";
+
 // The element a real click at this point would land on, if the target or
 // something inside it; otherwise what covers it.
 export const hitTarget = (element: Element, point: Point): { target: Element; covered: Element | null } => {
@@ -79,6 +81,9 @@ export const hitTarget = (element: Element, point: Point): { target: Element; co
   if (!hit || hit === element || element.contains(hit)) return { target: hit ?? element, covered: null };
   // A label or a portal-hosted part of the element still counts.
   if (hit.contains(element)) return { target: element, covered: null };
+  // The runner's own caption bar never counts as covering a step's target:
+  // the step's events go to the element, and the bar steps aside to show it.
+  if (hit.closest?.(RUNNER_UI)) return { target: element, covered: null };
   return { target: element, covered: hit };
 };
 

@@ -1,7 +1,7 @@
 import { CONNECTING_FLAGS, connectingFlagsAfter } from "../core/database";
 import { inSessionSteps, smokeSteps } from "../core/fixtures";
 import { Journal } from "../core/journal";
-import { decisionOf, runnableKit, validateSteps, type Baseline, type Fixture, type Kit, type Verdict } from "../core/kit";
+import { decisionOf, runnableKit, validateSteps, type Baseline, type Fixture, type Kit, type Step, type Verdict } from "../core/kit";
 import { Machine, type MachineState } from "../core/machine";
 import { makeExpander, type RecipeBook } from "../core/recipes";
 import { fill, fillDeep, type TemplateContext } from "../core/template";
@@ -9,9 +9,10 @@ import type { ExtensionAPI, FetchedBuild, LoadedBuild, PaletteRegistry } from ".
 import { checklist, runBlocked, type CheckItem } from "./checklist";
 import { evaluate, makePageExecutor } from "./executor";
 import { blockText, pageKit, rootConfig, runBlocksFor, stepBlockOf, stepFromBlock, type BlockNode, type PageKit, type RunBlocks } from "./page-kit";
-import { ProofPanel, type PanelAction, type PanelView } from "./panel";
+import { ProofPanel, type KitSummary, type PanelAction, type PanelView, type RunChoice, type RunInfo } from "./panel";
 import { createTree, readTree, roam, userName } from "./roam";
 import type { DatabaseState, FixtureOutcome, HelperState } from "./status";
+import { doneWhen, kindOfStep, type RunFacts, type StepKind } from "./words";
 
 export { HANDLER_SETUP_COMMAND, helperState, type DatabaseState, type FixtureOutcome, type HelperState } from "./status";
 
@@ -309,6 +310,19 @@ const MARKS_ID = "proof-run-marks";
 const AGENT_FRESH_MS = 45_000;
 const AGENT_CONTROLS = ["pause", "resume", "next", "skip-step", "skip-case", "stop"];
 
+// How each run choice plays: Watch it holds on a failed check so the screen
+// can be looked at; Just the result runs faster and doesn't wait for anyone
+// on a step that doesn't work; Step through waits before every step.
+const PLAY: Record<RunChoice, { mode: "auto" | "step"; speed: number; dwellMs: number; holdOnCheckFail: boolean; leadMs: number }> = {
+  watch: { mode: "auto", speed: 1, dwellMs: 700, holdOnCheckFail: true, leadMs: 250 },
+  result: { mode: "auto", speed: 2, dwellMs: 300, holdOnCheckFail: false, leadMs: 0 },
+  step: { mode: "step", speed: 1, dwellMs: 700, holdOnCheckFail: true, leadMs: 0 },
+};
+
+const CHOICE_WORDS: Record<RunChoice, string> = { watch: "watched", result: "just the result", step: "stepped through" };
+
+const ticketOf = (kit: Kit): string | null => kit.ticket ?? /\beng-\d+\b/i.exec(kit.name)?.[0]?.toUpperCase() ?? null;
+
 export class ProofRun {
   readonly panel: ProofPanel;
   private tree: BlockNode | null = null;
@@ -322,6 +336,10 @@ export class ProofRun {
   private offset = 0;
   private runBlocks: RunBlocks | null = null;
   private lastRun: string | null = null;
+  private runInfo: { choice: RunChoice; startedAt: number; endedAt: number | null; setup: Step[] } | null = null;
+  // Just the result: failed steps already tried again, and failures handled.
+  private readonly tries = new Map<string, number>();
+  private handled = new WeakSet<object>();
 
   constructor(
     readonly rootUid: string,
@@ -477,9 +495,11 @@ export class ProofRun {
               proves: item.proves ?? null,
               checks: item.checks ?? null,
               judge: item.expect?.text ?? null,
+              hasCheck: Boolean(item.expect?.js),
               intent: item.intent ?? null,
               verdict: this.earlier?.results[item.id] ?? null,
               note: this.earlier?.notes[item.id] ?? null,
+              record: null,
               steps: item.steps.map((step) => ({ why: step.why, source: step.source ?? "kit" })),
             })),
             ...this.state.plan,
@@ -500,7 +520,64 @@ export class ProofRun {
           ? { caseIndex: record.nextCase, results: record.results }
           : null,
       lastRun: this.lastRun,
+      kit: this.kitSummary(),
+      run: this.runView(),
+      agent: Date.now() - this.env.agentSeenAt < AGENT_FRESH_MS,
     };
+  }
+
+  // What the page says about its kit, for the run card before Run.
+  private kitSummary(): KitSummary | null {
+    const page = this.kit?.kit;
+    const run = this.runKit;
+    if (!page || !run) return null;
+    const cases = run.cases;
+    const byHand = (item: (typeof cases)[number]): boolean => item.steps.length === 0 && Boolean(item.intent);
+    const { bullets, other } = doneWhen(cases.map((item) => ({ id: item.id, proves: item.proves ?? null })));
+    return {
+      claim: page.claim ?? null,
+      pr: page.target?.pr ?? null,
+      ticket: ticketOf(page),
+      cases: cases.length,
+      steps: cases.reduce((sum, item) => sum + item.steps.length, 0),
+      judge: cases.filter((item) => item.expect?.text && !item.expect.js && !byHand(item)).length,
+      byHand: cases.filter(byHand).length,
+      doneWhen: bullets,
+      other: other.length,
+      notTested: page.cases
+        .filter((item) => decisionOf(item) === "rejected")
+        .map((item) => ({ title: item.title, reason: item.decision?.reason ?? null })),
+      proposed: page.cases.filter((item) => decisionOf(item) === "proposed").length,
+    };
+  }
+
+  // What the bar needs beside the machine's state: each step's kind, and the
+  // facts a copied result carries.
+  private runView(): RunInfo | null {
+    const info = this.runInfo;
+    const machine = this.machine;
+    if (!info || !machine) return null;
+    const kinds: Record<string, StepKind[]> = { setup: info.setup.map(kindOfStep) };
+    const steps: Record<string, string[]> = {};
+    for (const item of machine.kit.cases) {
+      kinds[item.id] = item.steps.map(kindOfStep);
+      steps[item.id] = item.steps.map((step) => step.why);
+    }
+    const page = this.kit?.kit;
+    const build = this.env.build;
+    const behind = this.buildStatus().behind;
+    const facts: RunFacts = {
+      title: page?.title ?? page?.name ?? "Proof kit",
+      pr: page?.target?.pr ?? build?.pr ?? null,
+      ticket: page ? ticketOf(page) : null,
+      page: page ? `proof/${page.name}` : null,
+      build: build ? (build.commit ? build.commit.slice(0, 7) : build.branch) : null,
+      latest: build?.prHead ? !behind : null,
+      when: stamp(new Date(info.startedAt)),
+      how: CHOICE_WORDS[info.choice],
+      steps,
+    };
+    return { choice: info.choice, kinds, startedAt: info.startedAt, endedAt: info.endedAt, facts };
   }
 
   // The block of the step running now (or failed), if it has one.
@@ -583,6 +660,12 @@ export class ProofRun {
         return null;
       }
       if (action.kind === "ask-agent") return await this.env.askAgent(this.rootUid);
+      if (action.kind === "edit-step") {
+        const uid = this.stepUid();
+        if (!uid) return "This step has no block on the page to edit.";
+        await roam().ui.rightSidebar.addWindow({ window: { type: "block", "block-uid": uid } });
+        return null;
+      }
       if (action.kind === "reset") {
         this.writeRecord(null);
         this.state = null;
@@ -614,6 +697,7 @@ export class ProofRun {
   private async retry(): Promise<string | null> {
     const state = this.state;
     const pending = state?.pending;
+    if (this.machine && pending?.kind === "check-failed") return this.command("retry");
     if (!this.machine || !state || pending?.kind !== "failure") return "No failed step to retry.";
     const uid = this.stepUid();
     const node = uid ? await readTree(uid) : null;
@@ -737,6 +821,11 @@ export class ProofRun {
     const baseline = kit.baseline ? this.env.baselines.get(kit.baseline) : null;
     const setup = [...inSessionSteps(fixturesFor(kit, this.env)), ...smokeSteps(baseline?.smoke ?? [])];
     const context = contextFor(kit.name, this.env, runId());
+    const choice = this.panel.runSettings().choice;
+    const play = PLAY[choice];
+    this.runInfo = { choice, startedAt: Date.now(), endedAt: null, setup };
+    this.tries.clear();
+    this.handled = new WeakSet();
     const journal = new Journal((event) => {
       if (event.type === "case-end" && this.machine) this.saveProgress(source);
     });
@@ -745,7 +834,10 @@ export class ProofRun {
       render: (state) => {
         this.state = state;
         this.paint();
+        this.unattended(state);
       },
+      target: (element, verb) => this.panel.target(element, verb),
+      lead: () => play.leadMs,
       palette: (label) => this.env.palette.run(label),
       fill: (value) => fillIn(value, context),
       note: (text) => {
@@ -757,8 +849,10 @@ export class ProofRun {
       setup,
       journal,
       executor,
-      ...this.panel.runSettings(),
-      dwellMs: 700,
+      mode: play.mode,
+      speed: play.speed,
+      dwellMs: play.dwellMs,
+      holdOnCheckFail: play.holdOnCheckFail,
       expand: makeExpander(this.env.recipes),
     });
     this.machine = machine;
@@ -769,6 +863,23 @@ export class ProofRun {
       .then(() => this.finish(machine, source))
       .catch((error: unknown) => this.panel.showError(`The run stopped: ${describe(error)}`));
     return null;
+  }
+
+  // Just the result: a step that doesn't work is tried once more, then its
+  // case is skipped, so the run reaches the end without anyone at the screen.
+  private unattended(state: MachineState): void {
+    const pending = state.pending;
+    if (this.runInfo?.choice !== "result" || pending?.kind !== "failure" || this.handled.has(pending)) return;
+    this.handled.add(pending);
+    const key = `${pending.caseId}/${pending.stepId}`;
+    const tries = this.tries.get(key) ?? 0;
+    this.tries.set(key, tries + 1);
+    const why = state.stepWhy ?? "a step";
+    setTimeout(() => {
+      if (this.state?.pending !== pending) return;
+      if (tries === 0) this.command("retry");
+      else this.command("skip-case", { note: `"${why}" didn't work twice: ${pending.error.split("\n")[0].slice(0, 200)}` });
+    }, 600);
   }
 
   // Ends the run going now, then plays every case again from setup.
@@ -805,6 +916,7 @@ export class ProofRun {
   }
 
   private async finish(machine: Machine, source: Kit): Promise<void> {
+    if (this.runInfo) this.runInfo.endedAt = Date.now();
     this.state = machine.state();
     const stopped = this.state.phase === "stopped";
     const { results, notes } = this.results(machine);
@@ -838,6 +950,7 @@ export class ProofRun {
     const summary = [
       `${passed === source.cases.length ? "✓" : "✗"} ${passed}/${source.cases.length} passed`,
       build ? `build ${build.branch}${build.commit ? ` @ ${build.commit.slice(0, 7)}` : ""}` : "no build loaded",
+      this.runInfo ? CHOICE_WORDS[this.runInfo.choice] : "",
       stamp(new Date()),
       await userName(),
     ]

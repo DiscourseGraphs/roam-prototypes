@@ -1,16 +1,21 @@
 import type { MachineState } from "../core/machine";
-import { SPEEDS } from "../core/machine";
+import { CaptionBar, type BarAction, type RunChoice } from "./bar";
 import type { CheckAction, CheckItem } from "./checklist";
 import { roam } from "./roam";
+import { Stage } from "./stage";
+import { bulletVerdict, doneWhen, duration, type DoneWhen, type RunFacts, type StepKind } from "./words";
 
-// The run panel inside a {{proof}} block: the live HUD's layout (what the kit
-// proves, every case with its steps, what's waiting on you, a feed, the
-// controls) moved into the page, where it calls the machine directly instead
-// of through a Playwright binding. Its own buttons and text sit in a shadow
-// root, so kit selectors and proof.byText never match them. The cases are
-// the page's own blocks, rendered by Roam into the light DOM and slotted in:
-// editing a step in the panel edits the page, and the run's state shows on
-// the blocks themselves (the runner's stylesheet marks them by uid).
+export type { RunChoice } from "./bar";
+
+// The proof runner's surfaces, from the tester's side of the screen. On the
+// page, inside the {{proof}} block, a run card says what the PR does and what
+// running it asks of you, and after a run shows the cases with their
+// verdicts. During a run, Roam is the stage: a caption bar on the window's
+// bottom edge narrates, a ring marks where each step acts, a frame says who
+// has the screen, and the bar grows in place when the run needs you. The
+// card's buttons and text sit in a shadow root, so kit selectors never match
+// them; the case blocks are the page's own, rendered by Roam into the light
+// DOM and slotted in, so editing a step in the card edits the page.
 
 // Roam renders a block, live and editable, into any element, and takes it
 // down again. Tests pass a stand-in.
@@ -24,6 +29,34 @@ export type BlockRenderer = {
 const roamBlocks: BlockRenderer = {
   render: (uid, el) => roam().ui.components.renderBlock({ uid, el, "open?": true }),
   unmount: (el) => roam().ui.components.unmountNode({ el }),
+};
+
+// What the page says about the kit, for the run card before Run.
+export type KitSummary = {
+  claim: string | null;
+  pr: number | null;
+  ticket: string | null;
+  // The cases a run plays, and how many steps they have in all.
+  cases: number;
+  steps: number;
+  // Cases a person decides by eye, and cases done by hand.
+  judge: number;
+  byHand: number;
+  doneWhen: DoneWhen[];
+  // Cases tied to no Done When bullet.
+  other: number;
+  // Rejected cases, with why.
+  notTested: Array<{ title: string; reason: string | null }>;
+  proposed: number;
+};
+
+// What a run carries beside the machine's state.
+export type RunInfo = {
+  choice: RunChoice;
+  kinds: Record<string, StepKind[]>;
+  startedAt: number;
+  endedAt: number | null;
+  facts: RunFacts;
 };
 
 export type PanelView = {
@@ -44,6 +77,10 @@ export type PanelView = {
   resumable: { caseIndex: number; results: Record<string, string> } | null;
   // The last finished run, from the page's run log.
   lastRun: string | null;
+  kit: KitSummary | null;
+  run: RunInfo | null;
+  // An agent called the runner's tools lately.
+  agent: boolean;
 };
 
 export type PanelAction =
@@ -53,249 +90,132 @@ export type PanelAction =
   | { kind: "reset" }
   | { kind: "restart" }
   | { kind: "done-by-hand" }
+  | { kind: "edit-step" }
   | { kind: "command"; cmd: string; args?: Record<string, unknown> };
 
 const OWN_ACTIONS = new Set(["run", "resume", "reset", "done-by-hand", "connect", "disconnect", "load", "reload", "check-database", "ask-agent"]);
 
 const CSS = `
   :host { all: initial; display: block; }
-  .panel { box-sizing: border-box; display: flex; flex-direction: column; gap: 6px; max-width: 560px;
-    padding: 10px 12px; margin: 4px 0; border-radius: 8px; border: 1px solid #d5dbe5; background: #fbfcfe;
-    font: 13px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; color: #1f2733; }
-  .row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-  .badge { font: 600 10.5px/1 ui-monospace, Menlo, monospace; letter-spacing: .06em; text-transform: uppercase;
-    padding: 4px 6px; border-radius: 4px; background: #e3e7ee; color: #3b4556; }
-  .badge.running { background: #2c62c9; color: #fff; }
-  .badge.paused, .badge.waiting-next, .badge.dwell { background: #f3d58a; color: #5a3d00; }
-  .badge.step-failed, .badge.error { background: #d9412e; color: #fff; }
-  .badge.waiting-steps, .badge.waiting-approval, .badge.waiting-verdict { background: #7c4dcc; color: #fff; }
-  .badge.done { background: #15805a; color: #fff; }
-  .badge.stopped { background: #6b7385; color: #fff; }
-  .title { flex: 1; min-width: 0; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .checks { display: flex; flex-direction: column; gap: 3px; }
+  * { box-sizing: border-box; }
+  .card { max-width: 640px; margin: 6px 0; border-radius: 12px; overflow: hidden; border: 1px solid #d9d6e4; background: #fbfbfd;
+    font: 13px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; color: #1f1d29; }
+  .head { background: #17151f; color: #efedf7; padding: 14px 16px 13px; }
+  .eyebrow { font-size: 10.5px; letter-spacing: .09em; text-transform: uppercase; color: #a9a5bd; font-weight: 800; }
+  .title { font-size: 17px; font-weight: 750; line-height: 1.3; margin-top: 4px; }
+  .claim { color: #c7c3d8; margin-top: 5px; }
+  .claim:empty { display: none; }
+  .facts { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+  .fact { background: #26233a; border-radius: 6px; padding: 2px 8px; font-size: 12.5px; }
+  .fact.ok { background: rgba(69, 196, 126, .15); color: #9fe7bd; }
+  .fact.you { background: rgba(255, 181, 71, .16); color: #ffcf85; }
+  .body { padding: 12px 16px 14px; display: grid; gap: 10px; }
+  .checks { display: grid; gap: 4px; }
   .checks:empty { display: none; }
-  .check { display: flex; gap: 6px; align-items: baseline; font-size: 12.5px; }
-  .check .mark { flex: none; width: 1.1em; text-align: center; font-weight: 700; }
+  .check { display: flex; gap: 7px; align-items: baseline; }
+  .check .mark { flex: none; width: 1.1em; text-align: center; font-weight: 800; }
   .check .what { flex: 1; min-width: 0; }
-  .check .label { font-weight: 600; }
-  .check .detail { color: #4b5567; overflow-wrap: anywhere; }
-  .check ul { margin: 3px 0 2px; padding-left: 18px; color: #4b5567; }
-  .check .acts { display: flex; gap: 6px; margin-top: 3px; }
-  .check.ok .mark { color: #15805a; }
-  .check.working .mark { color: #2c62c9; }
-  .check.waiting .mark, .check.optional .mark { color: #8a93a3; }
-  .check.needs-you { background: #fff6df; border-radius: 6px; padding: 5px 6px; }
-  .check.needs-you .mark { color: #a46a00; }
-  .check.blocked { background: #fdecea; border-radius: 6px; padding: 5px 6px; }
-  .check.blocked .mark { color: #b3261e; }
-  .ready { font-size: 12px; color: #15805a; }
-  .ready span { margin-right: 10px; white-space: nowrap; }
-  .now { font-size: 12.5px; background: #eef3fc; border-radius: 6px; padding: 5px 7px; }
-  .now:empty { display: none; }
-  .testing { border: 1px solid #d5dbe5; border-left: 3px solid #2c62c9; border-radius: 6px; padding: 6px 8px;
-    font-size: 12.5px; background: #fff; max-height: 40vh; overflow-y: auto; }
-  .testing:empty { display: none; }
-  .testing .what { font-weight: 600; }
-  .testing .why { color: #3b4556; margin-top: 2px; }
-  .testing .why b { color: #1f2733; }
-  .testing ol { margin: 5px 0 0; padding-left: 20px; }
-  .testing li { color: #3b4556; }
-  .testing li.done { color: #8a93a3; }
-  .testing li.now { color: #2c62c9; font-weight: 600; }
-  .claim { font-weight: 600; }
-  .claim:empty, .given:empty, .where:empty { display: none; }
-  .given, .muted { color: #5d6778; font-size: 12px; }
-  .where { color: #3b4556; font-size: 12px; }
-  .warn { color: #8a5a06; font-size: 12px; background: #fff6df; border-radius: 4px; padding: 4px 6px; }
-  .err { color: #b3261e; font-size: 12px; white-space: pre-wrap; }
+  .check .label { font-weight: 650; }
+  .check .detail { color: #4c4a5c; overflow-wrap: anywhere; }
+  .check ul { margin: 3px 0 2px; padding-left: 18px; color: #4c4a5c; }
+  .check .acts { margin-top: 4px; }
+  .check.ok .mark { color: #1c7a45; }
+  .check.working .mark { color: #5541d2; }
+  .check.waiting .mark, .check.optional .mark { color: #8b889c; }
+  .check.needs-you { background: #fff3dc; border-radius: 7px; padding: 6px 8px; }
+  .check.needs-you .mark { color: #975600; }
+  .check.blocked { background: #fdecea; border-radius: 7px; padding: 6px 8px; }
+  .check.blocked .mark { color: #b9342b; }
+  .ready { color: #1c7a45; }
+  .ready b { font-weight: 800; }
+  .ready span { color: #4c4a5c; }
+  .warn { color: #7a4a00; background: #fff3dc; border-radius: 6px; padding: 5px 8px; font-size: 12.5px; }
+  .err { color: #b9342b; white-space: pre-wrap; }
   .err:empty { display: none; }
-  .plan { overflow-y: auto; max-height: 46vh; border-top: 1px solid #e3e7ee; padding-top: 6px; }
+  .lbl { font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; color: #6b6880; font-weight: 800; }
+  .choices { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; }
+  .choice { text-align: left; border: 1px solid #d9d6e4; background: #fff; border-radius: 8px; padding: 7px 9px; font: 12px/1.4 system-ui, -apple-system, sans-serif;
+    color: #4c4a5c; cursor: pointer; }
+  .choice b { display: block; color: #1f1d29; font-size: 13px; margin-bottom: 1px; }
+  .choice.on { border-color: #5541d2; background: #f1eeff; box-shadow: 0 0 0 1px #5541d2; }
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .meta { color: #6b6880; font-size: 12px; }
+  button { font: 650 12.5px/1.2 system-ui, -apple-system, "Segoe UI", sans-serif; color: #1f1d29; background: #fff; border: 1px solid #cfccdc;
+    border-radius: 7px; padding: 5px 11px; cursor: pointer; }
+  button:hover { background: #f2f1f7; }
+  button:focus-visible, .choice:focus-visible { outline: 2px solid #5541d2; outline-offset: 1px; }
+  button:disabled { opacity: .55; cursor: not-allowed; }
+  button.primary { background: #5541d2; border-color: #5541d2; color: #fff; font-size: 13.5px; padding: 7px 16px; }
+  button.primary:hover { background: #4836c0; }
+  button.primary:disabled { background: #a9a2dd; border-color: #a9a2dd; }
+  button.link { background: none; border: 0; padding: 0; color: #5541d2; text-decoration: underline; text-underline-offset: 3px; font-weight: 500; }
+  details { border-top: 1px solid #e6e4ee; padding-top: 7px; }
+  summary { cursor: pointer; color: #1f1d29; }
+  details ul { margin: 6px 0 0; padding-left: 18px; color: #4c4a5c; }
+  details li { margin: 2px 0; }
+  .status { background: #f1eeff; border-radius: 8px; padding: 7px 10px; color: #2d2370; }
+  .status.done { background: #e9f6ee; color: #14532d; }
+  .status.fail { background: #fdecea; color: #7f1d1d; }
   .plan[hidden] { display: none; }
-  .case { margin: 0 0 6px; }
-  .case:empty { display: none; }
-  .case-line { display: flex; gap: 6px; align-items: baseline; font-weight: 600; }
-  .icon { width: 1.1em; flex: none; text-align: center; }
-  .icon.now { color: #2c62c9; }
-  .proves { color: #5d6778; font-size: 12px; margin-left: 1.7em; }
-  .pending { padding: 8px; border-radius: 6px; background: #f0f2f7; }
-  .pending:empty { display: none; }
-  .pending p { margin: 0 0 6px; }
-  .pending ul { margin: 0 0 6px; padding-left: 18px; }
-  pre { margin: 6px 0; max-height: 140px; overflow: auto; white-space: pre-wrap; word-break: break-word;
-    font: 11px/1.45 ui-monospace, Menlo, monospace; background: #fff; border: 1px solid #e3e7ee;
-    padding: 6px 7px; border-radius: 4px; }
-  .feed { border-top: 1px solid #e3e7ee; padding-top: 5px; font-size: 12px; }
-  .feed:empty { display: none; }
-  .feed div { display: flex; gap: 6px; color: #4b5567; }
-  .feed .who { flex: none; width: 3.8em; color: #8a93a3; }
-  .feed .pass { color: #15805a; }
-  .feed .fail { color: #b3261e; }
-  .feed .wait { color: #8a5a06; }
-  button { font: 600 12px system-ui, -apple-system, sans-serif; color: #1f2733; background: #fff;
-    border: 1px solid #c9d0db; border-radius: 6px; padding: 4px 9px; cursor: pointer; }
-  button:hover { background: #f0f2f7; }
-  button:focus-visible { outline: 2px solid #2c62c9; outline-offset: 1px; }
-  button.primary { background: #2c62c9; border-color: #2c62c9; color: #fff; }
-  button.go { background: #15805a; border-color: #15805a; color: #fff; }
-  button.no { background: #d9412e; border-color: #d9412e; color: #fff; }
-  button.hot { box-shadow: 0 0 0 2px #e7b04c; }
-  button[hidden] { display: none; }
-  .speed { min-width: 36px; text-align: center; font: 12px ui-monospace, Menlo, monospace; }
-  .lbl { font-size: 12px; color: #5d6778; }
-  button.pick { font-weight: 500; padding: 3px 8px; }
-  button.pick.on { background: #2c62c9; border-color: #2c62c9; color: #fff; }
-  .hint { flex-basis: 100%; font-size: 12px; color: #5d6778; }
+  .setup { color: #4c4a5c; font-size: 12.5px; }
+  .setup:empty { display: none; }
 `;
 
 // The case blocks live in the light DOM, where the shadow root's styles
 // don't reach; this sheet goes in with them. Only the case running now shows
 // its steps; the others show their case:: line, verdict and note. The open
-// case hides its attribute lines (id::, proves::, decision:: and the rest):
-// the Testing box says what it tests in words.
+// case hides its attribute lines (id::, proves::, decision:: and the rest).
 const BLOCKS_CSS = `
   .proof-blocks .proof-case { display: flex; gap: 4px; align-items: flex-start; margin: 0 0 2px; }
-  .proof-blocks .proof-case-icon { flex: none; width: 1.1em; padding-top: 5px; text-align: center; color: #8a93a3; }
-  .proof-blocks .proof-case.current .proof-case-icon { color: #2c62c9; }
-  .proof-blocks .proof-case.pass .proof-case-icon { color: #15805a; }
-  .proof-blocks .proof-case.fail .proof-case-icon { color: #d9412e; }
+  .proof-blocks .proof-case-icon { flex: none; width: 1.1em; padding-top: 5px; text-align: center; color: #8b889c; }
+  .proof-blocks .proof-case.current .proof-case-icon { color: #5541d2; }
+  .proof-blocks .proof-case.pass .proof-case-icon { color: #1c7a45; }
+  .proof-blocks .proof-case.fail .proof-case-icon { color: #b9342b; }
   .proof-blocks .proof-case-body { flex: 1; min-width: 0; }
   .proof-blocks .proof-case:not(.current) .rm-block-children { display: none; }
   .proof-blocks .proof-case.current .rm-block-children > .roam-block-container:has(> .rm-block-main .rm-block__input > span:first-child > .rm-attr-ref:first-child) { display: none; }
   .proof-blocks .proof-case.later { opacity: .6; }
-  .proof-blocks .proof-case-note { margin: 0 0 4px 18px; font-size: 12px; color: #5d6778; white-space: pre-wrap; }
-  .proof-blocks .proof-case.fail .proof-case-note { color: #b3261e; }
+  .proof-blocks .proof-case-note { margin: 0 0 4px 18px; font-size: 12px; color: #6b6880; white-space: pre-wrap; }
+  .proof-blocks .proof-case.fail .proof-case-note { color: #b9342b; }
   .proof-blocks .proof-case-note:empty { display: none; }
 `;
 
+// Room for the bar: the page's article ends far enough down that its last
+// lines scroll clear of the bar, and scrolling to an element keeps it above.
+const ROOM_ID = "proof-runner-room";
+const ROOM_CSS = `.rm-article-wrapper::after { content: ""; display: block; height: 96px; }
+.roam-body-main { scroll-padding-bottom: 96px; }`;
+
 // Mouse events the case blocks keep to themselves once Roam has handled them,
 // so a click on a step edits the step, not the {{proof}} block around the
-// panel. Keys go on: Roam's shortcuts work while editing a step.
+// card. Keys go on: Roam's shortcuts work while editing a step.
 const BLOCK_MOUSE_EVENTS = ["mousedown", "mouseup", "click", "pointerdown"];
 
-// The floating bar: the panel's status and controls, over everything, for
-// when the panel itself is under a dialog or scrolled out of view.
-const BAR_CSS = `
-  .panel.bar { max-width: none; margin: 0; box-shadow: 0 6px 24px rgba(20, 30, 50, .22); }
-`;
-
-const BADGES: Record<string, string> = {
-  idle: "ready",
-  starting: "starting",
-  running: "running",
-  dwell: "running",
-  paused: "paused",
-  "waiting-next": "step mode",
-  "waiting-steps": "your turn",
-  "waiting-approval": "allow?",
-  "waiting-verdict": "your call",
-  "step-failed": "step failed",
-  done: "done",
-  stopped: "stopped",
-  error: "error",
-};
-
-// What the run is doing, in one sentence, and what it waits on you for.
-export const nowLine = (state: MachineState | null): string => {
-  if (!state) return "";
-  const where =
-    state.caseIndex >= 0 && state.caseIndex < state.caseCount && state.caseTitle
-      ? `case ${state.caseIndex + 1}/${state.caseCount}, "${state.caseTitle}"`
-      : "setup";
-  const step = state.stepWhy ? `"${state.stepWhy}"` : "the next step";
-  switch (state.phase) {
-    case "starting":
-      return "Starting the run.";
-    case "running":
-    case "dwell":
-      return state.caseIndex < 0
-        ? `Setting up: ${state.stepWhy ?? "preparing the data and settings the cases need"}.`
-        : `Running ${where}, step ${state.stepIndex + 1}/${state.stepCount}: ${step}.`;
-    case "paused":
-      return `Paused in ${where}, before ${step}. Press Resume to play on, or Next for one step.`;
-    case "waiting-next":
-      return `Step mode stops before every step. Press Next to run ${step} in ${where}, or switch Mode to auto to play on.`;
-    case "waiting-steps":
-      return `Your turn: ${where} is done by hand. Do what it says, then press Done.`;
-    case "waiting-approval":
-      return `A step in ${where} wants to run js it didn't come with. Allow or Deny it below.`;
-    case "waiting-verdict":
-      return `Your call on ${where}: look at the page, then press ✓ Pass or ✗ Fail.`;
-    case "step-failed":
-      return `Step ${state.stepIndex + 1} of ${where} failed. Retry it, skip it, or skip the case below.`;
-    case "done":
-      return "Every case ran. Run again to start over.";
-    case "stopped":
-      return "Stopped. Run again to start over.";
-  }
-};
-
-// The case running now, in words: what it proves, what decides pass or
-// fail, and its steps with the one running now marked.
-const paintTesting = (box: HTMLElement, state: MachineState | null): void => {
-  box.replaceChildren();
-  const item = state && state.phase !== "done" && state.phase !== "stopped" ? state.plan[state.caseIndex] : undefined;
-  if (!state || !item) return;
-  box.append(el("div", `Testing: ${item.title}`, "what"));
-  const line = (label: string, text: string | null): void => {
-    if (!text) return;
-    const row = el("div", undefined, "why");
-    row.append(el("b", `${label}: `), document.createTextNode(text));
-    box.append(row);
-  };
-  line("Proves", item.proves);
-  line("Passes if", item.checks);
-  line("You check", item.judge);
-  if (!item.steps.length) line("By hand", item.intent);
-  if (!item.steps.length) return;
-  const list = el("ol");
-  item.steps.forEach((step, index) => {
-    list.append(el("li", step.why, index < state.stepIndex ? "done" : index === state.stepIndex ? "now" : undefined));
-  });
-  box.append(list);
-};
-
-// A press on the panel's buttons leaves focus where the run put it: Roam
-// stops editing a block that loses focus, and takes its menus with it.
-const keepFocus = (event: Event): void => {
-  if (event.type === "mousedown" && (event.target as Element | null)?.closest?.("button")) event.preventDefault();
-};
-
-const PERSON_PAUSED = "Paused: you used the page while the run was using it. Press Resume when you're done.";
+const CHOICE_KEY = "proof-runner:run-choice";
+const CHOICES: Array<{ choice: RunChoice; label: string; hint: string }> = [
+  { choice: "watch", label: "Watch it", hint: "Normal pace. Holds on a failure so you can look." },
+  { choice: "result", label: "Just the result", hint: "Faster. Tries a failed step again, then moves on." },
+  { choice: "step", label: "Step through", hint: "Waits before each step. Next step runs one." },
+];
 
 // How a run plays, picked before Run and kept in this browser.
-export type RunSettings = { mode: "auto" | "step" | "case"; speed: number };
-const RUN_SETTINGS_KEY = "proof-runner:run-settings";
-const RUN_SPEEDS = [0.5, 1, 2];
-const MODE_HINTS: Record<RunSettings["mode"], string> = {
-  auto: "Auto plays every step on its own.",
-  step: "Step stops before every step until you press Next.",
-  case: "Case stops between cases until you press Resume.",
-};
+export type RunSettings = { choice: RunChoice };
 
-const readRunSettings = (): RunSettings => {
+const readChoice = (): RunChoice => {
   try {
-    const saved = JSON.parse(localStorage.getItem(RUN_SETTINGS_KEY) ?? "null") as RunSettings | null;
-    if (saved && saved.mode in MODE_HINTS && RUN_SPEEDS.includes(saved.speed)) return saved;
+    const saved = localStorage.getItem(CHOICE_KEY);
+    if (saved === "watch" || saved === "result" || saved === "step") return saved;
   } catch {
-    // No storage here: the defaults.
+    // No storage here: the default.
   }
-  return { mode: "auto", speed: 1 };
+  return "watch";
 };
 
-const ICONS: Record<string, string> = { pass: "✓", fail: "✗", skip: "⏭" };
+const ICONS: Record<string, string> = { pass: "✓", fail: "✗", skip: "–" };
 const MARKS: Record<CheckItem["state"], string> = { ok: "✓", working: "…", waiting: "○", "needs-you": "▶", blocked: "✗", optional: "○" };
-const MODES = ["auto", "step", "case"];
-const FEED_SHOWN = 6;
-const WHO: Record<string, string> = {
-  you: "you",
-  agent: "agent",
-  pass: "check",
-  fail: "check",
-  wait: "waiting",
-  case: "case",
-  step: "",
-  note: "note",
-};
+
+// A step takes about this long at 1×, before the run has timed any.
+const STEP_MS = 2200;
 
 const el = (tag: string, text?: string, className?: string): HTMLElement => {
   const node = document.createElement(tag);
@@ -315,17 +235,15 @@ const button = (label: string, action: string, extra: { className?: string; titl
   return node;
 };
 
+// A press on the runner's buttons leaves focus where the run put it: Roam
+// stops editing a block that loses focus, and takes its menus with it.
+const keepFocus = (event: Event): void => {
+  if (event.type === "mousedown" && (event.target as Element | null)?.closest?.("button")) event.preventDefault();
+};
+
 type Parts = {
   root: ShadowRoot;
-  badge: HTMLElement;
-  title: HTMLElement;
-  now: HTMLElement;
-  testing: HTMLElement;
-  checks: HTMLElement;
-  claim: HTMLElement;
-  given: HTMLElement;
-  where: HTMLElement;
-  notices: HTMLElement;
+  card: HTMLElement;
   plan: HTMLElement;
   setup: HTMLElement;
   // Light DOM, slotted into plan: the case blocks Roam renders.
@@ -334,50 +252,60 @@ type Parts = {
   // Which cases' blocks are rendered, and the step last scrolled to.
   rendered: string;
   scrolledTo: string;
-  pending: HTMLElement;
-  feed: HTMLElement;
-  controls: HTMLElement;
   err: HTMLElement;
 };
 
 type CaseMount = { wrapper: HTMLElement; icon: HTMLElement; note: HTMLElement; block: HTMLElement; uid: string | null };
 
-type Bar = {
-  host: HTMLElement;
-  panel: HTMLElement;
-  badge: HTMLElement;
-  title: HTMLElement;
-  now: HTMLElement;
-  testing: HTMLElement;
-  pending: HTMLElement;
-  controls: HTMLElement;
-  err: HTMLElement;
-};
-
-// Stop and Restart end the run going now, so each takes a second press.
-type Armed = "stop" | "restart";
+const isLive = (state: MachineState | null | undefined): boolean => Boolean(state && state.phase !== "done" && state.phase !== "stopped");
 
 export class ProofPanel {
   private view: PanelView | null = null;
   private readonly mounts = new Map<HTMLElement, Parts>();
   private flash = "";
   private flashTimer = 0;
-  private readonly armed: Record<Armed, number> = { stop: 0, restart: 0 };
-  private bar: Bar | null = null;
-  private barTimer = 0;
-  private watchingPerson = false;
-  private runChoice: RunSettings = readRunSettings();
-
-  runSettings(): RunSettings {
-    return { ...this.runChoice };
-  }
+  private choice: RunChoice = readChoice();
+  private readonly bar: CaptionBar;
+  private readonly stage: Stage;
+  private lastAsk = "";
+  // How long steps take here, from the run so far.
+  private stepTimes: number[] = [];
+  private lastStep: { key: string; at: number } | null = null;
 
   constructor(
     private readonly onAction: (action: PanelAction) => Promise<string | null> | string | null,
     private readonly renderer: BlockRenderer = roamBlocks,
-  ) {}
+  ) {
+    this.bar = new CaptionBar((action) => this.fromBar(action));
+    this.stage = new Stage({
+      held: () => {
+        void Promise.resolve(this.onAction({ kind: "command", cmd: "pause", args: { why: "page" } }));
+      },
+      toggle: () => {
+        const state = this.view?.machine;
+        if (!state || !isLive(state)) return;
+        void Promise.resolve(this.onAction({ kind: "command", cmd: state.paused ? "resume" : "pause" }));
+      },
+      next: () => {
+        if (isLive(this.view?.machine)) void Promise.resolve(this.onAction({ kind: "command", cmd: "next" }));
+      },
+      ours: (event) => {
+        const path = event.composedPath();
+        if (path.includes(this.bar.host)) return true;
+        for (const [host, parts] of this.mounts) {
+          if (path.includes(parts.blocks)) return false;
+          if (path.includes(host)) return true;
+        }
+        return false;
+      },
+    });
+  }
 
-  // Puts a panel in host. Roam re-renders blocks, so the same panel may be
+  runSettings(): RunSettings {
+    return { choice: this.choice };
+  }
+
+  // Puts a run card in host. Roam re-renders blocks, so the same panel may be
   // mounted again; every mount shows the same state.
   attach(host: HTMLElement): void {
     if (this.mounts.has(host)) return;
@@ -386,34 +314,18 @@ export class ProofPanel {
     host.replaceChildren();
     const style = document.createElement("style");
     style.textContent = CSS;
-    const panel = el("div", undefined, "panel");
-    const head = el("div", undefined, "row");
-    const badge = el("span", "idle", "badge");
-    const title = el("span", "", "title");
-    head.append(badge, title);
+    const card = el("div", undefined, "card");
     const parts: Parts = {
       root,
-      badge,
-      title,
-      now: el("div", "", "now"),
-      testing: el("div", undefined, "testing"),
-      checks: el("div", undefined, "checks"),
-      claim: el("div", "", "claim"),
-      given: el("div", "", "given"),
-      where: el("div", "", "where"),
-      notices: el("div"),
+      card,
       plan: el("div", undefined, "plan"),
-      setup: el("div", undefined, "case"),
+      setup: el("div", undefined, "setup"),
       blocks: el("div", undefined, "proof-blocks"),
       cases: new Map(),
       rendered: "",
       scrolledTo: "",
-      pending: el("div", undefined, "pending"),
-      feed: el("div", undefined, "feed"),
-      controls: el("div", undefined, "row controls"),
       err: el("div", "", "err"),
     };
-    parts.feed.setAttribute("aria-live", "polite");
     parts.err.setAttribute("role", "status");
     const slot = document.createElement("slot");
     slot.name = "blocks";
@@ -424,13 +336,12 @@ export class ProofPanel {
     parts.blocks.slot = "blocks";
     parts.blocks.append(sheet);
     host.append(parts.blocks);
-    panel.append(head, parts.now, parts.testing, parts.checks, parts.claim, parts.given, parts.where, parts.notices, parts.plan, parts.pending, parts.feed, parts.controls, parts.err);
-    root.append(style, panel);
+    root.append(style, card);
     // Roam handles mouse and key events on blocks; keep ours to ourselves so a
     // click on Run doesn't also open the block for editing. The case blocks'
     // events pass through here too (they're slotted in), and go on to Roam.
     for (const type of ["mousedown", "mouseup", "click", "keydown", "keyup", "keypress", "pointerdown"]) {
-      panel.addEventListener(type, (event) => {
+      card.addEventListener(type, (event) => {
         if (event.target instanceof Node && parts.blocks.contains(event.target)) return;
         keepFocus(event);
         event.stopPropagation();
@@ -439,7 +350,7 @@ export class ProofPanel {
     for (const type of BLOCK_MOUSE_EVENTS) {
       parts.blocks.addEventListener(type, (event) => event.stopPropagation());
     }
-    panel.addEventListener("click", (event) => {
+    card.addEventListener("click", (event) => {
       const target = (event.target as Element | null)?.closest?.("button") as HTMLButtonElement | null;
       if (target) void this.press(target);
     });
@@ -455,12 +366,13 @@ export class ProofPanel {
     }
   }
 
-  // Takes down every block Roam rendered for this panel, and the bar.
+  // Takes down every block Roam rendered for this panel, the bar and the stage.
   dispose(): void {
     for (const parts of this.mounts.values()) this.unmountCases(parts);
     this.mounts.clear();
-    this.dropBar();
-    this.watchPerson(false);
+    this.bar.dispose();
+    this.stage.dispose();
+    document.getElementById(ROOM_ID)?.remove();
   }
 
   get attached(): number {
@@ -471,57 +383,16 @@ export class ProofPanel {
   update(view: PanelView): void {
     this.view = view;
     this.detachGone();
+    this.timeSteps(view.machine);
     for (const parts of this.mounts.values()) this.paint(parts);
-    this.placeBar(true);
+    this.syncRun(view);
   }
 
-  private async press(target: HTMLButtonElement): Promise<void> {
-    const action = target.dataset.action ?? "";
-    const args = target.dataset.args ? (JSON.parse(target.dataset.args) as Record<string, unknown>) : {};
-    const state = this.view?.machine ?? null;
-    let request: PanelAction | null = null;
-    if (action === "pick-mode" || action === "pick-speed") {
-      this.runChoice =
-        action === "pick-mode"
-          ? { ...this.runChoice, mode: args.mode as RunSettings["mode"] }
-          : { ...this.runChoice, speed: Number(args.speed) };
-      try {
-        localStorage.setItem(RUN_SETTINGS_KEY, JSON.stringify(this.runChoice));
-      } catch {
-        // Kept for this tab only.
-      }
-      this.repaint();
-      return;
-    }
-    if (OWN_ACTIONS.has(action)) {
-      request = { kind: action } as PanelAction;
-    } else if (action === "toggle") {
-      request = { kind: "command", cmd: state?.paused ? "resume" : "pause" };
-    } else if (action === "slower" || action === "faster") {
-      const current = state ? state.speed : 1;
-      const index = SPEEDS.findIndex((value) => value >= current);
-      const at = index < 0 ? SPEEDS.length - 1 : index;
-      const next = action === "faster" ? Math.min(SPEEDS.length - 1, at + 1) : Math.max(0, at - 1);
-      request = { kind: "command", cmd: "speed", args: { speed: SPEEDS[next] } };
-    } else if (action === "mode") {
-      const current = state ? state.mode : "auto";
-      request = { kind: "command", cmd: "mode", args: { mode: MODES[(MODES.indexOf(current) + 1) % MODES.length] } };
-    } else if (action === "stop" || action === "restart") {
-      if (Date.now() < this.armed[action]) {
-        this.armed[action] = 0;
-        request = action === "stop" ? { kind: "command", cmd: "stop" } : { kind: "restart" };
-      } else {
-        this.armed[action] = Date.now() + 3000;
-        this.repaint();
-        setTimeout(() => this.repaint(), 3100);
-        return;
-      }
-    } else {
-      request = { kind: "command", cmd: action, args };
-    }
-    if (!request) return;
-    const error = await this.onAction(request);
-    if (error) this.showError(error);
+  // The step a run is about to act on, from the executor: the ring goes on
+  // it, and the bar steps aside when it's underneath.
+  target(element: Element | null, verb = ""): void {
+    this.stage.ring(element, verb);
+    this.bar.setDodge(Boolean(element && this.bar.covers(element.getBoundingClientRect())));
   }
 
   showError(message: string): void {
@@ -530,171 +401,285 @@ export class ProofPanel {
     this.flashTimer = window.setTimeout(() => {
       this.flash = "";
       this.repaint();
-    }, 6000);
+    }, 7000);
     this.repaint();
+    if (this.bar.showing) this.bar.showError(message);
   }
 
   private repaint(): void {
     for (const parts of this.mounts.values()) this.paint(parts);
-    this.placeBar(true);
+  }
+
+  // Keeps a moving average of how long a step takes, for the forecast.
+  private timeSteps(state: MachineState | null): void {
+    if (!state || !isLive(state) || state.paused || state.pending) {
+      this.lastStep = null;
+      return;
+    }
+    const key = `${state.caseIndex}/${state.stepIndex}`;
+    const now = Date.now();
+    if (this.lastStep && this.lastStep.key !== key) {
+      const took = now - this.lastStep.at;
+      if (took > 0 && took < 30_000) this.stepTimes = [...this.stepTimes.slice(-19), took];
+    }
+    if (!this.lastStep || this.lastStep.key !== key) this.lastStep = { key, at: now };
+  }
+
+  private msPerStep(state: MachineState): number {
+    if (this.stepTimes.length >= 3) return this.stepTimes.reduce((sum, value) => sum + value, 0) / this.stepTimes.length;
+    return STEP_MS / Math.max(0.25, state.speed);
+  }
+
+  // The bar, the frame, the ring, held input and the tab title follow the run.
+  private syncRun(view: PanelView): void {
+    const state = view.machine;
+    const run = view.run;
+    if (!state || !run) {
+      this.bar.update(null);
+      this.stage.setLive(false);
+      this.stage.setDriver("none");
+      this.stage.ring(null);
+      this.stage.setTitle(null);
+      document.getElementById(ROOM_ID)?.remove();
+      return;
+    }
+    const live = isLive(state);
+    this.bar.update({
+      title: view.title,
+      state,
+      kinds: run.kinds,
+      msPerStep: this.msPerStep(state),
+      facts: run.facts,
+      notTested: view.kit?.notTested.length ?? 0,
+      stepUid: view.blocks.step,
+      choice: run.choice,
+      agent: view.agent,
+      startedAt: run.startedAt,
+      endedAt: run.endedAt,
+    });
+    const driving = live && !state.paused && !state.pending && state.phase !== "waiting-next";
+    this.stage.setLive(live);
+    this.stage.setHolding(driving);
+    this.stage.setDriver(!live ? "none" : driving ? "run" : "you");
+    if (!live || (!state.executing && state.phase !== "dwell")) {
+      this.stage.ring(null);
+      this.bar.setDodge(false);
+    }
+    // The tab says where the run is, and whether it needs you.
+    const failed = state.plan.filter((item) => state.results[item.id] === "fail").length;
+    if (live) {
+      const where = state.caseIndex < 0 ? "setup" : `${state.caseIndex + 1}/${state.caseCount}`;
+      this.stage.setTitle(driving ? `▶ ${where}` : state.paused ? `❚❚ Paused ${where}` : "● Your turn");
+    } else if (this.bar.showing) {
+      this.stage.setTitle(state.phase === "stopped" ? "❚❚ Stopped" : failed ? `✗ ${failed} failed` : "✓ Passed");
+    } else {
+      this.stage.setTitle(null);
+    }
+    // A chime when the run starts waiting on a person who looked away.
+    const ask = live && state.pending ? `${state.pending.kind}:${state.pending.caseId}` : "";
+    if (ask && ask !== this.lastAsk) this.stage.chime();
+    this.lastAsk = ask;
+    if (live && !document.getElementById(ROOM_ID)) {
+      const style = document.createElement("style");
+      style.id = ROOM_ID;
+      style.textContent = ROOM_CSS;
+      document.head.append(style);
+    } else if (!live && !this.bar.showing) {
+      document.getElementById(ROOM_ID)?.remove();
+    }
+  }
+
+  private async fromBar(action: BarAction): Promise<string | null> {
+    if (action.kind === "run") {
+      this.stage.prime();
+      return this.onAction({ kind: "run" });
+    }
+    if (action.kind === "ask-agent") return this.onAction({ kind: "ask-agent" });
+    const result = await this.onAction(action);
+    if (this.view) this.syncRun(this.view);
+    return result;
+  }
+
+  private async press(target: HTMLButtonElement): Promise<void> {
+    const action = target.dataset.action ?? "";
+    const args = target.dataset.args ? (JSON.parse(target.dataset.args) as Record<string, unknown>) : {};
+    if (action === "choose") {
+      this.choice = args.choice as RunChoice;
+      try {
+        localStorage.setItem(CHOICE_KEY, this.choice);
+      } catch {
+        // Kept for this tab only.
+      }
+      this.repaint();
+      return;
+    }
+    if (action === "show-result") {
+      this.bar.openResult();
+      if (this.view) this.syncRun(this.view);
+      return;
+    }
+    if (action === "run" || action === "resume") this.stage.prime();
+    const request: PanelAction | null = OWN_ACTIONS.has(action) ? ({ kind: action } as PanelAction) : { kind: "command", cmd: action, args };
+    const error = await this.onAction(request);
+    if (error) this.showError(error);
   }
 
   private paint(parts: Parts): void {
     const view = this.view;
     if (!view) return;
     const state = view.machine;
-    const phase = view.error ? "error" : state ? state.phase : "idle";
-    parts.badge.className = `badge ${phase}`;
-    parts.badge.textContent = BADGES[phase] ?? phase;
-    parts.title.textContent = view.title;
-    parts.now.textContent = nowLine(state);
-    paintTesting(parts.testing, state);
-    this.paintChecklist(parts, view);
-    parts.claim.textContent = state?.claim ? `Proving: ${state.claim}` : "";
-    parts.given.textContent = state?.given ? `Given: ${state.given}` : "";
-    parts.where.textContent = !state
-      ? view.lastRun ?? ""
-      : state.caseIndex < 0
-        ? "Setup"
-        : state.caseIndex >= state.caseCount
-          ? "Plan finished"
-          : `Case ${state.caseIndex + 1}/${state.caseCount} · step ${state.stepIndex + 1}/${state.stepCount}`;
-    parts.notices.replaceChildren(...view.warnings.map((text) => el("div", text, "warn")));
-    this.paintPlan(parts, view);
-    this.paintPending(parts.pending, view);
-    this.paintFeed(parts, state);
-    this.paintControls(parts.controls, view);
+    const card = parts.card;
+    card.replaceChildren();
+    card.append(this.paintHead(view));
+    const body = el("div", undefined, "body");
+    if (state && isLive(state)) {
+      const where = state.caseIndex < 0 ? "Setting up the graph" : `Case ${state.caseIndex + 1} of ${state.caseCount} is running`;
+      body.append(el("div", `${where}. The controls are in the bar at the bottom of the window.`, "status"));
+    } else {
+      body.append(this.paintChecklist(view));
+      for (const text of view.warnings) body.append(el("div", text, "warn"));
+      if (state) body.append(this.paintEnded(state));
+      body.append(this.paintStart(view));
+      const folds = this.paintFolds(view);
+      if (folds) body.append(folds);
+    }
+    body.append(parts.plan);
     parts.err.textContent = [view.error, this.flash].filter(Boolean).join("\n");
+    body.append(parts.err);
+    card.append(body);
+    this.paintPlan(parts, view);
   }
 
-  // While a run is live, the bar shows whenever no panel's controls can be
-  // seen: under a dialog, scrolled out of the sidebar, or with the sidebar
-  // closed. Nothing tells a page that a dialog now covers part of it, so a
-  // timer looks every 400 ms; it runs only while the run does.
-  private placeBar(paint: boolean): void {
-    const state = this.view?.machine;
-    if (!state || state.phase === "done" || state.phase === "stopped") {
-      this.dropBar();
-      this.watchPerson(false);
-      return;
+  private paintHead(view: PanelView): HTMLElement {
+    const head = el("div", undefined, "head");
+    const kit = view.kit;
+    const eyebrow = ["Proof", kit?.pr ? `PR #${kit.pr}` : null, kit?.ticket].filter(Boolean).join(" · ");
+    head.append(el("div", eyebrow, "eyebrow"), el("div", view.title, "title"), el("div", kit?.claim ?? "", "claim"));
+    if (kit) {
+      const facts = el("div", undefined, "facts");
+      const minutes = duration(kit.steps * STEP_MS + kit.cases * 1500);
+      facts.append(el("span", `${kit.cases} case${kit.cases === 1 ? "" : "s"}`, "fact"), el("span", minutes, "fact"));
+      const asks = [kit.judge ? `${kit.judge} call${kit.judge === 1 ? "" : "s"} by eye` : "", kit.byHand ? `${kit.byHand} by hand` : ""].filter(Boolean);
+      facts.append(
+        asks.length
+          ? el("span", `Needs you ${kit.judge + kit.byHand} time${kit.judge + kit.byHand === 1 ? "" : "s"}: ${asks.join(", ")}`, "fact you")
+          : el("span", "Won't need you unless a step doesn't work", "fact ok"),
+      );
+      head.append(facts);
     }
-    this.watchPerson(true);
-    if (!this.barTimer) this.barTimer = window.setInterval(() => this.placeBar(false), 400);
-    if (this.panelInView()) {
-      if (this.bar) this.bar.host.hidden = true;
-      return;
-    }
-    const shown = this.bar && !this.bar.host.hidden;
-    this.bar ??= this.makeBar();
-    this.bar.host.hidden = false;
-    if (paint || !shown) this.paintBar(this.bar);
+    return head;
   }
 
-  // Whether a person can see a panel's controls now: laid out, inside the
-  // window, and the top thing at that spot, not counting the bar.
-  private panelInView(): boolean {
-    for (const parts of this.mounts.values()) {
-      const host = parts.root.host;
-      if (!host.isConnected) continue;
-      const box = parts.controls.getBoundingClientRect();
-      if (box.width === 0 || box.height === 0) continue;
-      const x = box.left + box.width / 2;
-      const y = box.top + box.height / 2;
-      if (x < 0 || y < 0 || x > window.innerWidth || y > window.innerHeight) continue;
-      const top = document.elementsFromPoint(x, y).find((node) => node !== this.bar?.host);
-      if (top && (top === host || host.contains(top))) return true;
-    }
-    return false;
-  }
-
-  private makeBar(): Bar {
-    const host = document.createElement("div");
-    host.className = "proof-runner-bar";
-    host.style.cssText = "position: fixed; right: 12px; bottom: 12px; z-index: 2147483000; width: min(440px, calc(100vw - 24px));";
-    const root = host.attachShadow({ mode: "open" });
-    const style = document.createElement("style");
-    style.textContent = CSS + BAR_CSS;
-    const panel = el("div", undefined, "panel bar");
-    const head = el("div", undefined, "row");
-    const bar: Bar = {
-      host,
-      panel,
-      badge: el("span", "", "badge"),
-      title: el("span", "", "title"),
-      now: el("div", "", "now"),
-      testing: el("div", undefined, "testing"),
-      pending: el("div", undefined, "pending"),
-      controls: el("div", undefined, "row controls"),
-      err: el("div", "", "err"),
-    };
-    head.append(bar.badge, bar.title, button("⇆", "bar-side", { title: "Move the bar to the other side" }));
-    panel.append(head, bar.now, bar.testing, bar.pending, bar.controls, bar.err);
-    root.append(style, panel);
-    for (const type of ["mousedown", "mouseup", "click", "keydown", "keyup", "keypress", "pointerdown"]) {
-      panel.addEventListener(type, (event) => {
-        keepFocus(event);
-        event.stopPropagation();
-      });
-    }
-    panel.addEventListener("click", (event) => {
-      const target = (event.target as Element | null)?.closest?.("button") as HTMLButtonElement | null;
-      if (!target) return;
-      if (target.dataset.action === "bar-side") {
-        const left = host.style.left === "12px";
-        host.style.left = left ? "" : "12px";
-        host.style.right = left ? "12px" : "";
-        return;
+  // Each need with its mark and, when it isn't met, the button that meets
+  // it. Once every need is met they fold into one line.
+  private paintChecklist(view: PanelView): HTMLElement {
+    const box = el("div", undefined, "checks");
+    const items = view.checklist;
+    if (items.length && items.every((item) => item.state === "ok")) {
+      const ready = el("div", undefined, "ready");
+      ready.append(el("b", "✓ Ready"), el("span", ` · ${items.filter((item) => item.id !== "runner").map((item) => item.detail).join(" · ") || items[0].detail}`));
+      box.append(ready);
+      const extras = items.filter((item) => item.secondary);
+      if (extras.length) {
+        const row = el("div", undefined, "row");
+        for (const item of extras) if (item.secondary) row.append(button(item.secondary.label, item.secondary.kind, { title: `${item.label}: ${item.secondary.label}` }));
+        box.append(row);
       }
-      void this.press(target);
-    });
-    document.body.append(host);
-    return bar;
-  }
-
-  private paintBar(bar: Bar): void {
-    const view = this.view;
-    if (!view) return;
-    const state = view.machine;
-    const phase = view.error ? "error" : state ? state.phase : "idle";
-    bar.badge.className = `badge ${phase}`;
-    bar.badge.textContent = BADGES[phase] ?? phase;
-    bar.title.textContent = view.title;
-    bar.now.textContent = nowLine(state);
-    paintTesting(bar.testing, state);
-    this.paintPending(bar.pending, view);
-    this.paintControls(bar.controls, view);
-    bar.err.textContent = [view.error, this.flash].filter(Boolean).join("\n");
-    // Like the live HUD: while a step runs, clicks go through to the page,
-    // so the bar never covers what a step clicks.
-    bar.panel.style.pointerEvents = state?.executing ? "none" : "";
-  }
-
-  // A person using the page while steps run: the runner's own input is
-  // synthetic, so a trusted click, or Escape, is someone else. The run pauses
-  // instead of racing them. Keys stay theirs: the palette's Pause needs them.
-  private readonly onPersonInput = (event: Event): void => {
-    const state = this.view?.machine;
-    if (!event.isTrusted || !state || state.paused || !["starting", "running", "dwell"].includes(state.phase)) return;
-    if (event instanceof KeyboardEvent && event.key !== "Escape") return;
-    const ours = [...this.mounts.keys(), this.bar?.host];
-    if (event.composedPath().some((node) => ours.includes(node as HTMLElement))) return;
-    void Promise.resolve(this.onAction({ kind: "command", cmd: "pause" })).then((error) => this.showError(error ?? PERSON_PAUSED));
-  };
-
-  private watchPerson(on: boolean): void {
-    if (on === this.watchingPerson) return;
-    this.watchingPerson = on;
-    for (const type of ["mousedown", "keydown"]) {
-      if (on) document.addEventListener(type, this.onPersonInput, true);
-      else document.removeEventListener(type, this.onPersonInput, true);
+      return box;
     }
+    for (const item of items) {
+      const row = el("div", undefined, `check ${item.state}`);
+      row.dataset.check = item.id;
+      const what = el("div", undefined, "what");
+      what.append(el("span", `${item.label}: `, "label"), el("span", item.detail, "detail"));
+      if (item.list?.length) {
+        const list = el("ul");
+        for (const line of item.list) list.append(el("li", line));
+        what.append(list);
+      }
+      const acts = [item.action, item.secondary].filter((act): act is NonNullable<typeof act> => Boolean(act));
+      if (acts.length) {
+        const row2 = el("div", undefined, "row acts");
+        for (const act of acts) row2.append(button(act.label, act.kind, { className: act === item.action ? "primary" : "" }));
+        what.append(row2);
+      }
+      row.append(el("span", MARKS[item.state], "mark"), what);
+      box.append(row);
+    }
+    return box;
   }
 
-  private dropBar(): void {
-    clearInterval(this.barTimer);
-    this.barTimer = 0;
-    this.bar?.host.remove();
-    this.bar = null;
+  private paintEnded(state: MachineState): HTMLElement {
+    const failed = state.plan.filter((item) => state.results[item.id] === "fail").length;
+    const passed = state.plan.filter((item) => state.results[item.id] === "pass").length;
+    const stopped = state.phase === "stopped";
+    const line = el("div", undefined, `status ${stopped ? "" : failed ? "fail" : "done"}`);
+    const words = stopped
+      ? `Stopped after ${passed} passed${failed ? `, ${failed} failed` : ""}.`
+      : `${failed ? "✗" : "✓"} ${passed} of ${state.plan.length} passed${failed ? `, ${failed} failed` : ""}.`;
+    line.append(document.createTextNode(`${words} `), button("See the result", "show-result", { className: "link" }));
+    return line;
+  }
+
+  private paintStart(view: PanelView): HTMLElement {
+    const box = el("div", undefined, "start");
+    const state = view.machine;
+    box.append(el("div", "How will you run it?", "lbl"));
+    const choices = el("div", undefined, "choices");
+    for (const option of CHOICES) {
+      const node = button("", "choose", { className: `choice${this.choice === option.choice ? " on" : ""}`, args: { choice: option.choice } });
+      node.setAttribute("aria-pressed", String(this.choice === option.choice));
+      node.append(el("b", `${this.choice === option.choice ? "◉" : "○"} ${option.label}`), document.createTextNode(option.hint));
+      choices.append(node);
+    }
+    box.append(choices);
+    const row = el("div", undefined, "row");
+    row.style.marginTop = "10px";
+    const count = view.kit?.cases ?? 0;
+    const run = button(state ? "Run again" : count ? `▶ Run ${count} case${count === 1 ? "" : "s"}` : "▶ Run", "run", {
+      className: "primary",
+      title: view.blocked ?? "Run every case on this page",
+    });
+    run.disabled = Boolean(view.error) || Boolean(view.blocked);
+    row.append(run);
+    if (view.resumable && !state) row.append(button(`Resume from case ${view.resumable.caseIndex + 1}`, "resume"));
+    if (state || view.resumable) row.append(button("Reset", "reset", { title: "Forget this tab's run of the kit" }));
+    row.append(el("span", view.blocked ? `Waiting on ${view.blocked.split(":")[0]}` : "Ctrl+Alt+Space pauses at any time", "meta"));
+    box.append(row);
+    return box;
+  }
+
+  private paintFolds(view: PanelView): HTMLElement | null {
+    const kit = view.kit;
+    const box = el("div");
+    const fold = (summary: string, lines: string[]): void => {
+      const details = el("details");
+      details.append(el("summary", summary));
+      const list = el("ul");
+      for (const line of lines) list.append(el("li", line));
+      details.append(list);
+      box.append(details);
+    };
+    if (kit) {
+      const results = view.machine?.results ?? {};
+      if (kit.doneWhen.length || kit.other) {
+        const lines = kit.doneWhen.map((bullet) => {
+          const verdict = view.machine ? bulletVerdict(bullet, results) : null;
+          return `${verdict ? `${ICONS[verdict]} ` : ""}Done When ${bullet.number}: ${bullet.text || "(the kit doesn't say)"} · ${bullet.caseIds.length} case${bullet.caseIds.length === 1 ? "" : "s"}`;
+        });
+        if (kit.other) lines.push(`${kit.other} more case${kit.other === 1 ? "" : "s"} for what the change could break next to it.`);
+        fold(`What it checks: ${kit.doneWhen.length ? `${kit.doneWhen.length} Done When bullet${kit.doneWhen.length === 1 ? "" : "s"}, ` : ""}${kit.other} more case${kit.other === 1 ? "" : "s"}`, lines);
+      }
+      if (kit.notTested.length) {
+        fold(
+          `Not tested, and why (${kit.notTested.length})`,
+          kit.notTested.map((item) => `${item.title}${item.reason ? `: ${item.reason}` : ""}`),
+        );
+      }
+      if (kit.proposed) box.append(el("div", `${kit.proposed} proposed case${kit.proposed === 1 ? " waits" : "s wait"} for a decision and won't run.`, "meta"));
+    }
+    if (view.lastRun) box.append(el("div", view.lastRun, "meta"));
+    return box.childElementCount ? box : null;
   }
 
   // Every case of the run as its own block, with its verdict beside it; the
@@ -703,11 +688,8 @@ export class ProofPanel {
     const state = view.machine;
     parts.plan.hidden = !state;
     parts.setup.replaceChildren();
-    if (state && state.caseIndex < 0) {
-      const line = el("div", undefined, "case-line");
-      line.append(el("span", "▶", "icon now"), el("span", "Setup: preparing the data and settings the cases need"));
-      parts.setup.append(line);
-      if (state.stepWhy) parts.setup.append(el("div", `Step ${state.stepIndex + 1}/${state.stepCount}: ${state.stepWhy}`, "proves"));
+    if (state && state.caseIndex < 0 && isLive(state)) {
+      parts.setup.textContent = `Setup, step ${state.stepIndex + 1} of ${state.stepCount}: ${state.stepWhy ?? "preparing the data and settings the cases need"}`;
     }
     const plan = state?.plan ?? [];
     const rendered = plan.map((item) => `${item.id}=${view.blocks.cases[item.id] ?? ""}`).join(" ");
@@ -718,7 +700,7 @@ export class ProofPanel {
     plan.forEach((item, index) => {
       const mount = parts.cases.get(item.id);
       if (!mount || !state) return;
-      const current = index === state.caseIndex;
+      const current = index === state.caseIndex && isLive(state);
       const later = !item.verdict && index > state.caseIndex;
       mount.wrapper.className = `proof-case${current ? " current" : later ? " later" : ""}${item.verdict ? ` ${item.verdict}` : ""}`;
       mount.icon.textContent = item.verdict ? (ICONS[item.verdict] ?? "•") : current ? "▶" : "○";
@@ -772,10 +754,10 @@ export class ProofPanel {
   }
 
   // Brings the step running now into view once each time it changes, and
-  // never while someone is editing a block in the panel.
+  // never while someone is editing a block in the card.
   private scrollToNow(parts: Parts, view: PanelView): void {
     const state = view.machine;
-    if (!state || state.caseIndex < 0 || !state.caseId) return;
+    if (!state || !isLive(state) || state.caseIndex < 0 || !state.caseId) return;
     const key = `${state.caseId}/${view.blocks.step ?? ""}/${state.phase === "step-failed"}`;
     if (key === parts.scrolledTo) return;
     const active = document.activeElement;
@@ -790,133 +772,5 @@ export class ProofPanel {
     if (parts.scrolledTo === `${key} case`) return;
     parts.cases.get(state.caseId)?.wrapper.scrollIntoView?.({ block: "nearest" });
     parts.scrolledTo = view.blocks.step ? `${key} case` : key;
-  }
-
-  // Each need with its mark and, when it isn't met, the button that meets
-  // it. Once every need is met they fold into one line.
-  private paintChecklist(parts: Parts, view: PanelView): void {
-    const box = parts.checks;
-    box.replaceChildren();
-    const items = view.checklist;
-    if (items.every((item) => item.state === "ok")) {
-      const ready = el("div", undefined, "ready");
-      for (const item of items) ready.append(el("span", `✓ ${item.label}: ${item.detail}`));
-      box.append(ready);
-      for (const item of items) {
-        if (item.secondary) box.append(button(item.secondary.label, item.secondary.kind, { title: `${item.label}: ${item.secondary.label}` }));
-      }
-      return;
-    }
-    for (const item of items) {
-      const row = el("div", undefined, `check ${item.state}`);
-      row.dataset.check = item.id;
-      const what = el("div", undefined, "what");
-      what.append(el("span", `${item.label}: `, "label"), el("span", item.detail, "detail"));
-      if (item.list?.length) {
-        const list = el("ul");
-        for (const line of item.list) list.append(el("li", line));
-        what.append(list);
-      }
-      const acts = [item.action, item.secondary].filter((act): act is NonNullable<typeof act> => Boolean(act));
-      if (acts.length) {
-        const row2 = el("div", undefined, "acts");
-        for (const act of acts) row2.append(button(act.label, act.kind, { className: act === item.action ? "primary" : "" }));
-        what.append(row2);
-      }
-      row.append(el("span", MARKS[item.state], "mark"), what);
-      box.append(row);
-    }
-  }
-
-  private paintPending(box: HTMLElement, view: PanelView): void {
-    box.replaceChildren();
-    const state = view.machine;
-    if (!state) {
-      if (view.resumable) {
-        box.append(el("p", `An earlier run stopped after case ${view.resumable.caseIndex}. Resume from case ${view.resumable.caseIndex + 1}, or run every case again.`));
-      }
-      return;
-    }
-    const pending = state.pending;
-    if (pending?.kind === "steps") {
-      box.append(el("p", "This case is done by hand. Do what it says above, then press Done to run its check."));
-      const row = el("div", undefined, "row");
-      row.append(button("Done", "done-by-hand", { className: "go" }), button("Skip case", "skip-case"));
-      box.append(row);
-    } else if (pending?.kind === "failure") {
-      box.append(el("p", "This step failed:"), el("pre", pending.error));
-      if (view.blocks.step) {
-        box.append(el("p", "Fix the step in its block above and press Retry to run your fix. Other edits apply from the next Run.", "muted"));
-      }
-      const row = el("div", undefined, "row");
-      row.append(button("Retry", "retry", { className: "go" }), button("Skip step", "skip-step"), button("Skip case", "skip-case"));
-      box.append(row);
-    } else if (pending?.kind === "approval") {
-      box.append(el("p", `This step runs js it didn't come with: ${pending.why}`), el("pre", pending.js));
-      const row = el("div", undefined, "row");
-      row.append(
-        button("Allow", "approve", { className: "go", args: { stepId: pending.stepId } }),
-        button("Deny", "deny", { className: "no", args: { stepId: pending.stepId } }),
-      );
-      box.append(row);
-    } else if (pending?.kind === "verdict") {
-      box.append(el("p", `Your call: ${pending.text}`));
-    } else if (state.phase === "done" || state.phase === "stopped") {
-      const values = Object.values(state.results);
-      const count = (verdict: string): number => values.filter((value) => value === verdict).length;
-      box.append(el("p", `${state.phase === "done" ? "Every case ran" : "Stopped"}: ${count("pass")} passed, ${count("fail")} failed, ${count("skip")} skipped.`));
-    }
-  }
-
-  private paintFeed(parts: Parts, state: MachineState | null): void {
-    const box = parts.feed;
-    box.replaceChildren();
-    for (const entry of (state?.feed ?? []).slice(-FEED_SHOWN)) {
-      const row = el("div", undefined, entry.kind);
-      // In Roam no agent writes steps: a case without them is done by hand.
-      const text = entry.text.replace(/^Waiting for the agent to work out steps: /, "Do this by hand, then press Done: ");
-      row.append(el("span", WHO[entry.kind] ?? "", "who"), el("span", text));
-      box.append(row);
-    }
-  }
-
-  private paintControls(box: HTMLElement, view: PanelView): void {
-    box.replaceChildren();
-    const state = view.machine;
-    const live = state && state.phase !== "done" && state.phase !== "stopped";
-    if (!live) {
-      const choice = this.runChoice;
-      box.append(el("span", "Mode", "lbl"));
-      for (const mode of MODES) {
-        box.append(button(mode, "pick-mode", { className: `pick${choice.mode === mode ? " on" : ""}`, args: { mode } }));
-      }
-      box.append(el("span", "Speed", "lbl"));
-      for (const speed of RUN_SPEEDS) {
-        box.append(button(`${speed}×`, "pick-speed", { className: `pick${choice.speed === speed ? " on" : ""}`, args: { speed } }));
-      }
-      box.append(el("div", MODE_HINTS[choice.mode], "hint"));
-      const run = button(state ? "Run again" : "Run", "run", {
-        className: view.blocked ? "" : "primary",
-        title: view.blocked ?? "Run every case on this page",
-      });
-      run.disabled = Boolean(view.error) || Boolean(view.blocked);
-      box.append(run);
-      if (view.resumable && !state) box.append(button(`Resume from case ${view.resumable.caseIndex + 1}`, "resume"));
-      if (state || view.resumable) box.append(button("Reset", "reset", { title: "Forget this tab's run of the kit" }));
-      return;
-    }
-    const verdictHot = state.pending?.kind === "verdict";
-    box.append(
-      button(state.paused ? "Resume" : "Pause", "toggle", { title: "Ctrl+Alt+Space" }),
-      button("Next", "next", { title: "Run one step (Ctrl+Alt+.)" }),
-      button("−", "slower", { title: "Slower" }),
-      el("span", `${state.speed}×`, "speed"),
-      button("+", "faster", { title: "Faster" }),
-      button(`Mode: ${state.mode}`, "mode", { title: "auto plays on; step stops before every step; case stops between cases. Press to switch." }),
-      button("✓ Pass", "verdict", { className: `go${verdictHot ? " hot" : ""}`, args: { verdict: "pass" } }),
-      button("✗ Fail", "verdict", { className: `no${verdictHot ? " hot" : ""}`, args: { verdict: "fail" } }),
-      button(Date.now() < this.armed.restart ? "Restart?" : "Restart", "restart", { title: "Press twice to end this run and start again from setup" }),
-      button(Date.now() < this.armed.stop ? "Stop?" : "Stop", "stop", { title: "Press twice to end the run" }),
-    );
   }
 }

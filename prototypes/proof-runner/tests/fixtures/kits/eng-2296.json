@@ -782,7 +782,7 @@
       ],
       "intent": "Import a mix of nodes where one fails and one has no published source (or similar warning). Read the summary title and the list.",
       "expect": {
-        "js": "(() => { const callout = proof.byText('.bp3-dialog .bp3-callout', '1 failed'); proof.assert(callout, 'No result callout.'); proof.assert(callout.querySelector('.bp3-heading').innerText.trim() === '1 imported, 0 skipped, 1 failed, 1 with warnings', 'The title is ' + callout.querySelector('.bp3-heading').innerText.trim()); proof.assert(callout.classList.contains('bp3-intent-warning'), 'The callout is not a warning.'); const items = Array.from(callout.querySelectorAll('li')); const failed = items.find((item) => item.innerText.includes('Collision claim')); proof.assert(failed && !failed.querySelector('a') && failed.innerText.includes('already exists'), 'The failed claim is not listed with its reason: ' + (failed && failed.innerText)); const warned = items.find((item) => item.querySelector('a') && item.querySelector('a').innerText.trim() === 'PKE - Cold showers raise alertness - [[@placeholder]]'); proof.assert(warned && warned.innerText.includes('No source was published with this node.'), 'The warned node is not listed as a link with its warning.'); proof.assert(proof.byText('.bp3-dialog tbody tr', 'Collision claim'), 'The failed claim left the table.'); proof.assert(proof.byText('.bp3-dialog button', 'Import selected (1)'), 'The failed claim is not still selected.'); })()"
+        "js": "(() => { const callout = proof.byText('.bp3-dialog .bp3-callout', '1 failed'); proof.assert(callout, 'No result callout.'); proof.assert(callout.querySelector('.bp3-heading').innerText.trim() === '1 imported, 1 failed, 1 with warnings', 'The title is ' + callout.querySelector('.bp3-heading').innerText.trim()); proof.assert(callout.classList.contains('bp3-intent-warning'), 'The callout is not a warning.'); const items = Array.from(callout.querySelectorAll('li')); const failed = items.find((item) => item.innerText.includes('Collision claim')); proof.assert(failed && !failed.querySelector('a') && failed.innerText.includes('already exists'), 'The failed claim is not listed with its reason: ' + (failed && failed.innerText)); const warned = items.find((item) => item.querySelector('a') && item.querySelector('a').innerText.trim() === 'PKE - Cold showers raise alertness - [[@placeholder]]'); proof.assert(warned && warned.innerText.includes('No source was published with this node.'), 'The warned node is not listed as a link with its warning.'); proof.assert(proof.byText('.bp3-dialog tbody tr', 'Collision claim'), 'The failed claim left the table.'); proof.assert(proof.byText('.bp3-dialog button', 'Import selected (1)'), 'The failed claim is not still selected.'); })()"
       },
       "decision": {
         "status": "approved",
@@ -791,7 +791,7 @@
       },
       "surface": "s-import-progress-and-results-feedback",
       "caption": "One claim fails because its page title is taken, one evidence node imports with a warning. The result lists both.",
-      "checks": "The result's title reads 1 imported, 0 skipped, 1 failed, 1 with warnings. The failed claim is listed with its reason and no link, the evidence is a link with its warning, and the failed claim stays ticked in the table."
+      "checks": "The result's title reads 1 imported, 1 failed, 1 with warnings. The failed claim is listed with its reason and no link, the evidence is a link with its warning, and the failed claim stays ticked in the table."
     },
     {
       "id": "qa-relations-still-import-for-related-nodes",
@@ -842,7 +842,7 @@
       ],
       "intent": "Select two shared nodes that have a relation between them and import them. Open one imported page and look at its relations.",
       "expect": {
-        "js": "proof.waitFor(() => { const source = proof.uid('PKR - Rest strengthens memory'); const destination = proof.uid('PKR - Naps consolidate learning'); if (!source || !destination) return false; const found = proof.relations.touching([source]).filter((item) => item.sourceUid === source && item.destinationUid === destination); return found.length === 1 && found[0].tentative === 'true' && !proof.toastText().includes('their relations were not'); }, { what: 'a pending relation from the first imported node to the second', timeout: 20000 })"
+        "js": "proof.waitFor(() => { const source = proof.uid('PKR - Rest strengthens memory'); const destination = proof.uid('PKR - Naps consolidate learning'); if (!source || !destination) return false; const found = proof.relations.touching([source]).filter((item) => item.sourceUid === source && item.destinationUid === destination); return found.length === 1 && found[0].tentative === 'true' && !proof.toastText().includes('relations were not imported'); }, { what: 'a pending relation from the first imported node to the second', timeout: 20000 })"
       },
       "decision": {
         "status": "approved",
@@ -1003,7 +1003,7 @@
         },
         {
           "do": {
-            "wait_for": ".bp3-toast:has-text(\"their relations were not\")"
+            "wait_for": ".bp3-toast:has-text(\"relations were not imported\")"
           },
           "why": "Wait for the relations message"
         },
@@ -1016,7 +1016,7 @@
       ],
       "intent": "Make relation import fail (for example go offline or revoke access right after node import starts). Import a node that has relations.",
       "expect": {
-        "js": "proof.waitFor(() => { const callout = proof.byText('.bp3-dialog .bp3-callout', '2 imported'); const first = proof.uid('PKR - Fasting sharpens focus'); const second = proof.uid('PKR - Sugar dulls attention'); return Boolean(callout) && Boolean(first) && Boolean(second) && proof.toastText().includes('The nodes were imported, but their relations were not') && proof.relations.touching([first, second]).length === 0; }, { what: 'both nodes imported, the relations message shown and no relation created' })"
+        "js": "proof.waitFor(() => { const callout = proof.byText('.bp3-dialog .bp3-callout', '2 imported'); const first = proof.uid('PKR - Fasting sharpens focus'); const second = proof.uid('PKR - Sugar dulls attention'); return Boolean(callout) && Boolean(first) && Boolean(second) && proof.toastText().includes('The relations were not imported') && proof.relations.touching([first, second]).length === 0; }, { what: 'both nodes imported, the relations message shown and no relation created' })"
       },
       "decision": {
         "status": "approved",
@@ -1025,7 +1025,51 @@
       },
       "surface": "s-relation-import-after-node-import",
       "caption": "The nodes import, but their relation can't be read. The import says so, and the nodes stay imported.",
-      "checks": "The result still lists both nodes as imported, a message says the nodes were imported but their relations were not, and no relation was made."
+      "checks": "The result still lists both nodes as imported, a message says the relations were not imported, and no relation was made."
+    },
+    {
+      "id": "retry-relations-after-failure",
+      "title": "Retry relations imports the relation once it can be read",
+      "steps": [
+        {
+          "id": "s1",
+          "why": "Wait for Retry relations in the result",
+          "source": "kit",
+          "do": {
+            "wait_for": ".bp3-dialog .bp3-callout button:has-text(\"Retry relations\")"
+          }
+        },
+        {
+          "id": "s2",
+          "why": "Give the relation back its author in the database",
+          "source": "kit",
+          "do": {
+            "js": "proof.rest('/rest/v1/Concept?space_id=eq.66566&source_local_id=eq.rel_pk-2296-3-4', { key: '{{env.SUPABASE_SERVICE_ROLE_KEY}}', method: 'PATCH', body: { author_id: 3 } })"
+          }
+        },
+        {
+          "id": "s3",
+          "why": "Click Retry relations",
+          "source": "kit",
+          "do": {
+            "click": ".bp3-dialog .bp3-callout button:has-text(\"Retry relations\")"
+          }
+        },
+        {
+          "id": "s4",
+          "why": "Pause on the result",
+          "source": "kit",
+          "do": {
+            "pause": 2
+          }
+        }
+      ],
+      "checks": "After Retry relations, a relation joins Fasting sharpens focus to Sugar dulls attention, waiting for review, and Retry relations is gone from the result.",
+      "caption": "Once the relation's author can be read, Retry relations imports it, and the button goes away.",
+      "surface": "s-relation-import-after-node-import",
+      "expect": {
+        "js": "proof.waitFor(() => { const source = proof.uid('PKR - Fasting sharpens focus'); const destination = proof.uid('PKR - Sugar dulls attention'); if (!source || !destination) return false; const found = proof.relations.touching([source]).filter((item) => item.sourceUid === source && item.destinationUid === destination); return found.length === 1 && found[0].tentative === 'true' && !proof.byText('.bp3-dialog button', 'Retry relations'); }, { what: 'the relation imported on retry and Retry relations gone', timeout: 20000 })"
+      }
     },
     {
       "id": "qa-command-palette-shows-the-renamed-import",
