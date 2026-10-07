@@ -19,7 +19,7 @@ import { registerAgentTools, type AgentHost } from "./agent-tools";
 import { baselineFiles, recipeFiles } from "./data";
 import { CONNECT_LINK, RUNNER_URL, agentLink, agentPrompt } from "./links";
 import { evaluate } from "./executor";
-import { isProofRoot, kitBlocks, pageKit, rootConfig } from "./page-kit";
+import { ABOUT_START, aboutText, isProofRoot, kitBlocks, pageKit, rootConfig } from "./page-kit";
 import {
   blockUidOf,
   createTree,
@@ -723,6 +723,7 @@ class ProofRunner {
         const root = { ...kitBlocks(kit, { build: options.build ?? null }), uid: roam().util.generateUID() };
         await createTree(uid, [root], 0);
         await placeRunnerHint(uid, { create: true });
+        await placeAbout(uid, aboutText(kit));
         return { pageUid: uid, rootUid: root.uid, title };
       },
       placeRunnerHint: (pageUid: string) => placeRunnerHint(pageUid, { create: true }),
@@ -753,6 +754,20 @@ const placeRunnerHint = async (pageUid: string, { create }: { create: boolean })
   if (hint.string !== RUNNER_HINT) await roam().data.block.update({ block: { uid: hint.uid, string: RUNNER_HINT } });
   if (index !== 0) await roam().data.block.move({ location: { "parent-uid": pageUid, order: 0 }, block: { uid: hint.uid } });
   return hint.uid;
+};
+
+// Puts the About block right after the setup note (first when there's
+// none), in this kit's words, rewriting the one an earlier push left.
+const placeAbout = async (pageUid: string, text: string): Promise<void> => {
+  const children = (await readTree(pageUid))?.children ?? [];
+  const order = children.some((child) => HINT_STARTS.some((start) => child.string.startsWith(start))) ? 1 : 0;
+  const about = children.find((child) => child.string.startsWith(ABOUT_START));
+  if (!about?.uid) {
+    await roam().data.block.create({ location: { "parent-uid": pageUid, order }, block: { string: text, uid: roam().util.generateUID() } });
+    return;
+  }
+  if (about.string !== text) await roam().data.block.update({ block: { uid: about.uid, string: text } });
+  if (children.indexOf(about) !== order) await roam().data.block.move({ location: { "parent-uid": pageUid, order }, block: { uid: about.uid } });
 };
 
 // Opens a dg-proof:// link the way a click on one does, which hands it to

@@ -587,7 +587,24 @@ export const kitBlocks = (
     const { pr: _pr, ...rest } = kit.target;
     if (Object.keys(rest).length) children.push(block("target", [jsonBlock(rest)], false));
   }
-  if (kit.surface?.length) children.push(block("surface", kit.surface.map(surfaceBlock)));
-  for (const testCase of kit.cases) children.push(caseBlock(testCase));
-  return block(`{{proof}} ${kit.title ?? kit.name}`, children);
+  if (kit.surface?.length) children.push(block("surface", kit.surface.map(surfaceBlock), false));
+  for (const testCase of kit.cases) children.push({ ...caseBlock(testCase), open: false });
+  // Collapsed: the page shows the panel, whose case list says what each case
+  // tests; the kit's own blocks stay one click away.
+  return block(`{{proof}} ${kit.title ?? kit.name}`, children, false);
+};
+
+// Every kit page's About block starts with this, so a push finds and
+// rewrites it instead of adding another.
+export const ABOUT_START = "This page tests ";
+
+// The first thing a visitor reads: what the page tests, what it proves, and
+// what to do. No "#": Roam would turn the PR number into a tag.
+export const aboutText = (kit: Kit): string => {
+  const ticket = kit.ticket ?? /\beng-\d+\b/i.exec(kit.name)?.[0]?.toUpperCase() ?? null;
+  const what = [kit.target?.pr ? `PR ${kit.target.pr}` : null, ticket].filter(Boolean).join(", ") || kit.name;
+  const parts = [`${ABOUT_START}${what}${kit.title ? `: ${kit.title}` : ""}.`];
+  if (kit.claim) parts.push(`What it proves: ${kit.claim}`);
+  parts.push("To test it, press Run in the panel below. The panel shows what each case checks and which button to press next.");
+  return parts.join(" ");
 };
