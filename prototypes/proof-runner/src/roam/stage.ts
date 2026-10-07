@@ -5,11 +5,13 @@
 // isn't looking. None of it takes a pointer: the run's synthetic input and
 // the person's clicks pass straight through.
 
-export type Driver = "run" | "you" | "none";
+// Who has the screen: the run, you, or you with a failed check holding it.
+export type Driver = "run" | "you" | "held" | "none";
 
 const TOP = "2147483646";
 const RUN_COLOR = "#6c58f0";
 const YOU_COLOR = "#f0a020";
+const HELD_COLOR = "#e5534b";
 
 // The person's input the run holds while it drives. Pointer and key events
 // both: a mousedown on its own would let the click after it through.
@@ -40,7 +42,8 @@ export class Stage {
 
   constructor(private readonly handlers: StageHandlers) {}
 
-  // The frame: violet while the run drives, amber when the screen is yours.
+  // The frame: violet while the run drives, amber when the screen is yours,
+  // red while a failed check holds it.
   setDriver(driver: Driver): void {
     if (driver === "none") {
       this.frame?.remove();
@@ -55,7 +58,7 @@ export class Stage {
       document.body.append(frame);
       this.frame = frame;
     }
-    this.frame.style.borderColor = driver === "run" ? RUN_COLOR : YOU_COLOR;
+    this.frame.style.borderColor = driver === "run" ? RUN_COLOR : driver === "held" ? HELD_COLOR : YOU_COLOR;
     this.frame.dataset.driver = driver;
   }
 

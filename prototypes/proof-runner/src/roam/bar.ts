@@ -148,6 +148,42 @@ const CSS = `
   details { margin-top: 10px; border-top: 1px solid #2a2739; padding-top: 8px; }
   summary { cursor: pointer; color: #efedf7; }
   details ul { margin: 6px 0 0; padding-left: 18px; color: #c7c3d8; }
+  .sub.lead { color: inherit; font-size: 14px; }
+  /* The bar takes the frame's colour: dark while the run drives, amber when
+     it's your turn, red while a failed check holds the screen. A block of
+     colour says "your turn" to someone who looked away; a 3 px frame may not. */
+  .bar.you { background: #f6b04a; color: #231700; box-shadow: 0 -1px 0 #c98a1e, 0 -10px 30px -18px rgba(0, 0, 0, .4); }
+  .bar.held { background: #f08074; color: #2a0603; box-shadow: 0 -1px 0 #c94a40, 0 -10px 30px -18px rgba(0, 0, 0, .4); }
+  .bar.you .prog, .bar.held .prog { background: transparent; }
+  .bar.you .seg, .bar.held .seg { background: rgba(35, 20, 0, .2); }
+  .bar.you .seg.setup.done, .bar.held .seg.setup.done { background: rgba(35, 20, 0, .4); }
+  .bar.you .seg.pass, .bar.held .seg.pass { background: #17713f; }
+  .bar.you .seg.fail, .bar.held .seg.fail { background: #9f241c; }
+  .bar.you .seg.skip, .bar.held .seg.skip { background: #5f5a6b; }
+  .bar.you .seg.now > b, .bar.held .seg.now > b { background: #231700; }
+  .bar.you .seg.you, .bar.held .seg.you { box-shadow: inset 0 -2px 0 #231700; }
+  .bar.you .sub, .bar.you .hint, .bar.you .cn, .bar.you .kd, .bar.you .lbl, .bar.you .meta,
+  .bar.held .sub, .bar.held .hint, .bar.held .cn, .bar.held .kd, .bar.held .lbl, .bar.held .meta { color: rgba(35, 20, 0, .75); }
+  .bar.you .sub b, .bar.you .wait, .bar.held .sub b, .bar.held .wait, .bar.you .sub.lead, .bar.held .sub.lead { color: inherit; }
+  .bar.you .pill, .bar.held .pill { background: rgba(35, 20, 0, .14); color: inherit; }
+  .bar.you button, .bar.held button { background: rgba(255, 255, 255, .55); border-color: rgba(35, 20, 0, .28); color: #231700; }
+  .bar.you button:hover, .bar.held button:hover { background: rgba(255, 255, 255, .8); }
+  .bar.you button.go, .bar.you button.am, .bar.held button.go { background: #231700; border-color: transparent; color: #ffd38a; }
+  .bar.you button.pass, .bar.held button.pass { background: #17713f; border-color: transparent; color: #fff; }
+  .bar.you button.fail, .bar.held button.fail { background: #9f241c; border-color: transparent; color: #fff; }
+  .bar.you button.link, .bar.held button.link { background: none; border: 0; color: #3d2600; }
+  .bar.you button.hot, .bar.held button.hot { box-shadow: 0 0 0 2px #231700; }
+  .bar.you button:focus-visible, .bar.held button:focus-visible { outline-color: #231700; }
+  .bar.you input.note, .bar.held input.note { background: rgba(255, 255, 255, .85); color: #231700; border-color: rgba(35, 20, 0, .3); }
+  .bar.you input.note::placeholder, .bar.held input.note::placeholder { color: rgba(35, 20, 0, .5); }
+  .bar.you input.note:focus, .bar.held input.note:focus { outline-color: #231700; }
+  .bar.you pre, .bar.held pre { background: #1c1405; color: #ffe9c2; border-color: transparent; }
+  .bar.you .guide, .bar.held .guide { background: rgba(255, 255, 255, .45); color: #231700; }
+  .bar.you details, .bar.held details { border-top-color: rgba(35, 20, 0, .2); }
+  .bar.you summary, .bar.held summary { color: inherit; }
+  .bar.you .err, .bar.held .err { color: #7a1a12; }
+  .bar.you .kv, .bar.held .kv { color: inherit; }
+  .bar.you .kv span:nth-child(odd), .bar.held .kv span:nth-child(odd) { color: rgba(35, 20, 0, .7); }
 `;
 
 const el = (tag: string, text?: string, className?: string): HTMLElement => {
@@ -184,6 +220,8 @@ type Local = {
   countdown: { until: number; timer: number } | null;
   armedStop: number;
   copied: string;
+  // A skip waiting for its one-line why: Can't tell, or Skip on a by-hand case.
+  why: "cant-tell" | "hand-skip" | null;
 };
 
 export class CaptionBar {
@@ -220,6 +258,7 @@ export class CaptionBar {
     countdown: null,
     armedStop: 0,
     copied: "",
+    why: null,
   };
 
   constructor(private readonly act: (action: BarAction) => Promise<string | null> | string | null) {
@@ -329,6 +368,11 @@ export class CaptionBar {
       this.local.resultOpen = true;
       this.local.casesOpen = false;
     }
+    // A new run: the case list opens again when it was kept open.
+    if (phase && phase !== "done" && phase !== "stopped" && (!before || before === "done" || before === "stopped")) {
+      this.local.casesOpen = this.local.keepOpen;
+      this.local.resultOpen = false;
+    }
     if (!model) this.local.resultOpen = false;
     this.paint();
   }
@@ -363,6 +407,7 @@ export class CaptionBar {
       this.local.tucked = false;
       this.local.failNote = false;
       this.local.details = false;
+      this.local.why = null;
       if (key) this.local.flagOpen = false;
     }
     const ticking = live && (Boolean(state.pending) || state.paused || Boolean(this.local.countdown));
@@ -371,6 +416,10 @@ export class CaptionBar {
       clearInterval(this.ticker);
       this.ticker = 0;
     }
+    const yours = live && (Boolean(state.pending) || state.paused || state.phase === "waiting-next" || Boolean(this.local.countdown));
+    const held = live && state.pending?.kind === "check-failed";
+    this.bar.classList.toggle("held", held);
+    this.bar.classList.toggle("you", yours && !held);
     this.paintProgress(model);
     if (live) this.paintLines(model);
     else this.paintEnded(model);
@@ -456,6 +505,7 @@ export class CaptionBar {
     }
     this.left2.hidden = false;
     this.right2.hidden = false;
+    this.left2.classList.remove("lead");
     if (this.local.countdown) {
       this.left1.append(el("span", "❚❚ Paused", "pill"));
       this.caseLine(state, this.left1);
@@ -470,13 +520,20 @@ export class CaptionBar {
       this.caseLine(state, this.left1);
       if (stepping) {
         this.right1.append(button("Next step", "next", "go"), button("Play on", "play-on"), this.stopButton());
-        this.left2.textContent = "The run waits before each step. Next step runs one.";
+        this.right2.textContent = "The run waits before each step. Next step runs one.";
       } else {
         this.right1.append(button("▶ Resume", "resume", "go"), button("Next step", "next"), this.stopButton());
-        this.left2.textContent = pauseWords(state.pausedBy ?? null);
+        const before = state.plan[state.caseIndex - 1];
+        const verdict = before ? (state.results[before.id] ?? before.verdict) : null;
+        this.right2.textContent =
+          state.pausedBy === "between-cases" && before
+            ? `Case ${state.caseIndex} ${verdictWord(verdict).toLowerCase()}. Look around, then Resume.`
+            : pauseWords(state.pausedBy ?? null);
       }
+      // What runs next is what a person stepping through reads every time.
       const next = this.stepWords(model, true);
-      if (state.stepWhy) this.right2.append(el("span", next.kind, "kd"), document.createTextNode(next.text));
+      this.left2.classList.add("lead");
+      if (state.stepWhy) this.left2.append(el("span", next.kind, "kd"), document.createTextNode(next.text));
       return;
     }
     // The run drives.
@@ -536,6 +593,7 @@ export class CaptionBar {
       this.local.details,
       seen?.key === this.pendingKey(state) ? String(seen.value) : "",
       this.local.copied,
+      this.local.why ?? "",
     ].join("|");
     if (key === this.askKey && this.ask.childElementCount) return;
     this.askKey = key;
@@ -571,7 +629,27 @@ export class CaptionBar {
     return (this.root.querySelector("input.note") as HTMLInputElement | null)?.value.trim() ?? "";
   }
 
+  // A skip with no reason the author can act on asks for one line first.
+  private askWhy(label: string, placeholder: string, confirm: string, action: string): void {
+    this.ask.append(el("div", label, "lbl"));
+    const row = el("div", undefined, "acts");
+    const field = this.noteInput(placeholder, action);
+    const go = button(confirm, action, "go");
+    go.disabled = true;
+    field.addEventListener("input", () => {
+      go.disabled = !field.value.trim();
+    });
+    row.append(field, go, button("Back", "why-back"));
+    this.ask.append(row);
+    queueMicrotask(() => field.focus());
+  }
+
   private askVerdict(text: string, proposal: { verdict: string; reason?: string } | null): void {
+    if (this.local.why === "cant-tell") {
+      this.ask.append(el("div", text, "say"));
+      this.askWhy("Why can't you tell?", "One line: what's missing or unclear", "Skip: can't tell", "why-cant-tell");
+      return;
+    }
     if (this.local.tucked) {
       const row = el("div", undefined, "acts");
       row.append(button("✓ Yes, pass", "verdict-pass", "pass"), button("✗ No, fail", "verdict-fail", "fail"), button("Can't tell", "cant-tell"), button("Show the check ▴", "untuck", "link"));
@@ -592,6 +670,11 @@ export class CaptionBar {
   }
 
   private askByHand(item: PlanCase | undefined): void {
+    if (this.local.why === "hand-skip") {
+      this.ask.append(el("div", item?.intent ?? "Do what this case says.", "say"));
+      this.askWhy("Why skip this case?", "One line: what stopped you", "Skip this case", "why-hand-skip");
+      return;
+    }
     this.ask.append(el("div", "Do this by hand", "lbl"), el("div", item?.intent ?? "Do what this case says.", "say"));
     const checked = Boolean(item?.hasCheck);
     this.ask.append(
@@ -600,7 +683,7 @@ export class CaptionBar {
     const row = el("div", undefined, "acts");
     if (checked) row.append(button("Done", "done-by-hand", "go"));
     else row.append(button("✓ Done, it worked", "hand-pass", "pass"), button("✗ Done, it didn't", "hand-fail", "fail"));
-    row.append(button("Skip this case", "skip-case"));
+    row.append(button("Skip this case", "hand-skip"));
     if (!checked) row.append(this.noteInput("Add a note (optional)", ""));
     if (!this.model?.agent) row.append(button("Ask your agent to do it", "ask-agent", "link"));
     this.ask.append(row);
@@ -899,7 +982,23 @@ export class CaptionBar {
         this.command("verdict", withNote({ verdict: "fail" }));
         break;
       case "cant-tell":
-        this.command("skip-case", { note: note ? `Can't tell: ${note}` : "Can't tell from the screen." });
+        if (note) this.command("skip-case", { note: `Can't tell: ${note}` });
+        else this.local.why = "cant-tell";
+        break;
+      case "why-cant-tell":
+        if (!note) return this.showError("Say in one line why you can't tell.");
+        this.command("skip-case", { note: `Can't tell: ${note}` });
+        break;
+      case "hand-skip":
+        if (note) this.command("skip-case", { note });
+        else this.local.why = "hand-skip";
+        break;
+      case "why-hand-skip":
+        if (!note) return this.showError("Say in one line why you're skipping it.");
+        this.command("skip-case", { note });
+        break;
+      case "why-back":
+        this.local.why = null;
         break;
       case "hand-pass":
         this.command("verdict", withNote({ verdict: "pass" }));

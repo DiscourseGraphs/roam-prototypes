@@ -138,6 +138,10 @@ const CSS = `
     color: #4c4a5c; cursor: pointer; }
   .choice b { display: block; color: #1f1d29; font-size: 13px; margin-bottom: 1px; }
   .choice.on { border-color: #5541d2; background: #f1eeff; box-shadow: 0 0 0 1px #5541d2; }
+  button.tick { display: block; margin-top: 7px; background: none; border: 0; padding: 2px 0; font-weight: 500; color: #4c4a5c; text-align: left; }
+  button.tick:hover { background: none; color: #1f1d29; }
+  button.tick .box { color: #5541d2; font-size: 14px; }
+  .meta.held { margin-top: 8px; }
   .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
   .meta { color: #6b6880; font-size: 12px; }
   button { font: 650 12.5px/1.2 system-ui, -apple-system, "Segoe UI", sans-serif; color: #1f1d29; background: #fff; border: 1px solid #cfccdc;
@@ -192,14 +196,25 @@ const ROOM_CSS = `.rm-article-wrapper::after { content: ""; display: block; heig
 const BLOCK_MOUSE_EVENTS = ["mousedown", "mouseup", "click", "pointerdown"];
 
 const CHOICE_KEY = "proof-runner:run-choice";
+const PAUSE_BETWEEN_KEY = "proof-runner:pause-between";
 const CHOICES: Array<{ choice: RunChoice; label: string; hint: string }> = [
   { choice: "watch", label: "Watch it", hint: "Normal pace. Holds on a failure so you can look." },
   { choice: "result", label: "Just the result", hint: "Faster. Tries a failed step again, then moves on." },
   { choice: "step", label: "Step through", hint: "Waits before each step. Next step runs one." },
 ];
 
-// How a run plays, picked before Run and kept in this browser.
-export type RunSettings = { choice: RunChoice };
+// How a run plays, picked before Run and kept in this browser. Watch it can
+// also stop after each case, so a reviewer can look around before the next
+// case's first step clears the screen.
+export type RunSettings = { choice: RunChoice; pauseBetween: boolean };
+
+const readPauseBetween = (): boolean => {
+  try {
+    return localStorage.getItem(PAUSE_BETWEEN_KEY) === "1";
+  } catch {
+    return false;
+  }
+};
 
 const readChoice = (): RunChoice => {
   try {
@@ -265,6 +280,7 @@ export class ProofPanel {
   private flash = "";
   private flashTimer = 0;
   private choice: RunChoice = readChoice();
+  private pauseBetween = readPauseBetween();
   private readonly bar: CaptionBar;
   private readonly stage: Stage;
   private lastAsk = "";
@@ -302,7 +318,7 @@ export class ProofPanel {
   }
 
   runSettings(): RunSettings {
-    return { choice: this.choice };
+    return { choice: this.choice, pauseBetween: this.choice === "watch" && this.pauseBetween };
   }
 
   // Puts a run card in host. Roam re-renders blocks, so the same panel may be
@@ -460,7 +476,7 @@ export class ProofPanel {
     const driving = live && !state.paused && !state.pending && state.phase !== "waiting-next";
     this.stage.setLive(live);
     this.stage.setHolding(driving);
-    this.stage.setDriver(!live ? "none" : driving ? "run" : "you");
+    this.stage.setDriver(!live ? "none" : state.pending?.kind === "check-failed" ? "held" : driving ? "run" : "you");
     if (!live || (!state.executing && state.phase !== "dwell")) {
       this.stage.ring(null);
       this.bar.setDodge(false);
@@ -511,6 +527,16 @@ export class ProofPanel {
       this.choice = args.choice as RunChoice;
       try {
         localStorage.setItem(CHOICE_KEY, this.choice);
+      } catch {
+        // Kept for this tab only.
+      }
+      this.repaint();
+      return;
+    }
+    if (action === "pause-between") {
+      this.pauseBetween = !this.pauseBetween;
+      try {
+        localStorage.setItem(PAUSE_BETWEEN_KEY, this.pauseBetween ? "1" : "0");
       } catch {
         // Kept for this tab only.
       }
@@ -637,6 +663,13 @@ export class ProofPanel {
       choices.append(node);
     }
     box.append(choices);
+    if (this.choice === "watch") {
+      const tick = button("", "pause-between", { className: "tick" });
+      tick.setAttribute("role", "checkbox");
+      tick.setAttribute("aria-checked", String(this.pauseBetween));
+      tick.append(el("span", this.pauseBetween ? "☑" : "☐", "box"), document.createTextNode(" Pause after each case, so you can look around before the next one starts"));
+      box.append(tick);
+    }
     const row = el("div", undefined, "row");
     row.style.marginTop = "10px";
     const count = view.kit?.cases ?? 0;
@@ -648,8 +681,10 @@ export class ProofPanel {
     row.append(run);
     if (view.resumable && !state) row.append(button(`Resume from case ${view.resumable.caseIndex + 1}`, "resume"));
     if (state || view.resumable) row.append(button("Reset", "reset", { title: "Forget this tab's run of the kit" }));
-    row.append(el("span", view.blocked ? `Waiting on ${view.blocked.split(":")[0]}` : "Ctrl+Alt+Space pauses at any time", "meta"));
+    if (view.blocked) row.append(el("span", `Waiting on ${view.blocked.split(":")[0]}`, "meta"));
     box.append(row);
+    // Said before the first click is held, so it doesn't read as Roam freezing.
+    box.append(el("div", "While it runs, a click on the page pauses the run instead of landing. Scrolling still works, and Ctrl+Alt+Space pauses too.", "meta held"));
     return box;
   }
 

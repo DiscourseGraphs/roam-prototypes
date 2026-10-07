@@ -821,7 +821,7 @@ export class ProofRun {
     const baseline = kit.baseline ? this.env.baselines.get(kit.baseline) : null;
     const setup = [...inSessionSteps(fixturesFor(kit, this.env)), ...smokeSteps(baseline?.smoke ?? [])];
     const context = contextFor(kit.name, this.env, runId());
-    const choice = this.panel.runSettings().choice;
+    const { choice, pauseBetween } = this.panel.runSettings();
     const play = PLAY[choice];
     this.runInfo = { choice, startedAt: Date.now(), endedAt: null, setup };
     this.tries.clear();
@@ -849,7 +849,7 @@ export class ProofRun {
       setup,
       journal,
       executor,
-      mode: play.mode,
+      mode: pauseBetween ? "case" : play.mode,
       speed: play.speed,
       dwellMs: play.dwellMs,
       holdOnCheckFail: play.holdOnCheckFail,

@@ -130,9 +130,10 @@ export const seeAnswer = (seen: boolean): string =>
     ? "Then the step is out of date, not the PR. Skip this case: the result lists it as couldn't run, with your note."
     : "Then the PR may have removed or broken it. Fail this case and say what you see.";
 
+// Why the run paused, short enough to sit beside what runs next.
 export const pauseWords = (cause: PauseCause | null): string => {
-  if (cause === "page") return "You clicked the page, so the run paused before its next step. Your click didn't reach Roam.";
-  if (cause === "between-cases") return "Paused between cases.";
+  if (cause === "page") return "You clicked the page; your click didn't reach Roam.";
+  if (cause === "between-cases") return "Paused between cases. Look around, then Resume.";
   if (cause === "agent") return "Your agent paused the run.";
   return "You paused the run.";
 };
