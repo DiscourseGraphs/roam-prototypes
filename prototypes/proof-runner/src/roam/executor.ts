@@ -107,6 +107,26 @@ const inViewport = (element: Element): boolean => {
   return box.bottom > 0 && box.right > 0 && box.top < innerHeight && box.left < innerWidth;
 };
 
+// Whether a scrolling parent cuts off the element's center: a row low in a
+// long dialog is inside the window, but below the part of the dialog's
+// scrolling box that shows, which ends above the runner's bar.
+const cutOff = (element: Element): boolean => {
+  const point = center(element);
+  for (let parent = element.parentElement; parent; parent = parent.parentElement) {
+    const style = getComputedStyle(parent);
+    if (!/auto|scroll|hidden|clip/.test(`${style.overflowX} ${style.overflowY}`)) continue;
+    const box = parent.getBoundingClientRect();
+    if (point.x < box.left || point.x > box.right || point.y < box.top || point.y > box.bottom) return true;
+  }
+  return false;
+};
+
+// Into view in the window and every scrolling parent before acting on it, as
+// Playwright does.
+const reveal = (element: Element): void => {
+  if (!inViewport(element) || cutOff(element)) element.scrollIntoView({ block: "center", inline: "nearest" });
+};
+
 const isEnabled = (element: Element): boolean =>
   !(element as HTMLButtonElement).disabled && element.getAttribute("aria-disabled") !== "true";
 
@@ -120,7 +140,7 @@ const actionable = async (selector: string, timeout: number): Promise<Element> =
   for (;;) {
     const left = Math.max(0, deadline - Date.now());
     const element = await firstVisible(selector, left);
-    if (!inViewport(element)) element.scrollIntoView({ block: "center", inline: "nearest" });
+    reveal(element);
     const before = element.getBoundingClientRect();
     await frame();
     const after = element.getBoundingClientRect();
@@ -233,7 +253,7 @@ export const makePageExecutor = (options: PageExecutorOptions): Executor => {
       } else press(action.press.key);
     } else if ("hover" in action) {
       const element = await firstVisible(action.hover, timeout);
-      if (!inViewport(element)) element.scrollIntoView({ block: "center", inline: "nearest" });
+      reveal(element);
       await show(element, "Hover");
       moveTo(element);
     } else if ("scroll" in action) {
