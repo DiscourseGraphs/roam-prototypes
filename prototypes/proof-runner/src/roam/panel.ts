@@ -490,6 +490,10 @@ export class ProofPanel {
   }
 
   private async fromBar(action: BarAction): Promise<string | null> {
+    if (action.kind === "closed") {
+      if (this.view) this.syncRun(this.view);
+      return null;
+    }
     if (action.kind === "run") {
       this.stage.prime();
       return this.onAction({ kind: "run" });
@@ -758,6 +762,8 @@ export class ProofPanel {
   private scrollToNow(parts: Parts, view: PanelView): void {
     const state = view.machine;
     if (!state || !isLive(state) || state.caseIndex < 0 || !state.caseId) return;
+    // Never while the run drives: scrolling the page could move what a step is about to click.
+    if (!state.pending && !state.paused) return;
     const key = `${state.caseId}/${view.blocks.step ?? ""}/${state.phase === "step-failed"}`;
     if (key === parts.scrolledTo) return;
     const active = document.activeElement;

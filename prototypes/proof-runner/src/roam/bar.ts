@@ -49,7 +49,9 @@ export type BarAction =
   | { kind: "done-by-hand" }
   | { kind: "ask-agent" }
   | { kind: "edit-step" }
-  | { kind: "run" };
+  | { kind: "run" }
+  // The result was closed: the page's title and room for the bar go back.
+  | { kind: "closed" };
 
 const LIVE = new Set(["starting", "running", "dwell", "checking"]);
 const KEEP_OPEN_KEY = "proof-runner:cases-open";
@@ -955,7 +957,9 @@ export class CaptionBar {
         break;
       case "close":
         this.local.resultOpen = false;
-        break;
+        this.paint();
+        this.send({ kind: "closed" });
+        return;
       case "copy-result":
         if (model) await this.copy(resultMarkdown(model.state, model.facts, model.notTested), "result");
         return;
