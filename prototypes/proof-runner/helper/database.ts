@@ -228,9 +228,11 @@ export const SEED = {
     { id: 106039, url: "obsidian:defc3ac0ee76e0de", name: "Sid-Obsidian-test", platform: "Obsidian" },
     { id: 120237, url: "https://roamresearch.com/#/app/test-3-graph", name: "test-3-graph", platform: "Roam" },
   ] as SeedSpace[],
+  // Each author belongs to the space it publishes from, as a real publish
+  // leaves it: an importing graph reads relation authors through that access.
   authors: [
-    { id: 3, platform: "Roam", localId: "proof-author-roam", name: "Proof author (Roam)" },
-    { id: 106041, platform: "Obsidian", localId: "proof-author-obsidian", name: "Proof author (Obsidian)" },
+    { id: 3, platform: "Roam", localId: "proof-author-roam", name: "Proof author (Roam)", space: 66566 },
+    { id: 106041, platform: "Obsidian", localId: "proof-author-obsidian", name: "Proof author (Obsidian)", space: 106039 },
   ],
   group: { name: "eng-2329-demo", admin: 120237 },
   // Generated ids start past every fixed one.
@@ -262,6 +264,9 @@ export const seedSql = (): string => {
       `INSERT INTO group_membership (group_id, member_id, admin) VALUES (${group}, ${user}, ${space.id === SEED.group.admin}) ON CONFLICT (member_id, group_id) DO NOTHING;`,
       `INSERT INTO "SpaceAccess" (account_uid, space_id, permissions) VALUES (${group}, ${space.id}, 'partial') ON CONFLICT (account_uid, space_id) DO NOTHING;`,
     );
+  }
+  for (const author of SEED.authors) {
+    lines.push(`INSERT INTO "LocalAccess" (account_id, space_id) VALUES (${author.id}, ${author.space}) ON CONFLICT DO NOTHING;`);
   }
   lines.push("COMMIT;");
   return lines.join("\n");
