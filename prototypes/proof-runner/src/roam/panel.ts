@@ -196,11 +196,12 @@ const BLOCKS_CSS = `
   .proof-blocks .proof-case-note:empty { display: none; }
 `;
 
-// Room for the bar: the page's article ends far enough down that its last
-// lines scroll clear of the bar, and scrolling to an element keeps it above.
+// Roam lays out in the space above the runner: its body ends where the bar
+// (and any open sheet) begins, and Blueprint dialogs center in that space
+// instead of sliding under the bar. The bar keeps --proof-runner-h current.
 const ROOM_ID = "proof-runner-room";
-const ROOM_CSS = `.rm-article-wrapper::after { content: ""; display: block; height: 96px; }
-.roam-body-main { scroll-padding-bottom: 96px; }`;
+const ROOM_CSS = `.roam-body { height: calc(100vh - var(--proof-runner-h, 0px)) !important; }
+.bp3-overlay-scroll-container { bottom: var(--proof-runner-h, 0px) !important; }`;
 
 // Mouse events the case blocks keep to themselves once Roam has handled them,
 // so a click on a step edits the step, not the {{proof}} block around the

@@ -744,9 +744,9 @@
         },
         {
           "do": {
-            "click": ".bp3-dialog:visible .bp3-tab:has-text(\"Specification\") >> nth=0"
+            "click": ".bp3-dialog:visible .bp3-tab:has-text(\"Format\") >> nth=0"
           },
-          "why": "Open the Specification tab"
+          "why": "Open the Format tab, where the specification is"
         },
         {
           "do": {

@@ -255,6 +255,7 @@ export class CaptionBar {
   private waitingSince = 0;
   private lastPending = "";
   private dodging = false;
+  private readonly sizer: ResizeObserver | null;
   private readonly local: Local = {
     casesOpen: false,
     keepOpen: false,
@@ -330,6 +331,17 @@ export class CaptionBar {
       }
     });
     document.body.append(this.host);
+    // Roam makes room for the bar: its height goes to --proof-runner-h.
+    this.sizer = typeof ResizeObserver === "function" ? new ResizeObserver(() => this.publishHeight()) : null;
+    this.sizer?.observe(this.box);
+  }
+
+  // The space the runner takes at the bottom of the window. Not while the bar
+  // has stepped aside for one step: Roam would move under the step.
+  private publishHeight(): void {
+    if (this.dodging) return;
+    const height = this.host.hidden ? 0 : Math.ceil(this.box.getBoundingClientRect().height);
+    document.documentElement.style.setProperty("--proof-runner-h", `${height}px`);
   }
 
   get height(): number {
@@ -390,6 +402,8 @@ export class CaptionBar {
   }
 
   dispose(): void {
+    this.sizer?.disconnect();
+    document.documentElement.style.removeProperty("--proof-runner-h");
     clearInterval(this.ticker);
     clearTimeout(this.flashTimer);
     if (this.local.countdown) clearTimeout(this.local.countdown.timer);
@@ -410,6 +424,7 @@ export class CaptionBar {
     if (!model || !state || this.host.hidden) {
       clearInterval(this.ticker);
       this.ticker = 0;
+      this.publishHeight();
       return;
     }
     const key = this.pendingKey(state);
