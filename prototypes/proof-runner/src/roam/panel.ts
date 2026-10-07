@@ -57,6 +57,8 @@ export type RunInfo = {
   scope: "all" | "resume" | "failed";
   // How many cases didn't pass, for "Run the ones that didn't pass".
   rerun: number;
+  // Whether a failed check holds the screen until the person goes on.
+  stopOnFail: boolean;
   kinds: Record<string, StepKind[]>;
   startedAt: number;
   endedAt: number | null;
@@ -97,6 +99,7 @@ export type PanelAction =
   | { kind: "edit-step" }
   | { kind: "rerun" }
   | { kind: "open-kit" }
+  | { kind: "stop-on-fail"; on: boolean }
   | { kind: "command"; cmd: string; args?: Record<string, unknown> };
 
 const OWN_ACTIONS = new Set(["run", "resume", "reset", "rerun", "done-by-hand", "connect", "disconnect", "load", "reload", "check-database", "ask-agent"]);
@@ -207,6 +210,7 @@ const BLOCK_MOUSE_EVENTS = ["mousedown", "mouseup", "click", "pointerdown"];
 const CHOICE_KEY = "proof-runner:run-choice";
 const PAUSE_BETWEEN_KEY = "proof-runner:pause-between";
 const PACE_KEY = "proof-runner:pace";
+const STOP_ON_FAIL_KEY = "proof-runner:stop-on-fail";
 const PACES: Array<{ pace: number; label: string }> = [
   { pace: 0.5, label: "Slower" },
   { pace: 1, label: "Normal" },
@@ -221,7 +225,24 @@ const CHOICES: Array<{ choice: RunChoice; label: string; hint: string }> = [
 // How a run plays, picked before Run and kept in this browser. Watch it can
 // also stop after each case, so a reviewer can look around before the next
 // case's first step clears the screen.
-export type RunSettings = { choice: RunChoice; pauseBetween: boolean; pace: number };
+export type RunSettings = { choice: RunChoice; pauseBetween: boolean; pace: number; stopOnFail: boolean };
+
+const readFlag = (key: string, otherwise: boolean): boolean => {
+  try {
+    const saved = localStorage.getItem(key);
+    return saved === null ? otherwise : saved === "1";
+  } catch {
+    return otherwise;
+  }
+};
+
+const saveFlag = (key: string, on: boolean): void => {
+  try {
+    localStorage.setItem(key, on ? "1" : "0");
+  } catch {
+    // Kept for this tab only.
+  }
+};
 
 const readPace = (): number => {
   try {
@@ -307,6 +328,7 @@ export class ProofPanel {
   private choice: RunChoice = readChoice();
   private pauseBetween = readPauseBetween();
   private pace = readPace();
+  private stopOnFail = readFlag(STOP_ON_FAIL_KEY, true);
   private readonly bar: CaptionBar;
   private readonly stage: Stage;
   private lastAsk = "";
@@ -344,7 +366,12 @@ export class ProofPanel {
   }
 
   runSettings(): RunSettings {
-    return { choice: this.choice, pauseBetween: this.choice === "watch" && this.pauseBetween, pace: this.choice === "watch" ? this.pace : 1 };
+    return {
+      choice: this.choice,
+      pauseBetween: this.choice === "watch" && this.pauseBetween,
+      pace: this.choice === "watch" ? this.pace : 1,
+      stopOnFail: this.choice === "result" ? false : this.choice === "step" || this.stopOnFail,
+    };
   }
 
   // Puts a run card in host. Roam re-renders blocks, so the same panel may be
@@ -497,6 +524,7 @@ export class ProofPanel {
       choice: run.choice,
       scope: run.scope,
       rerun: run.rerun,
+      stopOnFail: run.stopOnFail,
       agent: view.agent,
       startedAt: run.startedAt,
       endedAt: run.endedAt,
@@ -543,6 +571,17 @@ export class ProofPanel {
       return this.onAction({ kind: action.kind });
     }
     if (action.kind === "ask-agent") return this.onAction({ kind: "ask-agent" });
+    // A setting changed in the bar during the run: kept for later runs too.
+    if (action.kind === "setting") {
+      if (action.key === "pauseBetween") {
+        this.pauseBetween = action.on;
+        saveFlag(PAUSE_BETWEEN_KEY, action.on);
+        return this.onAction({ kind: "command", cmd: "mode", args: { mode: action.on ? "case" : "auto" } });
+      }
+      this.stopOnFail = action.on;
+      saveFlag(STOP_ON_FAIL_KEY, action.on);
+      return this.onAction({ kind: "stop-on-fail", on: action.on });
+    }
     const result = await this.onAction(action);
     if (this.view) this.syncRun(this.view);
     return result;
@@ -568,6 +607,12 @@ export class ProofPanel {
       } catch {
         // Kept for this tab only.
       }
+      this.repaint();
+      return;
+    }
+    if (action === "stop-on-fail") {
+      this.stopOnFail = !this.stopOnFail;
+      saveFlag(STOP_ON_FAIL_KEY, this.stopOnFail);
       this.repaint();
       return;
     }
@@ -716,6 +761,11 @@ export class ProofPanel {
       tick.setAttribute("aria-checked", String(this.pauseBetween));
       tick.append(el("span", this.pauseBetween ? "☑" : "☐", "box"), document.createTextNode(" Pause after each case, so you can look around before the next one starts"));
       box.append(tick);
+      const stop = button("", "stop-on-fail", { className: "tick" });
+      stop.setAttribute("role", "checkbox");
+      stop.setAttribute("aria-checked", String(this.stopOnFail));
+      stop.append(el("span", this.stopOnFail ? "☑" : "☐", "box"), document.createTextNode(" Stop when a check fails, so you can look at the screen"));
+      box.append(stop);
     }
     const row = el("div", undefined, "row");
     row.style.marginTop = "10px";

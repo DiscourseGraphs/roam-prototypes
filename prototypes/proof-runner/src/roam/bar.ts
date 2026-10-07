@@ -41,6 +41,7 @@ export type BarModel = {
   scope: "all" | "resume" | "failed";
   // How many cases didn't pass, for "Run the ones that didn't pass".
   rerun: number;
+  stopOnFail: boolean;
   agent: boolean;
   startedAt: number;
   endedAt: number | null;
@@ -54,6 +55,8 @@ export type BarAction =
   | { kind: "run" }
   | { kind: "rerun" }
   | { kind: "open-kit" }
+  // A run setting changed during the run.
+  | { kind: "setting"; key: "pauseBetween" | "stopOnFail"; on: boolean }
   // The result was closed: the page's title and room for the bar go back.
   | { kind: "closed" };
 
@@ -111,6 +114,7 @@ const CSS = `
   button.am { background: #ffb547; border-color: transparent; color: #2a1a00; }
   button.hot { box-shadow: 0 0 0 2px #ffb547; }
   button.link { background: none; border: 0; padding: 2px 0; color: #c4bbff; text-decoration: underline; text-underline-offset: 3px; font-weight: 500; }
+  button.tick { background: none; border: 0; padding: 2px 4px; font-weight: 600; }
   .ask { padding: 0 18px 14px; display: grid; gap: 8px; }
   .ask:empty { display: none; }
   .lbl { font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; color: #a9a5bd; font-weight: 800; }
@@ -226,7 +230,7 @@ type Local = {
   armedStop: number;
   copied: string;
   // A skip waiting for its one-line why: Can't tell, or Skip on a by-hand case.
-  why: "cant-tell" | "hand-skip" | null;
+  why: "cant-tell" | "hand-skip" | "mark-pass" | null;
 };
 
 export class CaptionBar {
@@ -516,7 +520,11 @@ export class CaptionBar {
       this.caseLine(state, this.left1);
       this.right1.append(el("span", pending.kind === "check-failed" ? "Held so you can look" : `Waiting for you · ${waited}`, "wait"));
       if (pending.kind === "check-failed") {
-        this.right1.append(button(`Continue · ${Math.max(0, left - 1)} left`, "continue", "go"), button("Check again", "retry"));
+        this.right1.append(
+          button(`Continue · ${Math.max(0, left - 1)} left`, "continue", "go"),
+          button("Check again", "retry"),
+          button("✓ Mark it passed", "mark-pass", "pass"),
+        );
       }
       this.right1.append(button(this.local.casesOpen ? "Cases ▾" : "Cases ▴", "cases"));
       this.left2.hidden = true;
@@ -542,6 +550,10 @@ export class CaptionBar {
         this.right1.append(button("Next step", "next", "go"), button("Play on", "play-on"), this.stopButton());
         this.right2.textContent = "The run waits before each step. Next step runs one.";
       } else {
+        if (state.mode === "case") {
+          const tick = button("☑ Pause after each case", "toggle-pause-between", "tick", undefined, "Untick to stop pausing between cases");
+          this.right1.append(tick);
+        }
         this.right1.append(button("▶ Resume", "resume", "go"), button("Next step", "next"), this.stopButton());
         const before = state.plan[state.caseIndex - 1];
         const verdict = before ? (state.results[before.id] ?? before.verdict) : null;
@@ -727,11 +739,16 @@ export class CaptionBar {
     const key = this.pendingKey(state);
     this.ask.append(el("div", `Step ${state.stepIndex + 1} of ${Math.max(1, state.stepCount)} · ${state.stepWhy ?? ""}`, "lbl"), el("div", found.plain, "say"));
     const seen = this.local.seen?.key === key ? this.local.seen.value : null;
+    if (this.local.why === "mark-pass") {
+      this.askWhy("Why does it pass?", "One line: what you saw work", "✓ Mark it passed", "why-mark-pass");
+      return;
+    }
     const row = el("div", undefined, "acts");
     row.append(
       button("↻ Try again", "retry", seen === null ? "go" : ""),
       button("Skip this case", "skip-failed", seen === true ? "go" : ""),
       button("✗ Fail this case…", "fail-open", seen === false ? "fail" : ""),
+      button("✓ Mark it passed…", "mark-pass"),
     );
     this.ask.append(row);
     if (this.local.failNote) {
@@ -771,12 +788,18 @@ export class CaptionBar {
   }
 
   private askCheckFailed(item: PlanCase | undefined, error: string): void {
+    if (this.local.why === "mark-pass") {
+      this.askWhy("Why does it pass?", "One line: what you see on the screen", "✓ Mark it passed", "why-mark-pass");
+      return;
+    }
     const box = el("div", undefined, "kv");
     box.append(el("span", "Expected"), el("span", item?.checks ?? item?.judge ?? "The case's check to hold."), el("span", "Found"), el("span", error));
     this.ask.append(box);
     this.ask.append(el("div", "The run holds here so you can look at the screen, or open devtools. Continue records the failure and goes on.", "hint"));
     const row = el("div", undefined, "acts");
     row.append(this.noteInput("Add a note for the author (optional)", "continue"));
+    const stop = button(`${this.model?.stopOnFail ? "☑" : "☐"} Stop when a check fails`, "toggle-stop-on-fail", "tick", undefined, "Untick to record failed checks and go on");
+    row.append(stop);
     this.ask.append(row);
   }
 
@@ -1021,6 +1044,19 @@ export class CaptionBar {
         break;
       case "why-back":
         this.local.why = null;
+        break;
+      case "mark-pass":
+        this.local.why = "mark-pass";
+        break;
+      case "why-mark-pass":
+        if (!note) return this.showError("Say in one line why it passes.");
+        this.command("verdict", { verdict: "pass", note });
+        break;
+      case "toggle-stop-on-fail":
+        this.send({ kind: "setting", key: "stopOnFail", on: !this.model?.stopOnFail });
+        break;
+      case "toggle-pause-between":
+        this.send({ kind: "setting", key: "pauseBetween", on: false });
         break;
       case "hand-pass":
         this.command("verdict", withNote({ verdict: "pass" }));

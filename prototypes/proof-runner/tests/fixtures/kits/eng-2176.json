@@ -139,6 +139,20 @@
           }
         },
         {
+          "id": "run-query",
+          "why": "Press Query to run the index",
+          "do": {
+            "when": {
+              "js": "Boolean(Array.from(document.querySelectorAll('.bp3-dialog button')).find((button) => proof.visible(button) && button.textContent.trim() === 'Query'))",
+              "do": [
+                {
+                  "click": ".bp3-dialog:visible button:has-text(\"Query\") >> nth=0"
+                }
+              ]
+            }
+          }
+        },
+        {
           "id": "s6",
           "why": "Pause on the index",
           "source": "kit",
@@ -461,6 +475,20 @@
             "click": ".bp3-dialog:visible .bp3-tab:has-text(\"Index\") >> nth=0"
           },
           "why": "Open the Index tab, which runs the type's query"
+        },
+        {
+          "id": "run-query",
+          "why": "Press Query to run the index",
+          "do": {
+            "when": {
+              "js": "Boolean(Array.from(document.querySelectorAll('.bp3-dialog button')).find((button) => proof.visible(button) && button.textContent.trim() === 'Query'))",
+              "do": [
+                {
+                  "click": ".bp3-dialog:visible button:has-text(\"Query\") >> nth=0"
+                }
+              ]
+            }
+          }
         },
         {
           "do": {

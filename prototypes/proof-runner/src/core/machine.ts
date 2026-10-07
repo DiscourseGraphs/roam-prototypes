@@ -291,7 +291,7 @@ export class Machine {
   private tracks: Tracks = freshTracks();
   private lastFailure: { why: string; index: number; error: string } | null = null;
   private skipNote: string | undefined;
-  private checkResolution: "retry" | "continue" | null = null;
+  private checkResolution: "retry" | "continue" | "pass" | null = null;
   private checkNote: string | undefined;
 
   private wakers: Array<() => void> = [];
@@ -748,13 +748,16 @@ export class Machine {
       this.log("verdict-by-hand", { caseId: testCase.id, verdict, note });
       return this.state();
     }
-    if (verdict === "pass") {
-      throw new Error("Pass is only for a case that asks for your verdict. To end this case, fail it with a reason, or skip it.");
-    }
+    // After a failed check, the person can record the failure and go on,
+    // or pass the case on what they saw.
     if (pending?.kind === "check-failed") {
       this.checkNote = note;
-      this.checkResolution = "continue";
+      this.checkResolution = verdict === "pass" ? "pass" : "continue";
       return this.state();
+    }
+    // Pass also ends a case whose step didn't work but the person saw it work.
+    if (verdict === "pass" && pending?.kind !== "failure") {
+      throw new Error("Pass is only for a case that asks for your verdict, a failed check, or a step that didn't work. To end this case, fail it with a reason, or skip it.");
     }
     const failed = pending?.kind === "failure" ? this.lastFailure : null;
     this.forcedVerdict = {
@@ -1084,6 +1087,7 @@ export class Machine {
           this.tracks.retries += 1;
           continue;
         }
+        if (resolution === "pass") return { verdict: "pass", how: "marked", note: message, yourNote };
         if (resolution !== "continue") return null;
         return { verdict: "fail", how: "checked", note: message, yourNote };
       }

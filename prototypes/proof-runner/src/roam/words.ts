@@ -148,7 +148,7 @@ export const howWords = (verdict: string | null, record: CaseRecord | null): str
     case "judged":
       return record.byHand ? "done by hand, your call" : "your call";
     case "marked":
-      return "failed by you";
+      return verdict === "pass" ? "passed by you" : "failed by you";
     case "skipped":
       return "couldn't run";
     case "unchecked":

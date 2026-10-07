@@ -339,6 +339,8 @@ export class ProofRun {
   private runBlocks: RunBlocks | null = null;
   private lastRun: string | null = null;
   private runInfo: { choice: RunChoice; startedAt: number; endedAt: number | null; setup: Step[] } | null = null;
+  // Whether a failed check holds the screen; unticked, the run records it and goes on.
+  private stopOnFail = true;
   // Just the result: failed steps already tried again, and failures handled.
   private readonly tries = new Map<string, number>();
   private handled = new WeakSet<object>();
@@ -578,7 +580,16 @@ export class ProofRun {
       how: CHOICE_WORDS[info.choice],
       steps,
     };
-    return { choice: info.choice, scope: this.scope, kinds, startedAt: info.startedAt, endedAt: info.endedAt, facts, rerun: this.rerunIds().length };
+    return {
+      choice: info.choice,
+      scope: this.scope,
+      kinds,
+      startedAt: info.startedAt,
+      endedAt: info.endedAt,
+      facts,
+      rerun: this.rerunIds().length,
+      stopOnFail: this.stopOnFail,
+    };
   }
 
   // The block of the step running now (or failed), if it has one.
@@ -642,6 +653,11 @@ export class ProofRun {
       if (action.kind === "resume") return await this.start({ from: this.readRecord()?.nextCase ?? 0 });
       if (action.kind === "rerun") return await this.start({ only: this.rerunIds() });
       if (action.kind === "open-kit") return await this.openKitPage();
+      if (action.kind === "stop-on-fail") {
+        this.stopOnFail = action.on;
+        this.paint();
+        return null;
+      }
       if (action.kind === "load") {
         await this.env.confirmSetup();
         return this.env.buildError;
@@ -839,7 +855,8 @@ export class ProofRun {
     const baseline = kit.baseline ? this.env.baselines.get(kit.baseline) : null;
     const setup = [...inSessionSteps(fixturesFor(kit, this.env)), ...smokeSteps(baseline?.smoke ?? [])];
     const context = contextFor(kit.name, this.env, runId());
-    const { choice, pauseBetween, pace } = this.panel.runSettings();
+    const { choice, pauseBetween, pace, stopOnFail } = this.panel.runSettings();
+    this.stopOnFail = stopOnFail;
     const speed = choice === "watch" ? pace : PLAY[choice].speed;
     const play = PLAY[choice];
     this.runInfo = { choice, startedAt: Date.now(), endedAt: null, setup };
@@ -854,6 +871,7 @@ export class ProofRun {
         this.state = state;
         this.paint();
         this.unattended(state);
+        this.goOnAfterFail(state);
       },
       target: (element, verb) => this.panel.target(element, verb),
       // The ring shows longer when the run goes slower.
@@ -883,6 +901,16 @@ export class ProofRun {
       .then(() => this.finish(machine, source))
       .catch((error: unknown) => this.panel.showError(`The run stopped: ${describe(error)}`));
     return null;
+  }
+
+  // With Stop when a check fails unticked, a failed check is recorded and the run goes on.
+  private goOnAfterFail(state: MachineState): void {
+    const pending = state.pending;
+    if (this.stopOnFail || pending?.kind !== "check-failed" || this.handled.has(pending)) return;
+    this.handled.add(pending);
+    setTimeout(() => {
+      if (this.state?.pending === pending) this.command("continue");
+    }, 300);
   }
 
   // Just the result: a step that doesn't work is tried once more, then its

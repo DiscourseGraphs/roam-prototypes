@@ -10,7 +10,7 @@ const quoted = (text: string): string => `"${firstLine(text, 120)}"`;
 export const howText = (record: CaseRecord): string => {
   if (record.how === "checked") return record.verdict === "pass" ? "checked by the runner" : "the runner's check failed";
   if (record.how === "judged") return record.verdict === "pass" ? "passed on your call" : "failed on your call";
-  if (record.how === "marked") return "failed by you during the case";
+  if (record.how === "marked") return record.verdict === "pass" ? "passed by you" : "failed by you during the case";
   if (record.how === "skipped") return "skipped";
   return "no check, every step ran";
 };
