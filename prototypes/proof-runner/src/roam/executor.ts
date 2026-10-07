@@ -72,7 +72,16 @@ export const controlsOnPage = (): string[] => {
 // so kit js sees window.proof as proof. A promise is awaited.
 export const evaluate = async (js: string): Promise<unknown> => {
   const indirect = eval;
-  return await indirect(js);
+  try {
+    return await indirect(js);
+  } catch (error) {
+    // Keep the kind of error the kit's code hit (SyntaxError, TypeError…):
+    // the run keeps only the message, and the bar tells kit code by it.
+    if (error instanceof Error && error.name && error.name !== "Error" && !error.message.startsWith(`${error.name}:`)) {
+      error.message = `${error.name}: ${error.message}`;
+    }
+    throw error;
+  }
 };
 
 const waitUntil = async <T>(

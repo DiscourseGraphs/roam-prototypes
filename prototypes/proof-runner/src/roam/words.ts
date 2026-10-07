@@ -156,7 +156,7 @@ export const trouble = (error: string): Trouble => {
   if (/failed to fetch|networkerror|ECONNREFUSED|55321|PGRST|supabase/i.test(text)) {
     return { kind: "database", plain: "The proof database didn't answer.", looksFor: null };
   }
-  if (/\b(ReferenceError|TypeError|SyntaxError|RangeError)\b|is not defined|is not a function|Cannot read propert/.test(text)) {
+  if (/\b(ReferenceError|TypeError|SyntaxError|RangeError)\b|is not defined|is not a function|Cannot read propert|Unexpected (?:token|identifier|end of input|string|number)|Invalid or unexpected token|missing \) after/.test(text)) {
     return { kind: "kit-code", plain: `The kit's code hit an error: ${firstLine(text)}`, looksFor: null };
   }
   return { kind: "other", plain: firstLine(text), looksFor: null };

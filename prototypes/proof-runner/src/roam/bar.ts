@@ -875,7 +875,11 @@ export class CaptionBar {
     const box = el("div", undefined, "kv");
     box.append(el("span", "Expected"), el("span", plainText(item?.checks ?? item?.judge ?? "The case's check to hold.")), el("span", "Found"), el("span", checkWords(error)));
     this.ask.append(box);
-    this.ask.append(el("div", `${historyLine(item ? model.history[item.id] : null, "check")} The screen is yours: look, or use it, before you answer.`, "guide"));
+    const guide =
+      trouble(error).kind === "kit-code"
+        ? "That's a problem in the kit's own code, not the PR."
+        : `${historyLine(item ? model.history[item.id] : null, "check")} The screen is yours: look, or use it, before you answer.`;
+    this.ask.append(el("div", guide, "guide"));
     const row = this.endAnswers();
     row.append(button("↻ Try again", "retry"));
     this.ask.append(row);

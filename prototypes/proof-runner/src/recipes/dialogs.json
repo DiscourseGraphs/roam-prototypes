@@ -65,11 +65,11 @@
     ]
   },
   "ui.quiet": {
-    "why": "close dialogs, dismiss toasts and empty the right sidebar",
+    "why": "close menus and dialogs, dismiss toasts and empty the right sidebar",
     "steps": [
       {
         "do": {
-          "js": "(async () => { if (!(await proof.closeDialogs())) throw new Error('A dialog would not close: ' + proof.dialogText().slice(0, 120)); proof.toasts.clear(); await proof.sidebar.clearRight(); })()"
+          "js": "(async () => { await proof.closeMenus(); if (!(await proof.closeDialogs())) throw new Error('A dialog would not close: ' + proof.dialogText().slice(0, 120)); await proof.closeMenus(); proof.toasts.clear(); await proof.sidebar.clearRight(); })()"
         },
         "why": "clear the screen"
       }

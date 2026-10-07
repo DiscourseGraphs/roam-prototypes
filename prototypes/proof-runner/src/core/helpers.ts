@@ -119,6 +119,20 @@ export const HELPERS_INIT_SCRIPT = String.raw`(() => {
     return dialogs().length === 0;
   };
 
+  // Menus a step left open, such as DG's node search menu: a Blueprint
+  // popover in a portal that stays up after its block stops editing. Like a
+  // dialog, it closes on an Escape keydown that reaches its overlay.
+  const menus = () => Array.from(document.querySelectorAll(".bp3-portal .bp3-popover")).filter(visible);
+
+  const closeMenus = async () => {
+    for (let attempt = 0; attempt < 6 && menus().length; attempt += 1) {
+      const open = menus();
+      pressEscapeOn(open[open.length - 1]);
+      await sleep(200);
+    }
+    return menus().length === 0;
+  };
+
   // The proof database's REST API. Pass the key from the kit,
   // {{env.SUPABASE_SERVICE_ROLE_KEY}}, so it is filled in only while the step runs.
   const rest = async (path, options) => {
@@ -756,6 +770,8 @@ export const HELPERS_INIT_SCRIPT = String.raw`(() => {
       switchByLabel,
       setSwitch,
       closeDialogs,
+      menus,
+      closeMenus,
       rest,
       log,
       normalizeProps,
