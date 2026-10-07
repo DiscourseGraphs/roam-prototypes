@@ -1,6 +1,5 @@
-import type { MachineState, PlanCase } from "../core/machine";
+import { SPEEDS, type MachineState, type PlanCase } from "../core/machine";
 import {
-  KIND_WORDS,
   bugReport,
   bulletVerdict,
   clock,
@@ -94,6 +93,7 @@ const CSS = `
   .fc { color: #a9a5bd; overflow: hidden; text-overflow: ellipsis; }
   .fc b { color: #9fe7bd; font-weight: 650; }
   .fc b.soon { color: #ffcf85; }
+  .pace { color: #c7c3d8; font-variant-numeric: tabular-nums; min-width: 2.2em; text-align: center; }
   .wait { color: #ffcf85; font-weight: 700; }
   .pill { display: inline-flex; align-items: center; gap: 6px; font-size: 10.5px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase;
     padding: 3px 8px; border-radius: 4px; white-space: nowrap; flex: none; background: rgba(255, 181, 71, .17); color: #ffcf85; }
@@ -468,6 +468,8 @@ export class CaptionBar {
     into.append(el("span", setup ? `Getting the graph ready · step ${state.stepIndex + 1} of ${Math.max(1, state.stepCount)}` : (item?.title ?? state.caseTitle ?? ""), "ct"));
   }
 
+  // The step's own words, with where it is in the case. A case's hold is
+  // when to look: a judge line beside a code check says what for.
   private stepWords(model: BarModel, ahead = false): { kind: string; text: string } {
     const state = model.state;
     const setup = state.caseIndex < 0;
@@ -475,10 +477,20 @@ export class CaptionBar {
     const kind: StepKind = kinds[state.stepIndex] ?? "doing";
     const item = state.plan[state.caseIndex];
     let text = state.stepWhy ?? "";
-    // A case's hold is when to look: a judge line beside a code check says what for.
-    if (kind === "look" && item?.judge && item.hasCheck && !setup) text = item.judge;
-    const count = state.stepCount ? ` · ${state.stepIndex + 1} of ${state.stepCount}` : "";
-    return { kind: `${ahead ? "Next · " : ""}${KIND_WORDS[kind]}${ahead ? "" : count}`, text };
+    if (kind === "look" && item?.judge && item.hasCheck && !setup) text = `Look for: ${item.judge}`;
+    const count = state.stepCount ? `Step ${state.stepIndex + 1} of ${state.stepCount}` : "Step";
+    return { kind: ahead ? "Next" : count, text };
+  }
+
+  private paceButtons(state: MachineState): HTMLElement[] {
+    const label = state.speed === 0.5 ? "½×" : state.speed === 0.25 ? "¼×" : `${state.speed}×`;
+    const pace = el("span", label, "pace");
+    pace.title = "How fast the run goes";
+    return [
+      button("−", "slower", "", undefined, "Slower"),
+      pace,
+      button("+", "faster", "", undefined, "Faster"),
+    ];
   }
 
   private paintLines(model: BarModel): void {
@@ -553,7 +565,7 @@ export class CaptionBar {
     const ahead = forecastWords(forecast(state, model.msPerStep), state.caseIndex);
     const fc = el("span", undefined, "fc");
     fc.append(el("b", ahead.you, ahead.soon ? "soon" : ""), document.createTextNode(` · ${ahead.left}`));
-    this.right1.append(fc, button("❚❚ Pause", "pause", "", undefined, "Pause (Ctrl+Alt+Space)"));
+    this.right1.append(fc, ...this.paceButtons(state), button("❚❚ Pause", "pause", "", undefined, "Pause (Ctrl+Alt+Space)"));
     if (state.caseIndex >= 0) this.right1.append(button("⚑ Flag", "flag", this.local.flagOpen ? "hot" : ""));
     this.right1.append(button(this.local.casesOpen ? "Cases ▾" : "Cases ▴", "cases"));
     if (state.phase === "checking") {
@@ -809,8 +821,7 @@ export class CaptionBar {
         item.steps.forEach((step, at) => {
           const done = at < state.stepIndex;
           const now = at === state.stepIndex;
-          const kind = KIND_WORDS[kinds[at] ?? "doing"];
-          steps.append(el("div", `${done ? "✓" : now ? "▶" : "○"} ${step.why}${kind === "Doing" ? "" : ` (${kind.toLowerCase()})`}`, done ? "d" : now ? "n" : ""));
+          steps.append(el("div", `${done ? "✓" : now ? "▶" : "○"} ${step.why}`, done ? "d" : now ? "n" : ""));
         });
         sheet.append(steps);
       }
@@ -1053,6 +1064,15 @@ export class CaptionBar {
         if (this.local.countdown) clearTimeout(this.local.countdown.timer);
         this.local.countdown = null;
         break;
+      case "slower":
+      case "faster": {
+        const speed = state?.speed ?? 1;
+        const at = SPEEDS.findIndex((value) => value >= speed);
+        const index = at < 0 ? SPEEDS.length - 1 : at;
+        const next = SPEEDS[action === "faster" ? Math.min(SPEEDS.length - 1, index + 1) : Math.max(0, index - 1)];
+        this.command("speed", { speed: next });
+        break;
+      }
       case "play-on":
         this.command("mode", { mode: "auto" });
         break;

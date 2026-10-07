@@ -313,7 +313,7 @@ const AGENT_CONTROLS = ["pause", "resume", "next", "skip-step", "skip-case", "st
 // can be looked at; Just the result runs faster and doesn't wait for anyone
 // on a step that doesn't work; Step through waits before every step.
 const PLAY: Record<RunChoice, { mode: "auto" | "step"; speed: number; dwellMs: number; holdOnCheckFail: boolean; leadMs: number }> = {
-  watch: { mode: "auto", speed: 1, dwellMs: 700, holdOnCheckFail: true, leadMs: 250 },
+  watch: { mode: "auto", speed: 1, dwellMs: 1200, holdOnCheckFail: true, leadMs: 300 },
   result: { mode: "auto", speed: 2, dwellMs: 300, holdOnCheckFail: false, leadMs: 0 },
   step: { mode: "step", speed: 1, dwellMs: 700, holdOnCheckFail: true, leadMs: 0 },
 };
@@ -839,7 +839,8 @@ export class ProofRun {
     const baseline = kit.baseline ? this.env.baselines.get(kit.baseline) : null;
     const setup = [...inSessionSteps(fixturesFor(kit, this.env)), ...smokeSteps(baseline?.smoke ?? [])];
     const context = contextFor(kit.name, this.env, runId());
-    const { choice, pauseBetween } = this.panel.runSettings();
+    const { choice, pauseBetween, pace } = this.panel.runSettings();
+    const speed = choice === "watch" ? pace : PLAY[choice].speed;
     const play = PLAY[choice];
     this.runInfo = { choice, startedAt: Date.now(), endedAt: null, setup };
     this.tries.clear();
@@ -855,7 +856,8 @@ export class ProofRun {
         this.unattended(state);
       },
       target: (element, verb) => this.panel.target(element, verb),
-      lead: () => play.leadMs,
+      // The ring shows longer when the run goes slower.
+      lead: () => play.leadMs / Math.max(0.25, this.state?.speed ?? speed),
       palette: (label) => this.env.palette.run(label),
       fill: (value) => fillIn(value, context),
       note: (text) => {
@@ -868,7 +870,7 @@ export class ProofRun {
       journal,
       executor,
       mode: pauseBetween ? "case" : play.mode,
-      speed: play.speed,
+      speed,
       dwellMs: play.dwellMs,
       holdOnCheckFail: play.holdOnCheckFail,
       expand: makeExpander(this.env.recipes),

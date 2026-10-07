@@ -144,6 +144,9 @@ const CSS = `
     color: #4c4a5c; cursor: pointer; }
   .choice b { display: block; color: #1f1d29; font-size: 13px; margin-bottom: 1px; }
   .choice.on { border-color: #5541d2; background: #f1eeff; box-shadow: 0 0 0 1px #5541d2; }
+  .paces { margin-top: 8px; }
+  button.pick { font-weight: 500; padding: 3px 9px; }
+  button.pick.on { background: #5541d2; border-color: #5541d2; color: #fff; }
   button.tick { display: block; margin-top: 7px; background: none; border: 0; padding: 2px 0; font-weight: 500; color: #4c4a5c; text-align: left; }
   button.tick:hover { background: none; color: #1f1d29; }
   button.tick .box { color: #5541d2; font-size: 14px; }
@@ -203,6 +206,12 @@ const BLOCK_MOUSE_EVENTS = ["mousedown", "mouseup", "click", "pointerdown"];
 
 const CHOICE_KEY = "proof-runner:run-choice";
 const PAUSE_BETWEEN_KEY = "proof-runner:pause-between";
+const PACE_KEY = "proof-runner:pace";
+const PACES: Array<{ pace: number; label: string }> = [
+  { pace: 0.5, label: "Slower" },
+  { pace: 1, label: "Normal" },
+  { pace: 2, label: "Faster" },
+];
 const CHOICES: Array<{ choice: RunChoice; label: string; hint: string }> = [
   { choice: "watch", label: "Watch it", hint: "Normal pace. Holds on a failure so you can look." },
   { choice: "result", label: "Just the result", hint: "Faster. Tries a failed step again, then moves on." },
@@ -212,7 +221,17 @@ const CHOICES: Array<{ choice: RunChoice; label: string; hint: string }> = [
 // How a run plays, picked before Run and kept in this browser. Watch it can
 // also stop after each case, so a reviewer can look around before the next
 // case's first step clears the screen.
-export type RunSettings = { choice: RunChoice; pauseBetween: boolean };
+export type RunSettings = { choice: RunChoice; pauseBetween: boolean; pace: number };
+
+const readPace = (): number => {
+  try {
+    const saved = Number(localStorage.getItem(PACE_KEY));
+    if (PACES.some((item) => item.pace === saved)) return saved;
+  } catch {
+    // No storage here: the default.
+  }
+  return 1;
+};
 
 const readPauseBetween = (): boolean => {
   try {
@@ -287,6 +306,7 @@ export class ProofPanel {
   private flashTimer = 0;
   private choice: RunChoice = readChoice();
   private pauseBetween = readPauseBetween();
+  private pace = readPace();
   private readonly bar: CaptionBar;
   private readonly stage: Stage;
   private lastAsk = "";
@@ -324,7 +344,7 @@ export class ProofPanel {
   }
 
   runSettings(): RunSettings {
-    return { choice: this.choice, pauseBetween: this.choice === "watch" && this.pauseBetween };
+    return { choice: this.choice, pauseBetween: this.choice === "watch" && this.pauseBetween, pace: this.choice === "watch" ? this.pace : 1 };
   }
 
   // Puts a run card in host. Roam re-renders blocks, so the same panel may be
@@ -541,6 +561,16 @@ export class ProofPanel {
       this.repaint();
       return;
     }
+    if (action === "pace") {
+      this.pace = Number(args.pace);
+      try {
+        localStorage.setItem(PACE_KEY, String(this.pace));
+      } catch {
+        // Kept for this tab only.
+      }
+      this.repaint();
+      return;
+    }
     if (action === "pause-between") {
       this.pauseBetween = !this.pauseBetween;
       try {
@@ -672,6 +702,15 @@ export class ProofPanel {
     }
     box.append(choices);
     if (this.choice === "watch") {
+      const paces = el("div", undefined, "row paces");
+      paces.append(el("span", "Pace", "lbl"));
+      for (const item of PACES) {
+        const pick = button(item.label, "pace", { className: `pick${this.pace === item.pace ? " on" : ""}`, args: { pace: item.pace } });
+        pick.setAttribute("aria-pressed", String(this.pace === item.pace));
+        paces.append(pick);
+      }
+      paces.append(el("span", "You can also change it during the run, in the bar.", "meta"));
+      box.append(paces);
       const tick = button("", "pause-between", { className: "tick" });
       tick.setAttribute("role", "checkbox");
       tick.setAttribute("aria-checked", String(this.pauseBetween));
