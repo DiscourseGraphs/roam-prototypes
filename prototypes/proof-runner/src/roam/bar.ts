@@ -39,6 +39,9 @@ export type BarModel = {
   // The block of the step that failed, when the page has one.
   stepUid: string | null;
   choice: RunChoice;
+  scope: "all" | "resume" | "failed";
+  // How many cases didn't pass, for "Run the ones that didn't pass".
+  rerun: number;
   agent: boolean;
   startedAt: number;
   endedAt: number | null;
@@ -50,6 +53,8 @@ export type BarAction =
   | { kind: "ask-agent" }
   | { kind: "edit-step" }
   | { kind: "run" }
+  | { kind: "rerun" }
+  | { kind: "open-kit" }
   // The result was closed: the page's title and room for the bar go back.
   | { kind: "closed" };
 
@@ -264,6 +269,9 @@ export class CaptionBar {
   constructor(private readonly act: (action: BarAction) => Promise<string | null> | string | null) {
     this.host = document.createElement("div");
     this.host.className = "proof-runner-bar";
+    // The input layer looks through anything marked so: the bar never counts
+    // as covering what a step clicks.
+    this.host.setAttribute("data-proof-runner-ui", "");
     this.host.style.cssText = "position: fixed; left: 0; right: 0; bottom: 0; z-index: 2147483645;";
     this.host.hidden = true;
     this.root = this.host.attachShadow({ mode: "open" });
@@ -889,6 +897,7 @@ export class CaptionBar {
     const retries = plan.reduce((sum, item) => sum + (item.record?.retries ?? 0), 0);
     const how = [
       model.choice === "watch" ? "watched" : model.choice === "step" ? "stepped through" : "just the result",
+      model.scope === "failed" ? "re-ran the cases that didn't pass" : model.scope === "resume" ? "resumed" : "",
       duration(took).replace(/^about /, ""),
       skippedSteps ? `${skippedSteps} step${skippedSteps === 1 ? "" : "s"} skipped` : "no steps skipped",
       retries ? `${retries} tr${retries === 1 ? "y" : "ies"} again` : "",
@@ -902,9 +911,11 @@ export class CaptionBar {
     acts.append(
       button(this.local.copied === "result" ? "Copied" : "Copy result for the PR", "copy-result", "go"),
       button("Run again", "run"),
-      button("Close", "close"),
     );
+    if (model.rerun) acts.append(button(`Run the ${model.rerun === 1 ? "one" : model.rerun} that didn't pass`, "rerun"));
+    acts.append(button("Open the kit page", "open-kit"), button("Close", "close"));
     sheet.append(acts);
+    if (model.rerun) sheet.append(el("div", "Cases can build on earlier ones. If one fails on its own but passed in a full run, run them all.", "meta"));
   }
 
   private foldList(summary: string, lines: string[]): HTMLElement {
@@ -1074,8 +1085,12 @@ export class CaptionBar {
         this.send({ kind: "edit-step" });
         break;
       case "run":
+      case "rerun":
         this.local.resultOpen = false;
-        this.send({ kind: "run" });
+        this.send({ kind: action });
+        break;
+      case "open-kit":
+        this.send({ kind: "open-kit" });
         break;
       default:
         this.command(action, args);

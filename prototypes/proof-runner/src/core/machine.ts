@@ -808,6 +808,8 @@ export class Machine {
     if (this.forcedVerdict) outcome = this.forcedVerdict;
     else if (!finished) outcome = this.skipped();
     else outcome = await this.judge(testCase);
+    // A Fail pressed while the check ran wins over the check.
+    if (this.forcedVerdict) outcome = this.forcedVerdict;
     if (!outcome) {
       if (this.stopRequested) {
         this.log("case-interrupted", { caseId: testCase.id });

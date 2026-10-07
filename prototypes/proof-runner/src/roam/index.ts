@@ -33,6 +33,7 @@ import {
 } from "./roam";
 import {
   CONNECTING_FLAGS,
+  HANDLER_SETUP_COMMAND,
   ProofRun,
   applyBeforeLoad,
   contextFor,
@@ -84,6 +85,7 @@ const SETTINGS_CSS = `.rm-settings-tabs > .bp3-tab-list { max-width: 260px; }
 // How long Connect waits for this machine's helper: the proof database
 // takes about 20 s to start, longer when it migrates.
 const CONNECT_TIMEOUT_MS = 120_000;
+const NO_ANSWER_HINT_MS = 8_000;
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -447,16 +449,24 @@ class ProofRunner {
   private async connect(): Promise<void> {
     if (this.connecting) return;
     this.connecting = true;
-    this.env.helper = { state: "connecting", detail: "Starting the proof database and the embeddings stub on this machine (about 20 s)…" };
+    this.env.helper = { state: "connecting", detail: "Starting the proof database and the embeddings stub on this machine, usually about 20 s…" };
     this.env.buildError = null;
     this.refreshAll();
     openLink(CONNECT_LINK);
     try {
-      const deadline = Date.now() + CONNECT_TIMEOUT_MS;
+      const started = Date.now();
+      const deadline = started + CONNECT_TIMEOUT_MS;
       let server = await localServer();
       while ((!server || server.starting) && Date.now() < deadline) {
         await sleep(1500);
         server = await localServer();
+        if (!server && Date.now() - started > NO_ANSWER_HINT_MS) {
+          this.env.helper = {
+            state: "connecting",
+            detail: `Nothing on this machine has answered yet (${Math.round((Date.now() - started) / 1000)} s). If your browser asked to open a dg-proof link, allow it. If this machine isn't set up, ${HANDLER_SETUP_COMMAND}`,
+          };
+          this.refreshAll();
+        }
       }
       this.env.helper = server
         ? helperState(server)
@@ -664,7 +674,7 @@ class ProofRunner {
       checkDatabase: () => this.checkDatabase(),
       palette: () => this.env.palette.labels(),
       status: async (uid?: string) => this.runFor(await this.rootFor(uid)).status(),
-      run: async (uid?: string, from = 0) => this.runFor(await this.rootFor(uid)).start(from),
+      run: async (uid?: string, from = 0) => this.runFor(await this.rootFor(uid)).start(from > 0 ? { from } : {}),
       command: async (cmd: string, args: Record<string, unknown> = {}, uid?: string) =>
         this.runFor(await this.rootFor(uid)).command(cmd, args),
       kitFromPage: async (uid: string) => {

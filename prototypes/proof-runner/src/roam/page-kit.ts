@@ -619,6 +619,6 @@ export const aboutText = (kit: Kit): string => {
   const what = [kit.target?.pr ? `PR ${kit.target.pr}` : null, ticket].filter(Boolean).join(", ") || kit.name;
   const parts = [`${ABOUT_START}${what}${kit.title ? `: ${kit.title}` : ""}.`];
   if (kit.claim) parts.push(`What it proves: ${kit.claim}`);
-  parts.push("To test it, press Run in the panel below. The panel shows what each case checks and which button to press next.");
+  parts.push("To test it, press Run in the card below. During the run, a bar at the bottom of the window says what each case checks and asks when it needs you.");
   return parts.join(" ");
 };

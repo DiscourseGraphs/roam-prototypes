@@ -138,6 +138,13 @@ export const pageUid = async (title: string): Promise<string | null> => {
   return rows.length ? String(rows[0][0]) : null;
 };
 
+const PAGE_OF = "[:find ?page :in $ ?uid :where [?b :block/uid ?uid] [?b :block/page ?p] [?p :block/uid ?page]]";
+
+export const pageOf = async (uid: string): Promise<string | null> => {
+  const rows = await roam().data.async.q(PAGE_OF, uid);
+  return rows.length ? String(rows[0][0]) : null;
+};
+
 export const ensurePage = async (title: string): Promise<string> => {
   const existing = await pageUid(title);
   if (existing) return existing;

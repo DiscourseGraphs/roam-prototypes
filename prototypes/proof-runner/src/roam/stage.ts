@@ -53,6 +53,7 @@ export class Stage {
     if (!this.frame) {
       const frame = document.createElement("div");
       frame.className = "proof-runner-frame";
+      frame.setAttribute("data-proof-runner-ui", "");
       frame.setAttribute("aria-hidden", "true");
       frame.style.cssText = `position: fixed; inset: 0; z-index: ${TOP}; pointer-events: none; box-sizing: border-box; border: 3px solid ${RUN_COLOR};`;
       document.body.append(frame);
@@ -73,6 +74,7 @@ export class Stage {
     if (!this.ringBox) {
       const box = document.createElement("div");
       box.className = "proof-runner-ring";
+      box.setAttribute("data-proof-runner-ui", "");
       box.setAttribute("aria-hidden", "true");
       box.style.cssText = `position: fixed; z-index: ${TOP}; pointer-events: none; box-sizing: border-box; border: 2px solid ${RUN_COLOR}; border-radius: 7px; box-shadow: 0 0 0 4px rgba(108, 88, 240, .2); transition: left .12s, top .12s, width .12s, height .12s;`;
       const tag = document.createElement("div");

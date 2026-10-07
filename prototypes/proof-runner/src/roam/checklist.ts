@@ -38,9 +38,8 @@ export type ChecklistInput = {
   beforeLoad: FixtureOutcome[];
   // A database session, for a kit that needs one; null otherwise.
   database: DatabaseState | null;
-  // Approved cases with only an intent, and whether a run waits on steps or a fix.
+  // Approved cases with only an intent.
   byHand: number;
-  waitingOnAgent: boolean;
   agentSeen: boolean;
 };
 
@@ -71,7 +70,7 @@ export const checklist = (input: ChecklistInput): CheckItem[] => {
       id: "setup",
       label: "Graph setup",
       state: "needs-you",
-      detail: `Before ${input.setup.branch} loads, this kit sets up the graph:`,
+      detail: `Before ${input.setup.branch} loads, this kit changes this graph as listed. The changes stay in the graph, so run kits in a test graph.`,
       list: [...input.setup.apply, ...input.setup.skip.map((why) => `skipped: ${why}`)],
       action: { kind: "load", label: "Set up and load" },
     });
@@ -123,7 +122,7 @@ export const checklist = (input: ChecklistInput): CheckItem[] => {
       items.push({ ...database, state: "blocked", detail: input.database.detail, action: { kind: "check-database", label: "Check again" } });
     }
   }
-  if (input.byHand > 0 || input.waitingOnAgent) {
+  if (input.byHand > 0) {
     items.push(
       input.agentSeen
         ? { id: "agent", label: "Agent", state: "ok", detail: "Your agent is connected." }
@@ -131,9 +130,7 @@ export const checklist = (input: ChecklistInput): CheckItem[] => {
             id: "agent",
             label: "Agent",
             state: "optional",
-            detail: input.waitingOnAgent
-              ? "The run is waiting on steps or a fix, which your agent can write."
-              : `${input.byHand} case${input.byHand === 1 ? " is" : "s are"} done by hand; your agent can write the steps instead.`,
+            detail: `${input.byHand} case${input.byHand === 1 ? " is" : "s are"} done by hand. Your agent can write the steps instead.`,
             action: { kind: "ask-agent", label: "Ask your agent" },
           },
     );
@@ -143,6 +140,6 @@ export const checklist = (input: ChecklistInput): CheckItem[] => {
 
 // Why Run is off: the first line, the agent's aside, that isn't met.
 export const runBlocked = (items: CheckItem[]): string | null => {
-  const open = items.find((item) => item.id !== "agent" && item.state !== "ok");
+  const open = items.find((item) => item.id !== "agent" && item.state !== "ok" && item.state !== "optional");
   return open ? `${open.label}: ${open.detail}` : null;
 };

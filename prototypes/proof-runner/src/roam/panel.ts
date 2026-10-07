@@ -53,6 +53,10 @@ export type KitSummary = {
 // What a run carries beside the machine's state.
 export type RunInfo = {
   choice: RunChoice;
+  // Every case, a resume, or only the cases that didn't pass last time.
+  scope: "all" | "resume" | "failed";
+  // How many cases didn't pass, for "Run the ones that didn't pass".
+  rerun: number;
   kinds: Record<string, StepKind[]>;
   startedAt: number;
   endedAt: number | null;
@@ -91,9 +95,11 @@ export type PanelAction =
   | { kind: "restart" }
   | { kind: "done-by-hand" }
   | { kind: "edit-step" }
+  | { kind: "rerun" }
+  | { kind: "open-kit" }
   | { kind: "command"; cmd: string; args?: Record<string, unknown> };
 
-const OWN_ACTIONS = new Set(["run", "resume", "reset", "done-by-hand", "connect", "disconnect", "load", "reload", "check-database", "ask-agent"]);
+const OWN_ACTIONS = new Set(["run", "resume", "reset", "rerun", "done-by-hand", "connect", "disconnect", "load", "reload", "check-database", "ask-agent"]);
 
 const CSS = `
   :host { all: initial; display: block; }
@@ -469,6 +475,8 @@ export class ProofPanel {
       notTested: view.kit?.notTested.length ?? 0,
       stepUid: view.blocks.step,
       choice: run.choice,
+      scope: run.scope,
+      rerun: run.rerun,
       agent: view.agent,
       startedAt: run.startedAt,
       endedAt: run.endedAt,
@@ -510,9 +518,9 @@ export class ProofPanel {
       if (this.view) this.syncRun(this.view);
       return null;
     }
-    if (action.kind === "run") {
+    if (action.kind === "run" || action.kind === "rerun") {
       this.stage.prime();
-      return this.onAction({ kind: "run" });
+      return this.onAction({ kind: action.kind });
     }
     if (action.kind === "ask-agent") return this.onAction({ kind: "ask-agent" });
     const result = await this.onAction(action);
@@ -548,7 +556,7 @@ export class ProofPanel {
       if (this.view) this.syncRun(this.view);
       return;
     }
-    if (action === "run" || action === "resume") this.stage.prime();
+    if (action === "run" || action === "resume" || action === "rerun") this.stage.prime();
     const request: PanelAction | null = OWN_ACTIONS.has(action) ? ({ kind: action } as PanelAction) : { kind: "command", cmd: action, args };
     const error = await this.onAction(request);
     if (error) this.showError(error);
@@ -680,6 +688,8 @@ export class ProofPanel {
     run.disabled = Boolean(view.error) || Boolean(view.blocked);
     row.append(run);
     if (view.resumable && !state) row.append(button(`Resume from case ${view.resumable.caseIndex + 1}`, "resume"));
+    const rerun = view.run?.rerun ?? 0;
+    if (state && rerun) row.append(button(`Run the ${rerun === 1 ? "one" : rerun} that didn't pass`, "rerun"));
     if (state || view.resumable) row.append(button("Reset", "reset", { title: "Forget this tab's run of the kit" }));
     if (view.blocked) row.append(el("span", `Waiting on ${view.blocked.split(":")[0]}`, "meta"));
     box.append(row);

@@ -47,6 +47,9 @@ const mouseInit = (
 
 const fire = (target: EventTarget, event: Event): boolean => target.dispatchEvent(event);
 
+export const hitAt = (x: number, y: number): Element | null =>
+  document.elementsFromPoint(x, y).find((element) => !element.closest("[data-proof-runner-ui]")) ?? null;
+
 const pointer = (
   type: string,
   target: Element,
@@ -72,25 +75,20 @@ const mouse = (
   return fire(target, new MouseEvent(type, { ...mouseInit(point, button, extra), bubbles }));
 };
 
-const RUNNER_UI = ".proof-runner-bar, .proof-runner-frame, .proof-runner-ring";
-
 // The element a real click at this point would land on, if the target or
 // something inside it; otherwise what covers it.
 export const hitTarget = (element: Element, point: Point): { target: Element; covered: Element | null } => {
-  const hit = document.elementFromPoint(point.x, point.y);
+  const hit = hitAt(point.x, point.y);
   if (!hit || hit === element || element.contains(hit)) return { target: hit ?? element, covered: null };
   // A label or a portal-hosted part of the element still counts.
   if (hit.contains(element)) return { target: element, covered: null };
-  // The runner's own caption bar never counts as covering a step's target:
-  // the step's events go to the element, and the bar steps aside to show it.
-  if (hit.closest?.(RUNNER_UI)) return { target: element, covered: null };
   return { target: element, covered: hit };
 };
 
 let hovered: Element | null = null;
 
 export const moveTo = (element: Element, point: Point = center(element)): void => {
-  const target = document.elementFromPoint(point.x, point.y) ?? element;
+  const target = hitAt(point.x, point.y) ?? element;
   const into = element.contains(target) ? target : element;
   if (hovered && hovered !== into && hovered.isConnected) {
     pointer("pointerout", hovered, point, "left");
@@ -303,13 +301,13 @@ export const drag = async (from: Element, to: Element, toPosition?: Point): Prom
       x: start.x + ((end.x - start.x) * index) / 6,
       y: start.y + ((end.y - start.y) * index) / 6,
     };
-    const over = document.elementFromPoint(point.x, point.y) ?? to;
+    const over = hitAt(point.x, point.y) ?? to;
     pointer("pointermove", over, point, "left", { buttons: 1 });
     mouse("mousemove", over, point, "left", { buttons: 1 });
     fire(over, new DragEvent(index === 1 ? "dragenter" : "dragover", dragInit(point)));
     await sleep(30);
   }
-  const target = document.elementFromPoint(end.x, end.y) ?? to;
+  const target = hitAt(end.x, end.y) ?? to;
   fire(target, new DragEvent("dragover", dragInit(end)));
   fire(target, new DragEvent("drop", dragInit(end)));
   pointer("pointerup", target, end, "left");

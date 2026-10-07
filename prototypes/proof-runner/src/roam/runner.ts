@@ -2,7 +2,7 @@ import { CONNECTING_FLAGS, connectingFlagsAfter } from "../core/database";
 import { inSessionSteps, smokeSteps } from "../core/fixtures";
 import { Journal } from "../core/journal";
 import { decisionOf, runnableKit, validateSteps, type Baseline, type Fixture, type Kit, type Step, type Verdict } from "../core/kit";
-import { Machine, type MachineState } from "../core/machine";
+import { Machine, type CaseRecord, type MachineState, type PlanCase } from "../core/machine";
 import { makeExpander, type RecipeBook } from "../core/recipes";
 import { fill, fillDeep, type TemplateContext } from "../core/template";
 import type { ExtensionAPI, FetchedBuild, LoadedBuild, PaletteRegistry } from "./build-loader";
@@ -10,7 +10,8 @@ import { checklist, runBlocked, type CheckItem } from "./checklist";
 import { evaluate, makePageExecutor } from "./executor";
 import { blockText, pageKit, rootConfig, runBlocksFor, stepBlockOf, stepFromBlock, type BlockNode, type PageKit, type RunBlocks } from "./page-kit";
 import { ProofPanel, type KitSummary, type PanelAction, type PanelView, type RunChoice, type RunInfo } from "./panel";
-import { createTree, readTree, roam, userName } from "./roam";
+import { logLine } from "./outcome";
+import { createTree, pageOf, readTree, roam, userName } from "./roam";
 import type { DatabaseState, FixtureOutcome, HelperState } from "./status";
 import { doneWhen, kindOfStep, type RunFacts, type StepKind } from "./words";
 
@@ -76,8 +77,8 @@ export type RunnerEnv = {
 type RunRecord = {
   kitHash: string;
   nextCase: number;
-  results: Record<string, Verdict>;
-  notes: Record<string, string>;
+  // Each judged case's record: its verdict, how it was reached, and its notes.
+  records: Record<string, CaseRecord>;
   commit: string | null;
 };
 
@@ -94,8 +95,6 @@ const pad = (value: number): string => String(value).padStart(2, "0");
 
 const stamp = (date: Date): string =>
   `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
-
-const ICON: Record<Verdict, string> = { pass: "✓", fail: "✗", skip: "⏭" };
 
 const MISSING_KEY = /\{\{env\.([A-Z0-9_]+)\}\}/;
 
@@ -332,8 +331,11 @@ export class ProofRun {
   // Settles once the run going now has finished and logged itself.
   private finished: Promise<void> = Promise.resolve();
   private state: MachineState | null = null;
-  private earlier: { results: Record<string, Verdict>; notes: Record<string, string> } | null = null;
-  private offset = 0;
+  // Records of the kit's cases this run doesn't play (a resume, or a rerun
+  // of the ones that didn't pass), and which this run does.
+  private carried: Record<string, CaseRecord> = {};
+  private runIds: string[] | null = null;
+  private scope: RunInfo["scope"] = "all";
   private runBlocks: RunBlocks | null = null;
   private lastRun: string | null = null;
   private runInfo: { choice: RunChoice; startedAt: number; endedAt: number | null; setup: Step[] } | null = null;
@@ -355,7 +357,7 @@ export class ProofRun {
   private readRecord(): RunRecord | null {
     try {
       const record = JSON.parse(localStorage.getItem(this.storageKey) ?? "null") as RunRecord | null;
-      return this.runKit && recordFits(record, hash(this.runKit), this.env.build?.commit ?? null) ? record : null;
+      return this.runKit && record?.records && recordFits(record, hash(this.runKit), this.env.build?.commit ?? null) ? record : null;
     } catch {
       return null;
     }
@@ -415,13 +417,7 @@ export class ProofRun {
     if (outside.length) {
       notes.push(`Needs a dev machine for ${outside.map((fixture) => fixture.id).join(", ")} (database or shell work); those fixtures are skipped here.`);
     }
-    const proposed = kit.cases.filter((testCase) => decisionOf(testCase) === "proposed").length;
-    const rejected = kit.cases.filter((testCase) => decisionOf(testCase) === "rejected").length;
-    if (proposed || rejected) {
-      notes.push(
-        `Run plays the approved cases. ${[proposed ? `${proposed} proposed ${proposed === 1 ? "case waits" : "cases wait"} for a decision` : "", rejected ? `${rejected} rejected ${rejected === 1 ? "case stays" : "cases stay"} on the page with ${rejected === 1 ? "its" : "their"} reason` : ""].filter(Boolean).join("; ")}.`,
-      );
-    }
+    // Proposed and rejected cases: the run card's folds say how many, and why.
     return notes;
   }
 
@@ -452,7 +448,6 @@ export class ProofRun {
     const loaded = env.build;
     const setup = env.setup?.rootUid === this.rootUid ? env.setup : null;
     const status = this.buildStatus();
-    const pending = this.state?.pending;
     return checklist({
       version: env.version,
       requested: Boolean(config.build || config.pr),
@@ -473,7 +468,6 @@ export class ProofRun {
       beforeLoad: mine ? env.beforeLoad.filter((item) => item.outcome !== "skipped") : [],
       database: mine && this.needsDatabase() ? (env.database ?? { state: "checking", detail: "" }) : null,
       byHand: this.runKit?.cases.filter((item) => item.steps.length === 0 && item.intent).length ?? 0,
-      waitingOnAgent: pending?.kind === "steps" || pending?.kind === "failure",
       agentSeen: Date.now() - env.agentSeenAt < AGENT_FRESH_MS,
     });
   }
@@ -482,30 +476,7 @@ export class ProofRun {
     const config = this.tree ? rootConfig(this.tree) : { build: null, pr: null, kit: null };
     const record = this.state ? null : this.readRecord();
     const items = this.checklist();
-    const merged = this.state
-      ? {
-          ...this.state,
-          caseIndex: this.state.caseIndex + this.offset,
-          caseCount: this.state.caseCount + this.offset,
-          results: { ...(this.earlier?.results ?? {}), ...this.state.results },
-          plan: [
-            ...(this.runKit?.cases.slice(0, this.offset) ?? []).map((item) => ({
-              id: item.id,
-              title: item.title,
-              proves: item.proves ?? null,
-              checks: item.checks ?? null,
-              judge: item.expect?.text ?? null,
-              hasCheck: Boolean(item.expect?.js),
-              intent: item.intent ?? null,
-              verdict: this.earlier?.results[item.id] ?? null,
-              note: this.earlier?.notes[item.id] ?? null,
-              record: null,
-              steps: item.steps.map((step) => ({ why: step.why, source: step.source ?? "kit" })),
-            })),
-            ...this.state.plan,
-          ],
-        }
-      : null;
+    const merged = this.state ? this.mergedState(this.state) : null;
     return {
       title: this.kit?.kit.title ?? this.kit?.kit.name ?? config.kit ?? "Proof kit",
       kitName: this.kit?.kit.name ?? null,
@@ -517,13 +488,43 @@ export class ProofRun {
       blocks: { cases: this.runBlocks?.cases ?? {}, step: this.stepUid() },
       resumable:
         record && record.nextCase > 0 && record.nextCase < (this.runKit?.cases.length ?? 0)
-          ? { caseIndex: record.nextCase, results: record.results }
+          ? { caseIndex: record.nextCase, results: Object.fromEntries(Object.entries(record.records).map(([id, item]) => [id, item.verdict])) }
           : null,
       lastRun: this.lastRun,
       kit: this.kitSummary(),
       run: this.runView(),
       agent: Date.now() - this.env.agentSeenAt < AGENT_FRESH_MS,
     };
+  }
+
+  // The run's state across every case of the kit, in kit order: the cases
+  // this run doesn't play show the records carried from before.
+  private mergedState(state: MachineState): MachineState {
+    const all = this.runKit?.cases ?? [];
+    if (all.length === state.plan.length && all.every((item, index) => state.plan[index]?.id === item.id)) return state;
+    const playing = new Map(state.plan.map((item) => [item.id, item]));
+    const plan = all.map((item): PlanCase => {
+      const live = playing.get(item.id);
+      if (live) return live;
+      const record = this.carried[item.id] ?? null;
+      return {
+        id: item.id,
+        title: item.title,
+        proves: item.proves ?? null,
+        checks: item.checks ?? null,
+        judge: item.expect?.text ?? null,
+        hasCheck: Boolean(item.expect?.js),
+        intent: item.intent ?? null,
+        verdict: record?.verdict ?? null,
+        note: record ? [record.note, record.yourNote].filter(Boolean).join(" · ") || null : null,
+        record,
+        steps: item.steps.map((step) => ({ why: step.why, source: step.source ?? "kit" })),
+      };
+    });
+    const current = state.plan[state.caseIndex];
+    const caseIndex = current ? plan.findIndex((item) => item.id === current.id) : state.caseIndex < 0 ? -1 : plan.length;
+    const carried = Object.fromEntries(Object.entries(this.carried).map(([id, record]) => [id, record.verdict]));
+    return { ...state, plan, caseIndex, caseCount: plan.length, results: { ...carried, ...state.results } };
   }
 
   // What the page says about its kit, for the run card before Run.
@@ -577,7 +578,7 @@ export class ProofRun {
       how: CHOICE_WORDS[info.choice],
       steps,
     };
-    return { choice: info.choice, kinds, startedAt: info.startedAt, endedAt: info.endedAt, facts };
+    return { choice: info.choice, scope: this.scope, kinds, startedAt: info.startedAt, endedAt: info.endedAt, facts, rerun: this.rerunIds().length };
   }
 
   // The block of the step running now (or failed), if it has one.
@@ -636,9 +637,11 @@ export class ProofRun {
 
   private async act(action: PanelAction): Promise<string | null> {
     try {
-      if (action.kind === "run") return await this.start(0);
+      if (action.kind === "run") return await this.start();
       if (action.kind === "restart") return await this.restart();
-      if (action.kind === "resume") return await this.start(this.readRecord()?.nextCase ?? 0);
+      if (action.kind === "resume") return await this.start({ from: this.readRecord()?.nextCase ?? 0 });
+      if (action.kind === "rerun") return await this.start({ only: this.rerunIds() });
+      if (action.kind === "open-kit") return await this.openKitPage();
       if (action.kind === "load") {
         await this.env.confirmSetup();
         return this.env.buildError;
@@ -670,8 +673,9 @@ export class ProofRun {
         this.writeRecord(null);
         this.state = null;
         this.machine = null;
-        this.earlier = null;
-        this.offset = 0;
+        this.carried = {};
+        this.runIds = null;
+        this.scope = "all";
         this.runBlocks = null;
         this.paint();
         return null;
@@ -759,7 +763,7 @@ export class ProofRun {
   // Run controls an agent may use; verdicts and allowing js stay with the
   // person at the panel.
   async agentControl(action: string): Promise<string | null> {
-    if (action === "run") return this.start(0);
+    if (action === "run") return this.start();
     if (action === "retry") return this.retry();
     if (!AGENT_CONTROLS.includes(action)) return `Not a run control: ${action}. Use one of run, ${AGENT_CONTROLS.join(", ")}, retry.`;
     return this.command(action, {}, "socket");
@@ -802,8 +806,9 @@ export class ProofRun {
     return this.command("steps", { caseId: pending.caseId, how: "replace-failed", steps: [fix], by: "model" }, "socket");
   }
 
-  // Starts a run at case `from` (0 for all of them).
-  async start(from: number): Promise<string | null> {
+  // Starts a run: every case, the cases from `from` on (a resume), or only
+  // those listed (the ones that didn't pass).
+  async start(options: { from?: number; only?: string[] } = {}): Promise<string | null> {
     if (this.running) return "A run is already going.";
     await this.refresh();
     if (!this.kit) return this.error ?? "This page has no kit.";
@@ -814,10 +819,23 @@ export class ProofRun {
     if (source.cases.length === 0) return "No case on this page is approved yet, so there's nothing to run.";
     const kit: Kit = JSON.parse(JSON.stringify(source)) as Kit;
     this.runBlocks = this.tree ? runBlocksFor(this.kit, this.tree, source) : null;
-    const record = from > 0 ? this.readRecord() : null;
-    this.offset = from > 0 ? Math.min(from, kit.cases.length - 1) : 0;
-    kit.cases = kit.cases.slice(this.offset);
-    this.earlier = record ? { results: record.results, notes: record.notes } : null;
+    const earlier = this.bestRecords();
+    if (options.only) {
+      const only = new Set(options.only);
+      kit.cases = kit.cases.filter((item) => only.has(item.id));
+      this.carried = Object.fromEntries(Object.entries(earlier).filter(([id]) => !only.has(id)));
+      this.scope = "failed";
+    } else if (options.from) {
+      const record = this.readRecord();
+      kit.cases = kit.cases.slice(Math.min(options.from, kit.cases.length - 1));
+      this.carried = record ? { ...record.records } : {};
+      this.scope = "resume";
+    } else {
+      this.carried = {};
+      this.scope = "all";
+    }
+    if (kit.cases.length === 0) return "There's no case to run.";
+    this.runIds = kit.cases.map((item) => item.id);
     const baseline = kit.baseline ? this.env.baselines.get(kit.baseline) : null;
     const setup = [...inSessionSteps(fixturesFor(kit, this.env)), ...smokeSteps(baseline?.smoke ?? [])];
     const context = contextFor(kit.name, this.env, runId());
@@ -827,7 +845,7 @@ export class ProofRun {
     this.tries.clear();
     this.handled = new WeakSet();
     const journal = new Journal((event) => {
-      if (event.type === "case-end" && this.machine) this.saveProgress(source);
+      if (event.type === "case-end" && this.machine) this.saveProgress(source, this.machine);
     });
     const executor = makePageExecutor({
       timeout: this.env.timeout,
@@ -888,29 +906,45 @@ export class ProofRun {
       this.machine?.stop();
       await this.finished;
     }
-    return this.start(0);
+    return this.start();
   }
 
   stop(): void {
     this.machine?.stop();
   }
 
-  private results(machine: Machine): { results: Record<string, Verdict>; notes: Record<string, string> } {
-    return {
-      results: { ...(this.earlier?.results ?? {}), ...machine.results },
-      notes: { ...(this.earlier?.notes ?? {}), ...machine.notes },
-    };
+  private records(machine: Machine): Record<string, CaseRecord> {
+    return { ...this.carried, ...machine.caseRecords };
   }
 
-  private saveProgress(source: Kit): void {
-    if (!this.machine) return;
-    const { results, notes } = this.results(this.machine);
-    const judged = source.cases.findIndex((item) => !(item.id in results));
+  // Every case's latest record: carried from before, or from the run just played.
+  private bestRecords(): Record<string, CaseRecord> {
+    const records: Record<string, CaseRecord> = { ...this.carried };
+    for (const item of this.state?.plan ?? []) if (item.record) records[item.id] = item.record;
+    return records;
+  }
+
+  // The cases that didn't pass: what "Run the ones that didn't pass" plays.
+  private rerunIds(): string[] {
+    const records = this.bestRecords();
+    return (this.runKit?.cases ?? []).filter((item) => records[item.id] && records[item.id].verdict !== "pass").map((item) => item.id);
+  }
+
+  // A run ends wherever its last case left Roam; this goes back to the kit.
+  private async openKitPage(): Promise<string | null> {
+    const uid = await pageOf(this.rootUid);
+    if (!uid) return "Couldn't find the kit's page.";
+    await roam().ui.mainWindow.openPage({ page: { uid } });
+    return null;
+  }
+
+  private saveProgress(source: Kit, machine: Machine): void {
+    const records = this.records(machine);
+    const next = source.cases.findIndex((item) => !(item.id in records));
     this.writeRecord({
       kitHash: hash(source),
-      nextCase: judged < 0 ? source.cases.length : judged,
-      results,
-      notes,
+      nextCase: next < 0 ? source.cases.length : next,
+      records,
       commit: this.env.build?.commit ?? null,
     });
   }
@@ -919,21 +953,20 @@ export class ProofRun {
     if (this.runInfo) this.runInfo.endedAt = Date.now();
     this.state = machine.state();
     const stopped = this.state.phase === "stopped";
-    const { results, notes } = this.results(machine);
-    if (!stopped) {
-      this.writeRecord(null);
-      try {
-        await this.writeRunLog(source, results, notes);
-      } catch (error) {
-        this.panel.showError(`Couldn't write the run log: ${describe(error)}`);
-      }
+    const records = this.records(machine);
+    if (stopped) this.saveProgress(source, machine);
+    else this.writeRecord(null);
+    try {
+      await this.writeRunLog(source, records, Object.keys(machine.caseRecords), stopped);
+    } catch (error) {
+      this.panel.showError(`Couldn't write the run log: ${describe(error)}`);
     }
     await this.refresh();
   }
 
   // A line in the {{proof}} block's runs list, newest first, with a child
   // per case, so whoever opens the page sees what passed on which build.
-  private async writeRunLog(source: Kit, results: Record<string, Verdict>, notes: Record<string, string>): Promise<void> {
+  private async writeRunLog(source: Kit, records: Record<string, CaseRecord>, ran: string[], stopped: boolean): Promise<void> {
     const tree = await readTree(this.rootUid);
     if (!tree) return;
     let runs = (tree.children ?? []).find((child) => child.string.trim().toLowerCase() === "runs");
@@ -945,10 +978,19 @@ export class ProofRun {
       });
       runs = { uid, string: "runs" };
     }
-    const passed = source.cases.filter((item) => results[item.id] === "pass").length;
+    const count = (verdict: Verdict): number => source.cases.filter((item) => records[item.id]?.verdict === verdict).length;
+    const passed = count("pass");
+    const failed = count("fail");
+    const skipped = count("skip");
+    const notRun = source.cases.length - passed - failed - skipped;
     const build = this.env.build;
     const summary = [
       `${passed === source.cases.length ? "✓" : "✗"} ${passed}/${source.cases.length} passed`,
+      failed ? `${failed} failed` : null,
+      skipped ? `${skipped} couldn't run` : null,
+      notRun ? `${notRun} not run` : null,
+      stopped ? "stopped" : null,
+      this.scope === "failed" ? "re-ran the cases that didn't pass" : this.scope === "resume" ? "resumed" : null,
       build ? `build ${build.branch}${build.commit ? ` @ ${build.commit.slice(0, 7)}` : ""}` : "no build loaded",
       this.runInfo ? CHOICE_WORDS[this.runInfo.choice] : "",
       stamp(new Date()),
@@ -956,17 +998,16 @@ export class ProofRun {
     ]
       .filter(Boolean)
       .join(" · ");
+    const fresh = new Set(ran);
     await createTree(
       runs.uid as string,
       [
         {
           string: summary,
           open: false,
-          children: source.cases.map((item) => {
-            const verdict = results[item.id];
-            const note = notes[item.id] ? `: ${notes[item.id].split("\n")[0].slice(0, 300)}` : "";
-            return { string: `${verdict ? ICON[verdict] : "○"} ${item.title}${note}` };
-          }),
+          children: source.cases.map((item) => ({
+            string: logLine(item.title, records[item.id] ?? null, Boolean(records[item.id]) && !fresh.has(item.id)),
+          })),
         },
       ],
       0,
