@@ -250,6 +250,14 @@ const paintTesting = (box: HTMLElement, state: MachineState | null): void => {
   box.append(list);
 };
 
+// A press on the panel's buttons leaves focus where the run put it: Roam
+// stops editing a block that loses focus, and takes its menus with it.
+const keepFocus = (event: Event): void => {
+  if (event.type === "mousedown" && (event.target as Element | null)?.closest?.("button")) event.preventDefault();
+};
+
+const PERSON_PAUSED = "Paused: you used the page while the run was using it. Press Resume when you're done.";
+
 const ICONS: Record<string, string> = { pass: "✓", fail: "✗", skip: "⏭" };
 const MARKS: Record<CheckItem["state"], string> = { ok: "✓", working: "…", waiting: "○", "needs-you": "▶", blocked: "✗", optional: "○" };
 const MODES = ["auto", "step", "case"];
@@ -333,6 +341,7 @@ export class ProofPanel {
   private readonly armed: Record<Armed, number> = { stop: 0, restart: 0 };
   private bar: Bar | null = null;
   private barTimer = 0;
+  private watchingPerson = false;
 
   constructor(
     private readonly onAction: (action: PanelAction) => Promise<string | null> | string | null,
@@ -394,6 +403,7 @@ export class ProofPanel {
     for (const type of ["mousedown", "mouseup", "click", "keydown", "keyup", "keypress", "pointerdown"]) {
       panel.addEventListener(type, (event) => {
         if (event.target instanceof Node && parts.blocks.contains(event.target)) return;
+        keepFocus(event);
         event.stopPropagation();
       });
     }
@@ -421,6 +431,7 @@ export class ProofPanel {
     for (const parts of this.mounts.values()) this.unmountCases(parts);
     this.mounts.clear();
     this.dropBar();
+    this.watchPerson(false);
   }
 
   get attached(): number {
@@ -522,8 +533,10 @@ export class ProofPanel {
     const state = this.view?.machine;
     if (!state || state.phase === "done" || state.phase === "stopped") {
       this.dropBar();
+      this.watchPerson(false);
       return;
     }
+    this.watchPerson(true);
     if (!this.barTimer) this.barTimer = window.setInterval(() => this.placeBar(false), 400);
     if (this.panelInView()) {
       if (this.bar) this.bar.host.hidden = true;
@@ -576,7 +589,10 @@ export class ProofPanel {
     panel.append(head, bar.now, bar.testing, bar.pending, bar.controls, bar.err);
     root.append(style, panel);
     for (const type of ["mousedown", "mouseup", "click", "keydown", "keyup", "keypress", "pointerdown"]) {
-      panel.addEventListener(type, (event) => event.stopPropagation());
+      panel.addEventListener(type, (event) => {
+        keepFocus(event);
+        event.stopPropagation();
+      });
     }
     panel.addEventListener("click", (event) => {
       const target = (event.target as Element | null)?.closest?.("button") as HTMLButtonElement | null;
@@ -609,6 +625,27 @@ export class ProofPanel {
     // Like the live HUD: while a step runs, clicks go through to the page,
     // so the bar never covers what a step clicks.
     bar.panel.style.pointerEvents = state?.executing ? "none" : "";
+  }
+
+  // A person using the page while steps run: the runner's own input is
+  // synthetic, so a trusted click, or Escape, is someone else. The run pauses
+  // instead of racing them. Keys stay theirs: the palette's Pause needs them.
+  private readonly onPersonInput = (event: Event): void => {
+    const state = this.view?.machine;
+    if (!event.isTrusted || !state || state.paused || !["starting", "running", "dwell"].includes(state.phase)) return;
+    if (event instanceof KeyboardEvent && event.key !== "Escape") return;
+    const ours = [...this.mounts.keys(), this.bar?.host];
+    if (event.composedPath().some((node) => ours.includes(node as HTMLElement))) return;
+    void Promise.resolve(this.onAction({ kind: "command", cmd: "pause" })).then((error) => this.showError(error ?? PERSON_PAUSED));
+  };
+
+  private watchPerson(on: boolean): void {
+    if (on === this.watchingPerson) return;
+    this.watchingPerson = on;
+    for (const type of ["mousedown", "keydown"]) {
+      if (on) document.addEventListener(type, this.onPersonInput, true);
+      else document.removeEventListener(type, this.onPersonInput, true);
+    }
   }
 
   private dropBar(): void {
