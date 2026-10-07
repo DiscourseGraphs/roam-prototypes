@@ -146,16 +146,6 @@ export const ensurePage = async (title: string): Promise<string> => {
   return uid;
 };
 
-export const sidebarShows = (uid: string): boolean =>
-  roam()
-    .ui.rightSidebar.getWindows()
-    .some((window) => window["block-uid"] === uid);
-
-export const openInSidebar = async (uid: string): Promise<void> => {
-  if (!sidebarShows(uid)) await roam().ui.rightSidebar.addWindow({ window: { type: "block", "block-uid": uid } });
-  await roam().ui.rightSidebar.open();
-};
-
 // [?display-name] for a user uid.
 const USER_NAME = "[:find ?name :in $ ?uid :where [?u :user/uid ?uid] [?u :user/display-name ?name]]";
 

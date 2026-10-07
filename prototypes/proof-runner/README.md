@@ -2,8 +2,9 @@
 
 Test a Discourse Graph pull request from a Roam page. A page holds a proof kit: the PR it proves,
 and its cases written as steps a person could follow. Open the page and the runner loads that PR's
-CI build of the Discourse Graph extension, opens the kit pinned in the right sidebar, and plays the
-cases when you press **Run**.
+CI build of the Discourse Graph extension, shows the kit's run panel on the page, and plays the
+cases when you press **Run**. When the panel is out of view during a run, a floating bar carries the
+status and the controls.
 
 ## Status
 

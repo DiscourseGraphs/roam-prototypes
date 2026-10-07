@@ -25,13 +25,11 @@ import {
   createTree,
   ensurePage,
   graphName,
-  openInSidebar,
   openUid,
   pageUid,
   proofRootFor,
   readTree,
   roam,
-  sidebarShows,
 } from "./roam";
 import {
   CONNECTING_FLAGS,
@@ -159,9 +157,8 @@ class ProofRunner {
   private observer: MutationObserver | null = null;
   private loading: Promise<void> | null = null;
   private readonly onHashChange = (): void => {
-    void this.loadIfNone().then(async () => this.openSidebarFor(await openUid()));
+    void this.loadIfNone().then(async () => this.tidyPage(await openUid()));
   };
-  private originalProof: ProofWindow["proof"];
   // The proof database's keys from the local server, for kits' {{env.X}};
   // held in this tab only.
   private localKeys: Record<string, string> = {};
@@ -533,22 +530,22 @@ class ProofRunner {
     await run.refresh();
   }
 
-  // Opens the open page's kit in the right sidebar, pinned to the top, once
-  // per kit per tab, so the controls stay put while a run drives the page.
-  async openSidebarFor(uid: string | null): Promise<void> {
+  // On a kit page: tidy its setup note, and take out kit windows an earlier
+  // runner pinned in the right sidebar. A run's controls now float in the bar
+  // whenever the page's own panel is out of view, and a block opened in the
+  // sidebar also opened it on the page.
+  async tidyPage(uid: string | null): Promise<void> {
     void this.tidyHint(uid);
     const root = uid ? await proofRootFor(uid) : null;
     if (!root?.uid || this.opened.has(root.uid)) return;
     this.opened.add(root.uid);
     const sidebar = roam().ui.rightSidebar;
-    const rootUid = root.uid;
-    // A tab runs one kit on one build, so other kits' windows make way;
-    // windows that aren't kits stay. Roam restores pinned windows a moment
-    // after startup, so look again a few times.
+    // Roam restores pinned windows a moment after startup, so look again a
+    // few times.
     const tidy = async (): Promise<void> => {
       for (const item of sidebar.getWindows()) {
         const other = item["block-uid"];
-        if (item.type !== "block" || !other || other === rootUid || !(await this.isProofRoot(other))) continue;
+        if (item.type !== "block" || !other || !(await this.isProofRoot(other))) continue;
         try {
           await sidebar.removeWindow({ window: { type: "block", "block-uid": other } });
         } catch {
@@ -564,45 +561,6 @@ class ProofRunner {
       }, delay);
       this.timers.add(timer);
     }
-    if (!sidebarShows(rootUid)) await openInSidebar(rootUid);
-    try {
-      await sidebar.pinWindow?.({ window: { type: "block", "block-uid": rootUid }, "pin-to-top?": true });
-    } catch {
-      // Pinning is a nicety; an unpinned window still works.
-    }
-  }
-
-  // proof.sidebar.clearRight (the baseline's quiet-ui fixture) empties the
-  // right sidebar, which would close the panel mid-run. Keep kit windows.
-  keepKitWindows(): void {
-    const proof = win.proof;
-    if (!proof?.sidebar) return;
-    this.originalProof = proof;
-    const runner = this;
-    const sidebar = Object.freeze({
-      ...proof.sidebar,
-      clearRight: async (): Promise<boolean> => {
-        const api = roam().ui.rightSidebar;
-        for (const item of api.getWindows()) {
-          const uid = (item["block-uid"] ?? item["page-uid"] ?? item["mentions-uid"]) as string | undefined;
-          if (!uid || (await runner.isProofRoot(uid))) continue;
-          try {
-            await api.removeWindow({ window: { type: item.type, "block-uid": uid } });
-          } catch {
-            // Already gone.
-          }
-        }
-        for (const item of api.getWindows()) {
-          if (!(await runner.isProofRoot(item["block-uid"]))) return false;
-        }
-        return true;
-      },
-    });
-    Object.defineProperty(window, "proof", {
-      value: Object.freeze({ ...proof, sidebar }),
-      configurable: true,
-      writable: false,
-    });
   }
 
   active(): ProofRun | null {
@@ -685,9 +643,6 @@ class ProofRunner {
       console.error("[proof] the build didn't unload cleanly:", error);
     }
     if (installedHelpers) delete win.proof;
-    else if (this.originalProof) {
-      Object.defineProperty(window, "proof", { value: this.originalProof, configurable: true, writable: false });
-    }
     delete win.proofRunner;
   }
 
@@ -808,12 +763,11 @@ export const startRunner = async ({ extensionAPI }: { extensionAPI?: ExtensionAP
     style.textContent = SETTINGS_CSS;
     document.head.append(style);
   }
-  runner.keepKitWindows();
   await runner.registerCommands();
   if (registerAgentTools(extensionAPI, runner.agentHost())) console.log("[proof] agent tools registered with Roam's AI API.");
   await runner.loadIfNone();
   runner.observe();
   runner.listen();
-  await runner.openSidebarFor(await openUid());
+  await runner.tidyPage(await openUid());
   return { stop: () => runner.stop(installedHelpers) };
 };
