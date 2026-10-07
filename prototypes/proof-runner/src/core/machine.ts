@@ -64,6 +64,11 @@ export type CaseRecord = {
   fixedSteps: string[];
   deniedSteps: string[];
   retries: number;
+  // Steps that didn't work and the person did themselves, with what went
+  // wrong. Records saved before these two fields existed lack them.
+  handSteps?: Array<{ why: string; index: number; error: string }>;
+  // The person used the page while a failure waited, then pressed Try again.
+  touched?: boolean;
 };
 
 // The live panel's view of the whole kit: what it proves, every case with
@@ -132,9 +137,9 @@ export type CommandResult =
 
 export type CaseOutcome = { verdict: Verdict; how: How; note?: string; yourNote?: string };
 
-type Tracks = Pick<CaseRecord, "byHand" | "skippedSteps" | "fixedSteps" | "deniedSteps" | "retries">;
+type Tracks = Required<Pick<CaseRecord, "byHand" | "skippedSteps" | "fixedSteps" | "deniedSteps" | "retries" | "handSteps" | "touched">>;
 
-const freshTracks = (): Tracks => ({ byHand: false, skippedSteps: [], fixedSteps: [], deniedSteps: [], retries: 0 });
+const freshTracks = (): Tracks => ({ byHand: false, skippedSteps: [], fixedSteps: [], deniedSteps: [], retries: 0, handSteps: [], touched: false });
 
 const joinNotes = (...notes: Array<string | null | undefined>): string =>
   notes.filter((note): note is string => Boolean(note)).join(" · ");
@@ -271,7 +276,7 @@ export class Machine {
   private readonly stayOpen: boolean;
   private readonly onIdle?: () => Promise<void>;
   private readonly expand: (step: Step) => Action[];
-  private readonly holdOnCheckFail: boolean;
+  private holdOnCheckFail: boolean;
 
   private mode: Mode;
   private speed: number;
@@ -290,9 +295,13 @@ export class Machine {
   private readonly records: Record<string, CaseRecord> = {};
   private tracks: Tracks = freshTracks();
   private lastFailure: { why: string; index: number; error: string } | null = null;
+  private lastCheckError: string | null = null;
   private skipNote: string | undefined;
   private checkResolution: "retry" | "continue" | "pass" | null = null;
   private checkNote: string | undefined;
+  // The case ended on the person's answer to a failure: that answer was the
+  // look after the case, so the run doesn't pause again between cases.
+  private failureAnswered = false;
 
   private wakers: Array<() => void> = [];
   private renderChain: Promise<void> = Promise.resolve();
@@ -304,7 +313,7 @@ export class Machine {
   private stopRequested = false;
   private skipCaseRequested = false;
   private forcedVerdict: CaseOutcome | null = null;
-  private failureResolution: "retry" | "skip" | "replaced" | null = null;
+  private failureResolution: "retry" | "skip" | "replaced" | "by-hand" | null = null;
   private approval: "allow" | "deny" | null = null;
   private humanVerdict: CaseOutcome | null = null;
 
@@ -453,7 +462,7 @@ export class Machine {
         this.caseIndex = index;
         await this.runCase(this.kit.cases[index]);
         index += 1;
-        if (this.mode === "case" && index < this.kit.cases.length && !this.paused) {
+        if (this.mode === "case" && index < this.kit.cases.length && !this.paused && !this.failureAnswered) {
           this.paused = true;
           this.pausedBy = "between-cases";
         }
@@ -523,6 +532,16 @@ export class Machine {
         this.log("speed", { speed, by: source });
         return this.state();
       }
+      case "hold-on-fail":
+        this.holdOnCheckFail = args.on === true;
+        this.log("hold-on-fail", { on: this.holdOnCheckFail, by: source });
+        return this.state();
+      case "done-step": {
+        if (source !== "hud") throw new Error("Only the person at the screen can say they did a step.");
+        if (this.pending?.kind !== "failure") throw new Error("No step has failed: done-step is for a step the person did themselves.");
+        this.failureResolution = "by-hand";
+        return this.state();
+      }
       case "dwell": {
         const ms = Number(args.ms);
         if (!Number.isFinite(ms) || ms < 0 || ms > 10_000) {
@@ -551,18 +570,17 @@ export class Machine {
         const reason = typeof args.note === "string" && args.note.trim() ? args.note.trim().slice(0, 1000) : undefined;
         this.skipNote = reason;
         this.skipCaseRequested = true;
+        if (this.pending?.kind === "failure" || this.pending?.kind === "check-failed") this.failureAnswered = true;
         this.log("skip-case", { caseId: testCase.id, by: source, note: reason ?? null });
         return this.state();
       }
       case "retry":
-        if (this.pending?.kind === "check-failed") {
-          this.checkResolution = "retry";
-          return this.state();
-        }
-        if (this.pending?.kind !== "failure") {
+        if (this.pending?.kind !== "check-failed" && this.pending?.kind !== "failure") {
           throw new Error("No failed step or check to retry.");
         }
-        this.failureResolution = "retry";
+        if (args.touched === true) this.tracks.touched = true;
+        if (this.pending.kind === "check-failed") this.checkResolution = "retry";
+        else this.failureResolution = "retry";
         return this.state();
       case "continue": {
         if (this.pending?.kind !== "check-failed") {
@@ -571,6 +589,7 @@ export class Machine {
         const note = typeof args.note === "string" && args.note.trim() ? args.note.trim().slice(0, 1000) : undefined;
         this.checkNote = note;
         this.checkResolution = "continue";
+        this.failureAnswered = true;
         return this.state();
       }
       case "steps":
@@ -753,6 +772,7 @@ export class Machine {
     if (pending?.kind === "check-failed") {
       this.checkNote = note;
       this.checkResolution = verdict === "pass" ? "pass" : "continue";
+      this.failureAnswered = true;
       return this.state();
     }
     // Pass also ends a case whose step didn't work but the person saw it work.
@@ -760,6 +780,7 @@ export class Machine {
       throw new Error("Pass is only for a case that asks for your verdict, a failed check, or a step that didn't work. To end this case, fail it with a reason, or skip it.");
     }
     const failed = pending?.kind === "failure" ? this.lastFailure : null;
+    if (failed) this.failureAnswered = true;
     this.forcedVerdict = {
       verdict,
       how: "marked",
@@ -788,7 +809,9 @@ export class Machine {
     this.forcedVerdict = null;
     this.tracks = freshTracks();
     this.lastFailure = null;
+    this.lastCheckError = null;
     this.skipNote = undefined;
+    this.failureAnswered = false;
     this.stepIndex = 0;
     this.cursor = 0;
     this.log("case-start", {
@@ -904,12 +927,11 @@ export class Machine {
     }
   }
 
+  // Before a case's first step. Next leaves its press for the step's gate,
+  // so one press runs one step instead of being used up here.
   private async holdWhilePaused(): Promise<void> {
     while (this.paused && !this.interrupted()) {
-      if (this.stepOnce) {
-        this.stepOnce = false;
-        return;
-      }
+      if (this.stepOnce) return;
       this.setPhase("paused");
       await this.signal();
     }
@@ -980,14 +1002,15 @@ export class Machine {
         await this.signal();
       }
       // The wait above sets it from a command; read it fresh, not as narrowed before the wait.
-      const resolution = (this.failureResolution as "retry" | "skip" | "replaced" | null) ?? "skip";
+      const resolution = (this.failureResolution as "retry" | "skip" | "replaced" | "by-hand" | null) ?? "skip";
       this.failureResolution = null;
       this.pending = null;
       if (resolution === "skip" && !this.interrupted()) this.tracks.skippedSteps.push(step.why);
       if (resolution === "retry") this.tracks.retries += 1;
       if (resolution === "replaced") this.tracks.fixedSteps.push(step.why);
+      if (resolution === "by-hand") this.tracks.handSteps.push({ why: step.why, index: this.stepIndex, error: message });
       this.log("step-resolved", { ...ids, resolution });
-      return resolution;
+      return resolution === "by-hand" ? "ok" : resolution;
     } finally {
       this.executing = false;
       this.stepStartedAt = null;
@@ -1012,10 +1035,11 @@ export class Machine {
 
   private skipped(): CaseOutcome {
     const failed = this.lastFailure;
+    const check = this.lastCheckError;
     return {
       verdict: "skip",
       how: "skipped",
-      note: failed ? `Skipped after step ${failed.index + 1}, "${failed.why}", failed: ${failed.error}` : undefined,
+      note: failed ? `Skipped after step ${failed.index + 1}, "${failed.why}", failed: ${failed.error}` : check ? `The check failed: ${check}` : undefined,
       yourNote: this.skipNote,
     };
   }
@@ -1071,6 +1095,7 @@ export class Machine {
         } catch (error) {
           message = describe(error);
         }
+        this.lastCheckError = message;
         if (!this.holdOnCheckFail || this.interrupted()) return { verdict: "fail", how: "checked", note: message };
         this.pending = { kind: "check-failed", caseId: testCase.id, error: message };
         this.checkResolution = null;

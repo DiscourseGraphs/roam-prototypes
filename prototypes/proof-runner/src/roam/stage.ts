@@ -5,7 +5,7 @@
 // isn't looking. None of it takes a pointer: the run's synthetic input and
 // the person's clicks pass straight through.
 
-// Who has the screen: the run, you, or you with a failed check holding it.
+// Who has the screen: the run, you, or you with a failure waiting on you.
 export type Driver = "run" | "you" | "held" | "none";
 
 const TOP = "2147483646";
@@ -16,6 +16,14 @@ const HELD_COLOR = "#e5534b";
 // The person's input the run holds while it drives. Pointer and key events
 // both: a mousedown on its own would let the click after it through.
 const HELD = ["pointerdown", "pointerup", "mousedown", "mouseup", "click", "dblclick", "contextmenu", "keydown", "keypress", "keyup", "touchstart"];
+// The mouse moving or resting over the page is held too, without pausing:
+// an idle mouse would otherwise open Roam's link preview over the next target.
+const HOVER = ["pointerover", "pointerout", "pointerenter", "pointerleave", "pointermove", "mouseover", "mouseout", "mouseenter", "mouseleave", "mousemove"];
+const SAY: Record<Exclude<Driver, "none">, string> = {
+  run: "The run has the screen.",
+  you: "The screen is yours.",
+  held: "Something failed. The screen is yours until you answer.",
+};
 const MODIFIERS = new Set(["Shift", "Control", "Alt", "Meta", "CapsLock", "Fn"]);
 const TITLE_MARK = /^(?:[▶●✓✗❚]{1,2} [^·]{0,40}· )+/;
 
@@ -39,17 +47,25 @@ export class Stage {
   private live = false;
   private base: string | null = null;
   private audio: AudioContext | null = null;
+  private driver: Driver = "none";
+  private voice: HTMLElement | null = null;
+  // The person's clicks and keys on the page while it was theirs, since the
+  // last reset: whether they used the page before pressing Try again.
+  private touches = 0;
 
   constructor(private readonly handlers: StageHandlers) {}
 
   // The frame: violet while the run drives, amber when the screen is yours,
   // red while a failed check holds it.
   setDriver(driver: Driver): void {
+    const changed = driver !== this.driver;
+    this.driver = driver;
     if (driver === "none") {
       this.frame?.remove();
       this.frame = null;
       return;
     }
+    if (changed) this.say(SAY[driver]);
     if (!this.frame) {
       const frame = document.createElement("div");
       frame.className = "proof-runner-frame";
@@ -114,6 +130,30 @@ export class Stage {
     return this.ringOn;
   }
 
+  // Tells a screen reader whose turn it is now. New asks speak for
+  // themselves in the bar.
+  private say(text: string): void {
+    if (!this.voice) {
+      const voice = document.createElement("div");
+      voice.className = "proof-runner-voice";
+      voice.setAttribute("data-proof-runner-ui", "");
+      voice.setAttribute("role", "status");
+      voice.setAttribute("aria-live", "polite");
+      voice.style.cssText = "position: fixed; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap;";
+      document.body.append(voice);
+      this.voice = voice;
+    }
+    this.voice.textContent = text;
+  }
+
+  get touched(): boolean {
+    return this.touches > 0;
+  }
+
+  resetTouched(): void {
+    this.touches = 0;
+  }
+
   // While the run drives, the person's clicks and keys don't reach Roam: the
   // first one pauses the run instead. The runner's own input is synthetic
   // (not trusted), so it passes.
@@ -129,6 +169,10 @@ export class Stage {
       if (on) document.addEventListener(type, this.onInput, true);
       else document.removeEventListener(type, this.onInput, true);
     }
+    for (const type of HOVER) {
+      if (on) document.addEventListener(type, this.onHover, true);
+      else document.removeEventListener(type, this.onHover, true);
+    }
     if (!on) this.holding = false;
   }
 
@@ -142,13 +186,22 @@ export class Stage {
       else this.handlers.next();
       return;
     }
-    if (!this.holding || this.handlers.ours(event)) return;
+    if (this.handlers.ours(event)) return;
     if (event instanceof KeyboardEvent && MODIFIERS.has(event.key)) return;
+    if (!this.holding) {
+      if (event.type === "mousedown" || event.type === "keydown" || event.type === "touchstart") this.touches += 1;
+      return;
+    }
     event.stopImmediatePropagation();
     // A cancelled pointerdown would stop the browser sending mousedown, and
     // it's mousedown's default that moves focus: cancel that one instead.
     if (event.type !== "pointerdown" && event.type !== "pointerup") event.preventDefault();
     if (event.type === "mousedown" || event.type === "keydown" || event.type === "touchstart") this.handlers.held();
+  };
+
+  private readonly onHover = (event: Event): void => {
+    if (!event.isTrusted || !this.holding || this.handlers.ours(event)) return;
+    event.stopImmediatePropagation();
   };
 
   // The run's state ahead of the page's own title, so a tab in the
@@ -204,6 +257,8 @@ export class Stage {
   dispose(): void {
     this.setLive(false);
     this.setDriver("none");
+    this.voice?.remove();
+    this.voice = null;
     this.ring(null);
     this.ringBox?.remove();
     this.ringBox = null;

@@ -9,11 +9,11 @@ import type { ExtensionAPI, FetchedBuild, LoadedBuild, PaletteRegistry } from ".
 import { checklist, runBlocked, type CheckItem } from "./checklist";
 import { evaluate, makePageExecutor } from "./executor";
 import { blockText, pageKit, rootConfig, runBlocksFor, stepBlockOf, stepFromBlock, type BlockNode, type PageKit, type RunBlocks } from "./page-kit";
-import { ProofPanel, type KitSummary, type PanelAction, type PanelView, type RunChoice, type RunInfo } from "./panel";
-import { logLine } from "./outcome";
+import { ProofPanel, type KitSummary, type PanelAction, type PanelView, type RunInfo } from "./panel";
+import { caseHistory, logLine, parseRunSummary, type RunLogBlock } from "./outcome";
 import { createTree, pageOf, readTree, roam, userName } from "./roam";
 import type { DatabaseState, FixtureOutcome, HelperState } from "./status";
-import { doneWhen, kindOfStep, type RunFacts, type StepKind } from "./words";
+import { doneWhen, duration, isPauseSetting, kindOfStep, PACES, runWords, type CaseHistory, type PauseSetting, type RunFacts, type StepKind } from "./words";
 
 export { HANDLER_SETUP_COMMAND, helperState, type DatabaseState, type FixtureOutcome, type HelperState } from "./status";
 
@@ -309,16 +309,24 @@ const MARKS_ID = "proof-run-marks";
 const AGENT_FRESH_MS = 45_000;
 const AGENT_CONTROLS = ["pause", "resume", "next", "skip-step", "skip-case", "stop"];
 
-// How each run choice plays: Watch it holds on a failed check so the screen
-// can be looked at; Just the result runs faster and doesn't wait for anyone
-// on a step that doesn't work; Step through waits before every step.
-const PLAY: Record<RunChoice, { mode: "auto" | "step"; speed: number; dwellMs: number; holdOnCheckFail: boolean; leadMs: number }> = {
-  watch: { mode: "auto", speed: 1, dwellMs: 1200, holdOnCheckFail: true, leadMs: 300 },
-  result: { mode: "auto", speed: 2, dwellMs: 300, holdOnCheckFail: false, leadMs: 0 },
-  step: { mode: "step", speed: 1, dwellMs: 700, holdOnCheckFail: true, leadMs: 0 },
-};
+// How each pause setting plays on the machine. Every step waits before each
+// step; After each case pauses between cases; both, and On failure, hold the
+// screen on a failed check or a step that didn't work until the person
+// answers. Only when needed records a failed check and goes on, and tries a
+// step that doesn't work once more before the case is recorded as couldn't
+// be tested. Calls by eye, cases by hand and code to allow always wait.
+export const playFor = (pause: PauseSetting): { mode: "auto" | "step" | "case"; holdOnCheckFail: boolean; unattended: boolean } => ({
+  mode: pause === "step" ? "step" : pause === "case" ? "case" : "auto",
+  holdOnCheckFail: pause !== "needed",
+  unattended: pause === "needed",
+});
 
-const CHOICE_WORDS: Record<RunChoice, string> = { watch: "watched", result: "just the result", step: "stepped through" };
+const DWELL_MS = 1200;
+const LEAD_MS = 300;
+
+// What a terminal run (cli.ts) sets before pressing Run: how to play it, and
+// that the run line should say it came from the terminal.
+type Driven = { driver?: "terminal"; pause?: string; pace?: number };
 
 const ticketOf = (kit: Kit): string | null => kit.ticket ?? /\beng-\d+\b/i.exec(kit.name)?.[0]?.toUpperCase() ?? null;
 
@@ -338,10 +346,11 @@ export class ProofRun {
   private scope: RunInfo["scope"] = "all";
   private runBlocks: RunBlocks | null = null;
   private lastRun: string | null = null;
-  private runInfo: { choice: RunChoice; startedAt: number; endedAt: number | null; setup: Step[] } | null = null;
-  // Whether a failed check holds the screen; unticked, the run records it and goes on.
-  private stopOnFail = true;
-  // Just the result: failed steps already tried again, and failures handled.
+  // The page's run lines, newest first: for the card's last run and each case's history.
+  private runLog: RunLogBlock[] = [];
+  private histories: Record<string, CaseHistory> = {};
+  private runInfo: { pause: PauseSetting; terminal: boolean; startedAt: number; endedAt: number | null; setup: Step[] } | null = null;
+  // Only when needed: failed steps already tried again, and failures handled.
   private readonly tries = new Map<string, number>();
   private handled = new WeakSet<object>();
 
@@ -399,8 +408,28 @@ export class ProofRun {
       this.error = describe(error);
     }
     const runs = (this.tree?.children ?? []).find((child) => child.string.trim().toLowerCase() === "runs");
-    this.lastRun = runs?.children?.[0]?.string ? `Last run: ${runs.children[0].string}` : null;
+    this.runLog = (runs?.children ?? []).map((child) => ({ string: child.string, children: (child.children ?? []).map((line) => ({ string: line.string })) }));
+    this.lastRun = this.runLog[0]?.string ? `Last run: ${this.runLog[0].string}` : null;
+    // Read while no run is going, so a run's own line doesn't count as its history.
+    if (!this.running) this.histories = this.history();
     this.paint();
+  }
+
+  // The newest run line that reads as one, and whether it ran on the build this tab has loaded.
+  private lastRunSummary(): PanelView["last"] {
+    for (const run of this.runLog) {
+      const summary = parseRunSummary(run.string);
+      if (!summary) continue;
+      const loaded = this.env.build?.commit ?? null;
+      const thisBuild = summary.commit && loaded ? loaded.startsWith(summary.commit) || summary.commit.startsWith(loaded) : null;
+      return { summary, thisBuild };
+    }
+    return null;
+  }
+
+  private history(): Record<string, CaseHistory> {
+    const cases = this.runKit?.cases ?? [];
+    return Object.fromEntries(cases.map((item) => [item.id, caseHistory(this.runLog, item.title)]));
   }
 
   private warnings(): string[] {
@@ -493,6 +522,7 @@ export class ProofRun {
           ? { caseIndex: record.nextCase, results: Object.fromEntries(Object.entries(record.records).map(([id, item]) => [id, item.verdict])) }
           : null,
       lastRun: this.lastRun,
+      last: this.lastRunSummary(),
       kit: this.kitSummary(),
       run: this.runView(),
       agent: Date.now() - this.env.agentSeenAt < AGENT_FRESH_MS,
@@ -577,18 +607,18 @@ export class ProofRun {
       build: build ? (build.commit ? build.commit.slice(0, 7) : build.branch) : null,
       latest: build?.prHead ? !behind : null,
       when: stamp(new Date(info.startedAt)),
-      how: CHOICE_WORDS[info.choice],
+      how: runWords(info.pause, this.state?.speed ?? 1),
       steps,
     };
     return {
-      choice: info.choice,
+      pause: info.pause,
       scope: this.scope,
       kinds,
       startedAt: info.startedAt,
       endedAt: info.endedAt,
       facts,
       rerun: this.rerunIds().length,
-      stopOnFail: this.stopOnFail,
+      history: this.histories,
     };
   }
 
@@ -653,11 +683,7 @@ export class ProofRun {
       if (action.kind === "resume") return await this.start({ from: this.readRecord()?.nextCase ?? 0 });
       if (action.kind === "rerun") return await this.start({ only: this.rerunIds() });
       if (action.kind === "open-kit") return await this.openKitPage();
-      if (action.kind === "stop-on-fail") {
-        this.stopOnFail = action.on;
-        this.paint();
-        return null;
-      }
+      if (action.kind === "setting") return this.applySetting(action);
       if (action.kind === "load") {
         await this.env.confirmSetup();
         return this.env.buildError;
@@ -855,11 +881,14 @@ export class ProofRun {
     const baseline = kit.baseline ? this.env.baselines.get(kit.baseline) : null;
     const setup = [...inSessionSteps(fixturesFor(kit, this.env)), ...smokeSteps(baseline?.smoke ?? [])];
     const context = contextFor(kit.name, this.env, runId());
-    const { choice, pauseBetween, pace, stopOnFail } = this.panel.runSettings();
-    this.stopOnFail = stopOnFail;
-    const speed = choice === "watch" ? pace : PLAY[choice].speed;
-    const play = PLAY[choice];
-    this.runInfo = { choice, startedAt: Date.now(), endedAt: null, setup };
+    // A terminal run says how to play it; a person's run uses the card's settings.
+    const driven = ((window as unknown as { __proofRun?: Driven }).__proofRun ?? {}) as Driven;
+    delete (window as unknown as { __proofRun?: Driven }).__proofRun;
+    const settings = this.panel.runSettings();
+    const pause = isPauseSetting(driven.pause) ? driven.pause : settings.pause;
+    const speed = typeof driven.pace === "number" && PACES.includes(driven.pace) ? driven.pace : settings.pace;
+    const play = playFor(pause);
+    this.runInfo = { pause, terminal: driven.driver === "terminal", startedAt: Date.now(), endedAt: null, setup };
     this.tries.clear();
     this.handled = new WeakSet();
     const journal = new Journal((event) => {
@@ -871,11 +900,10 @@ export class ProofRun {
         this.state = state;
         this.paint();
         this.unattended(state);
-        this.goOnAfterFail(state);
       },
       target: (element, verb) => this.panel.target(element, verb),
       // The ring shows longer when the run goes slower.
-      lead: () => play.leadMs / Math.max(0.25, this.state?.speed ?? speed),
+      lead: () => LEAD_MS / Math.max(0.25, this.state?.speed ?? speed),
       palette: (label) => this.env.palette.run(label),
       fill: (value) => fillIn(value, context),
       note: (text) => {
@@ -887,9 +915,9 @@ export class ProofRun {
       setup,
       journal,
       executor,
-      mode: pauseBetween ? "case" : play.mode,
+      mode: play.mode,
       speed,
-      dwellMs: play.dwellMs,
+      dwellMs: DWELL_MS,
       holdOnCheckFail: play.holdOnCheckFail,
       expand: makeExpander(this.env.recipes),
     });
@@ -903,30 +931,44 @@ export class ProofRun {
     return null;
   }
 
-  // With Stop when a check fails unticked, a failed check is recorded and the run goes on.
-  private goOnAfterFail(state: MachineState): void {
-    const pending = state.pending;
-    if (this.stopOnFail || pending?.kind !== "check-failed" || this.handled.has(pending)) return;
-    this.handled.add(pending);
-    setTimeout(() => {
-      if (this.state?.pending === pending) this.command("continue");
-    }, 300);
+  // A pause setting picked during the run: the machine plays it from the next
+  // step. Turning off the hold on failures also answers a failure waiting now.
+  private applySetting(action: Extract<PanelAction, { kind: "setting" }>): string | null {
+    if (!this.machine || !this.running || !this.runInfo) {
+      this.paint();
+      return null;
+    }
+    if (action.key === "pace") return this.command("speed", { speed: action.value });
+    this.runInfo.pause = action.value;
+    const play = playFor(action.value);
+    const error = this.command("mode", { mode: play.mode }) ?? this.command("hold-on-fail", { on: play.holdOnCheckFail });
+    if (error) return error;
+    if (this.state) this.unattended(this.state);
+    return null;
   }
 
-  // Just the result: a step that doesn't work is tried once more, then its
-  // case is skipped, so the run reaches the end without anyone at the screen.
+  // Only when needed: a failed check is recorded and the run goes on; a step
+  // that doesn't work is tried once more, then its case is recorded as
+  // couldn't be tested, so the run reaches the end without anyone at the screen.
   private unattended(state: MachineState): void {
     const pending = state.pending;
-    if (this.runInfo?.choice !== "result" || pending?.kind !== "failure" || this.handled.has(pending)) return;
+    if (!this.runInfo || !playFor(this.runInfo.pause).unattended || !pending || this.handled.has(pending)) return;
+    if (pending.kind === "check-failed") {
+      this.handled.add(pending);
+      setTimeout(() => {
+        if (this.state?.pending === pending) this.command("continue");
+      }, 300);
+      return;
+    }
+    if (pending.kind !== "failure") return;
     this.handled.add(pending);
     const key = `${pending.caseId}/${pending.stepId}`;
     const tries = this.tries.get(key) ?? 0;
     this.tries.set(key, tries + 1);
-    const why = state.stepWhy ?? "a step";
     setTimeout(() => {
       if (this.state?.pending !== pending) return;
       if (tries === 0) this.command("retry");
-      else this.command("skip-case", { note: `"${why}" didn't work twice: ${pending.error.split("\n")[0].slice(0, 200)}` });
+      else this.command("skip-case");
     }, 600);
   }
 
@@ -1017,13 +1059,15 @@ export class ProofRun {
     const summary = [
       `${passed === source.cases.length ? "✓" : "✗"} ${passed}/${source.cases.length} passed`,
       failed ? `${failed} failed` : null,
-      skipped ? `${skipped} couldn't run` : null,
+      skipped ? `${skipped} couldn't be tested` : null,
       notRun ? `${notRun} not run` : null,
       stopped ? "stopped" : null,
       this.scope === "failed" ? "re-ran the cases that didn't pass" : this.scope === "resume" ? "resumed" : null,
       build ? `build ${build.branch}${build.commit ? ` @ ${build.commit.slice(0, 7)}` : ""}` : "no build loaded",
-      this.runInfo ? CHOICE_WORDS[this.runInfo.choice] : "",
+      this.runInfo ? runWords(this.runInfo.pause, this.state?.speed ?? 1) : "",
+      this.runInfo ? `took ${duration((this.runInfo.endedAt ?? Date.now()) - this.runInfo.startedAt).replace(/^about /, "")}` : "",
       stamp(new Date()),
+      this.runInfo?.terminal ? "from the terminal" : "",
       await userName(),
     ]
       .filter(Boolean)

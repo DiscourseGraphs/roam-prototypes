@@ -1,5 +1,7 @@
-import { SPEEDS, type MachineState, type PlanCase } from "../core/machine";
+import type { MachineState, PlanCase } from "../core/machine";
 import {
+  PACES,
+  PAUSES,
   bugReport,
   bulletVerdict,
   clock,
@@ -7,14 +9,23 @@ import {
   duration,
   forecast,
   forecastWords,
+  historyLine,
+  holdLine,
   howWords,
+  kitFixes,
+  kitReport,
   needOf,
+  paceLabel,
+  passedWithHelp,
+  pauseLabel,
   pauseWords,
   purposeLine,
   resultMarkdown,
-  seeAnswer,
+  runWords,
   trouble,
   verdictWord,
+  type CaseHistory,
+  type PauseSetting,
   type RunFacts,
   type StepKind,
 } from "./words";
@@ -22,10 +33,9 @@ import {
 // The caption bar: one bar on the window's bottom edge for the whole run. It
 // says which case runs, what it must show, the step now and when the person
 // is next needed; it grows upward, in place, when the run needs them; and at
-// the end it opens into the result. Its buttons and text sit in a shadow root,
-// so kit selectors never match them.
-
-export type RunChoice = "watch" | "result" | "step";
+// the end it opens into the result. The case's title and its Passes if line
+// are never cut off: they wrap, and the bar grows to fit. Its buttons and text
+// sit in a shadow root, so kit selectors never match them.
 
 export type BarModel = {
   title: string;
@@ -37,14 +47,16 @@ export type BarModel = {
   notTested: number;
   // The block of the step that failed, when the page has one.
   stepUid: string | null;
-  choice: RunChoice;
+  // When the run pauses for the person; the pace is the machine's speed.
+  pause: PauseSetting;
   scope: "all" | "resume" | "failed";
   // How many cases didn't pass, for "Run the ones that didn't pass".
   rerun: number;
-  stopOnFail: boolean;
   agent: boolean;
   startedAt: number;
   endedAt: number | null;
+  // Whether each case has passed in a recorded run, by case id.
+  history: Record<string, CaseHistory>;
 };
 
 export type BarAction =
@@ -56,7 +68,11 @@ export type BarAction =
   | { kind: "rerun" }
   | { kind: "open-kit" }
   // A run setting changed during the run.
-  | { kind: "setting"; key: "pauseBetween" | "stopOnFail"; on: boolean }
+  | { kind: "setting"; key: "pause"; value: PauseSetting }
+  | { kind: "setting"; key: "pace"; value: number }
+  // The person took a failed step on themselves, or handed it back: who has
+  // the screen changed without the machine knowing.
+  | { kind: "turn" }
   // The result was closed: the page's title and room for the bar go back.
   | { kind: "closed" };
 
@@ -68,8 +84,8 @@ const CSS = `
   :host([hidden]) { display: none !important; }
   * { box-sizing: border-box; }
   .wrap { font: 13px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: #efedf7; }
-  .bar { background: #17151f; box-shadow: 0 -1px 0 #2d2a3b, 0 -10px 30px -18px rgba(0, 0, 0, .55); }
-  .bar.strip .main, .bar.strip .ask { display: none; }
+  .bar { position: relative; background: #17151f; box-shadow: 0 -1px 0 #2d2a3b, 0 -10px 30px -18px rgba(0, 0, 0, .55); }
+  .bar.strip .main, .bar.strip .ask, .bar.strip .menu { display: none; }
   .prog { display: flex; gap: 2px; height: 5px; background: #17151f; }
   .seg { position: relative; flex: 1; background: #38344d; }
   .seg.setup { flex: .55; background: #4a4563; }
@@ -80,23 +96,27 @@ const CSS = `
   .seg.you { box-shadow: inset 0 -2px 0 #ffb547; }
   .seg.now > b { position: absolute; left: 0; top: 0; bottom: 0; background: #8f7fff; }
   .seg.now.am > b { background: #ffb547; }
-  .main { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 24px; padding: 8px 16px 9px; }
-  .left, .right { min-width: 0; }
-  .ln { display: flex; align-items: center; gap: 8px; min-height: 24px; white-space: nowrap; min-width: 0; }
-  .right .ln { justify-content: flex-end; }
-  .sub { margin-top: 2px; color: #c7c3d8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-height: 18px; }
-  .right .sub { text-align: right; max-width: 52vw; }
-  .sub b { color: #efedf7; font-weight: 650; margin-right: 4px; }
+  .main { display: grid; gap: 3px; padding: 8px 16px 9px; }
+  .head { display: flex; align-items: baseline; gap: 4px 8px; flex-wrap: wrap; min-height: 22px; }
+  .head .dot, .head .pill { align-self: center; }
+  .head .ct { flex: 1 1 18rem; min-width: 0; font-weight: 650; font-size: 14px; overflow-wrap: anywhere; }
+  .head .wait { margin-left: auto; }
+  .purpose { color: #c7c3d8; overflow-wrap: anywhere; }
+  .purpose:empty { display: none; }
+  .purpose b { color: #efedf7; font-weight: 650; margin-right: 4px; }
+  .purpose.lead { color: inherit; font-size: 14px; }
+  .foot { display: flex; align-items: center; gap: 6px 12px; flex-wrap: wrap; min-height: 26px; }
+  .foot:empty { display: none; }
+  .now { flex: 1 1 14rem; min-width: 0; color: #c7c3d8; overflow-wrap: anywhere; }
+  .ctrl { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; margin-left: auto; }
   .cn { color: #a9a5bd; flex: none; }
-  .ct { font-weight: 650; font-size: 14px; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
   .dot { width: 8px; height: 8px; border-radius: 50%; background: #8f7fff; box-shadow: 0 0 0 3px rgba(143, 127, 255, .25); flex: none; }
   @media (prefers-reduced-motion: no-preference) { .dot { animation: pulse 1.8s ease-in-out infinite; } }
   @keyframes pulse { 50% { box-shadow: 0 0 0 6px rgba(143, 127, 255, .08); } }
   .kd { color: #a9a5bd; font-size: 10.5px; letter-spacing: .07em; text-transform: uppercase; font-weight: 700; margin-right: 7px; }
-  .fc { color: #a9a5bd; overflow: hidden; text-overflow: ellipsis; }
+  .fc { color: #a9a5bd; }
   .fc b { color: #9fe7bd; font-weight: 650; }
   .fc b.soon { color: #ffcf85; }
-  .pace { color: #c7c3d8; font-variant-numeric: tabular-nums; min-width: 2.2em; text-align: center; }
   .wait { color: #ffcf85; font-weight: 700; }
   .pill { display: inline-flex; align-items: center; gap: 6px; font-size: 10.5px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase;
     padding: 3px 8px; border-radius: 4px; white-space: nowrap; flex: none; background: rgba(255, 181, 71, .17); color: #ffcf85; }
@@ -107,6 +127,7 @@ const CSS = `
     border: 1px solid #3d3955; border-radius: 6px; padding: 4px 10px; cursor: pointer; white-space: nowrap; }
   button:hover { background: #2f2b47; }
   button:focus-visible { outline: 2px solid #c4bbff; outline-offset: 1px; }
+  button:disabled { opacity: .55; cursor: not-allowed; }
   button.go { background: #8f7fff; border-color: transparent; color: #110c26; }
   button.go:hover { background: #a194ff; }
   button.pass { background: #45c47e; border-color: transparent; color: #06210f; }
@@ -114,11 +135,24 @@ const CSS = `
   button.am { background: #ffb547; border-color: transparent; color: #2a1a00; }
   button.hot { box-shadow: 0 0 0 2px #ffb547; }
   button.link { background: none; border: 0; padding: 2px 0; color: #c4bbff; text-decoration: underline; text-underline-offset: 3px; font-weight: 500; }
-  button.tick { background: none; border: 0; padding: 2px 4px; font-weight: 600; }
+  button.chip.hot { box-shadow: 0 0 0 2px #8f7fff; }
+  .menu { position: absolute; right: 16px; bottom: calc(100% + 6px); width: 330px; max-width: calc(100vw - 32px); background: #1d1a28; color: #efedf7;
+    border: 1px solid #34304a; border-radius: 10px; box-shadow: 0 -14px 34px -12px rgba(0, 0, 0, .5); padding: 10px 12px 12px; display: grid; gap: 4px; }
+  .menu[hidden] { display: none; }
+  .menu button.opt { display: grid; grid-template-columns: 18px minmax(0, 1fr); gap: 1px 6px; text-align: left; white-space: normal; background: none;
+    border: 0; border-radius: 6px; padding: 5px 6px; font-weight: 500; color: #efedf7; }
+  .menu button.opt:hover { background: #26233a; }
+  .menu button.opt.on { background: rgba(143, 127, 255, .16); }
+  .menu button.opt .rd { color: #a597ff; }
+  .menu button.opt small { grid-column: 2; color: #a9a5bd; font-size: 11.5px; line-height: 1.35; }
+  .menu .paces { display: flex; gap: 6px; padding: 2px 4px; }
+  .menu button.pick.on { background: #8f7fff; border-color: transparent; color: #110c26; }
+  .menu .lbl { margin: 4px 4px 2px; }
+  .menu .meta { margin: 4px 4px 0; }
   .ask { padding: 0 18px 14px; display: grid; gap: 8px; }
   .ask:empty { display: none; }
   .lbl { font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; color: #a9a5bd; font-weight: 800; }
-  .say { font-size: 15.5px; line-height: 1.45; max-width: 75ch; }
+  .say { font-size: 15.5px; line-height: 1.45; max-width: 75ch; overflow-wrap: anywhere; }
   .hint { color: #c7c3d8; max-width: 80ch; }
   .acts { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
   .grow { flex: 1; }
@@ -137,7 +171,7 @@ const CSS = `
     border-bottom: 1px solid #2f2c40; font-weight: 700; }
   .crow { display: grid; grid-template-columns: 18px 24px minmax(0, 1fr) auto; gap: 8px; align-items: baseline; padding: 4px 16px; }
   .crow .ix { color: #a9a5bd; font-variant-numeric: tabular-nums; }
-  .crow .tt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .crow .tt { overflow-wrap: anywhere; }
   .crow .tg { color: #a9a5bd; font-size: 12px; white-space: nowrap; }
   .crow.cur { background: rgba(143, 127, 255, .13); }
   .steps { padding: 2px 16px 8px 66px; color: #c7c3d8; display: grid; gap: 1px; background: rgba(143, 127, 255, .13); font-size: 12.5px; }
@@ -151,15 +185,19 @@ const CSS = `
   .dw { display: grid; grid-template-columns: 18px 22px minmax(0, 1fr) auto; gap: 8px; align-items: baseline; padding: 5px 0; border-bottom: 1px solid #2a2739; }
   .dw .tg { color: #a9a5bd; font-size: 12.5px; white-space: nowrap; }
   .fbox { margin-top: 8px; border: 1px solid #4a2a2a; background: rgba(255, 101, 91, .07); border-radius: 9px; padding: 9px 13px; }
-  .fbox.skip { border-color: #3d3955; background: rgba(142, 138, 163, .08); }
+  .kbox { margin-top: 8px; border: 1px solid #5a4317; background: rgba(255, 181, 71, .08); border-radius: 9px; padding: 8px 13px 10px; }
+  .krow { display: grid; grid-template-columns: 24px minmax(0, 1fr); gap: 2px 8px; padding: 5px 0; border-bottom: 1px solid rgba(255, 181, 71, .16); }
+  .krow .ix { color: #ffcf85; font-weight: 700; }
+  .krow .tt { font-weight: 650; }
+  .krow .wh { grid-column: 2; color: #d9d5ea; }
   .kv { display: grid; grid-template-columns: 80px minmax(0, 1fr); gap: 3px 10px; margin: 6px 0 8px; color: #d9d5ea; }
+  .kv span { overflow-wrap: anywhere; }
   .kv span:nth-child(odd) { color: #a9a5bd; }
   details { margin-top: 10px; border-top: 1px solid #2a2739; padding-top: 8px; }
   summary { cursor: pointer; color: #efedf7; }
   details ul { margin: 6px 0 0; padding-left: 18px; color: #c7c3d8; }
-  .sub.lead { color: inherit; font-size: 14px; }
   /* The bar takes the frame's colour: dark while the run drives, amber when
-     it's your turn, red while a failed check holds the screen. A block of
+     it's your turn, red while a failure waits for your answer. A block of
      colour says "your turn" to someone who looked away; a 3 px frame may not. */
   .bar.you { background: #f6b04a; color: #231700; box-shadow: 0 -1px 0 #c98a1e, 0 -10px 30px -18px rgba(0, 0, 0, .4); }
   .bar.held { background: #f08074; color: #2a0603; box-shadow: 0 -1px 0 #c94a40, 0 -10px 30px -18px rgba(0, 0, 0, .4); }
@@ -171,12 +209,12 @@ const CSS = `
   .bar.you .seg.skip, .bar.held .seg.skip { background: #5f5a6b; }
   .bar.you .seg.now > b, .bar.held .seg.now > b { background: #231700; }
   .bar.you .seg.you, .bar.held .seg.you { box-shadow: inset 0 -2px 0 #231700; }
-  .bar.you .sub, .bar.you .hint, .bar.you .cn, .bar.you .kd, .bar.you .lbl, .bar.you .meta,
-  .bar.held .sub, .bar.held .hint, .bar.held .cn, .bar.held .kd, .bar.held .lbl, .bar.held .meta { color: rgba(35, 20, 0, .75); }
-  .bar.you .sub b, .bar.you .wait, .bar.held .sub b, .bar.held .wait, .bar.you .sub.lead, .bar.held .sub.lead { color: inherit; }
+  .bar.you .purpose, .bar.you .now, .bar.you .hint, .bar.you .cn, .bar.you .kd, .bar.you .lbl, .bar.you .meta, .bar.you .fc,
+  .bar.held .purpose, .bar.held .now, .bar.held .hint, .bar.held .cn, .bar.held .kd, .bar.held .lbl, .bar.held .meta, .bar.held .fc { color: rgba(35, 20, 0, .75); }
+  .bar.you .purpose b, .bar.you .wait, .bar.held .purpose b, .bar.held .wait, .bar.you .purpose.lead, .bar.held .purpose.lead { color: inherit; }
   .bar.you .pill, .bar.held .pill { background: rgba(35, 20, 0, .14); color: inherit; }
-  .bar.you button, .bar.held button { background: rgba(255, 255, 255, .55); border-color: rgba(35, 20, 0, .28); color: #231700; }
-  .bar.you button:hover, .bar.held button:hover { background: rgba(255, 255, 255, .8); }
+  .bar.you .main button, .bar.you .ask button, .bar.held .main button, .bar.held .ask button { background: rgba(255, 255, 255, .55); border-color: rgba(35, 20, 0, .28); color: #231700; }
+  .bar.you .main button:hover, .bar.you .ask button:hover, .bar.held .main button:hover, .bar.held .ask button:hover { background: rgba(255, 255, 255, .8); }
   .bar.you button.go, .bar.you button.am, .bar.held button.go { background: #231700; border-color: transparent; color: #ffd38a; }
   .bar.you button.pass, .bar.held button.pass { background: #17713f; border-color: transparent; color: #fff; }
   .bar.you button.fail, .bar.held button.fail { background: #9f241c; border-color: transparent; color: #fff; }
@@ -216,21 +254,31 @@ const button = (label: string, action: string, className = "", args?: unknown, t
 const ICON: Record<string, string> = { pass: "✓", fail: "✗", skip: "–" };
 const ICON_CLASS: Record<string, string> = { pass: "g", fail: "r", skip: "gr" };
 
+// What the plain words of a failed check are, when its message is one the
+// run knows: a wait that timed out.
+const checkWords = (error: string): string => {
+  const found = trouble(error);
+  return found.kind === "not-found" ? found.plain.replace(/^The run looked for/, "The check looked for") : error.split("\n")[0].trim();
+};
+
+// A prompt for one line before an answer goes: required, or optional.
+type Why = { label: string; placeholder: string; confirm: string; className: string; action: string; required: boolean };
+
 type Local = {
   casesOpen: boolean;
   keepOpen: boolean;
   resultOpen: boolean;
   flagOpen: boolean;
+  menuOpen: boolean;
   tucked: boolean;
-  // The answer to "Is what this step needs on the screen?", for one failure.
-  seen: { key: string; value: boolean } | null;
-  failNote: boolean;
   details: boolean;
-  countdown: { until: number; timer: number } | null;
+  // A failed step the person is doing themselves: the pending key it's for.
+  doingIt: string;
+  countdown: { until: number; timer: number; cmd: string } | null;
   armedStop: number;
   copied: string;
-  // A skip waiting for its one-line why: Can't tell, or Skip on a by-hand case.
-  why: "cant-tell" | "hand-skip" | "mark-pass" | null;
+  // An answer waiting for its one line.
+  why: Why | null;
 };
 
 export class CaptionBar {
@@ -241,10 +289,10 @@ export class CaptionBar {
   private readonly resultSheet: HTMLElement;
   private readonly bar: HTMLElement;
   private readonly prog: HTMLElement;
-  private readonly left1: HTMLElement;
-  private readonly left2: HTMLElement;
-  private readonly right1: HTMLElement;
-  private readonly right2: HTMLElement;
+  private readonly menu: HTMLElement;
+  private readonly head: HTMLElement;
+  private readonly purpose: HTMLElement;
+  private readonly foot: HTMLElement;
   private readonly ask: HTMLElement;
   private readonly err: HTMLElement;
   private model: BarModel | null = null;
@@ -261,10 +309,10 @@ export class CaptionBar {
     keepOpen: false,
     resultOpen: false,
     flagOpen: false,
+    menuOpen: false,
     tucked: false,
-    seen: null,
-    failNote: false,
     details: false,
+    doingIt: "",
     countdown: null,
     armedStop: 0,
     copied: "",
@@ -287,21 +335,20 @@ export class CaptionBar {
     this.resultSheet = el("div", undefined, "sheet result");
     this.bar = el("div", undefined, "bar");
     this.prog = el("div", undefined, "prog");
+    this.menu = el("div", undefined, "menu");
+    this.menu.setAttribute("role", "dialog");
+    this.menu.setAttribute("aria-label", "Run settings");
+    this.menu.hidden = true;
     const main = el("div", undefined, "main");
-    const left = el("div", undefined, "left");
-    const right = el("div", undefined, "right");
-    this.left1 = el("div", undefined, "ln");
-    this.left2 = el("div", undefined, "sub");
-    this.right1 = el("div", undefined, "ln");
-    this.right2 = el("div", undefined, "sub");
-    left.append(this.left1, this.left2);
-    right.append(this.right1, this.right2);
-    main.append(left, right);
+    this.head = el("div", undefined, "head");
+    this.purpose = el("div", undefined, "purpose");
+    this.foot = el("div", undefined, "foot");
+    main.append(this.head, this.purpose, this.foot);
     this.ask = el("div", undefined, "ask");
     this.ask.setAttribute("aria-live", "polite");
     this.err = el("div", "", "err");
     this.err.setAttribute("role", "status");
-    this.bar.append(this.prog, main, this.ask, this.err);
+    this.bar.append(this.menu, this.prog, main, this.ask, this.err);
     this.box.append(this.casesSheet, this.resultSheet, this.bar);
     this.root.append(style, this.box);
     try {
@@ -327,7 +374,11 @@ export class CaptionBar {
       if (event.key === "Enter" && input?.matches?.("input.note")) {
         const submit = input.dataset.submit;
         const target = submit ? (this.root.querySelector(`button[data-action="${submit}"]`) as HTMLButtonElement | null) : null;
-        if (target) void this.press(target);
+        if (target && !target.disabled) void this.press(target);
+      }
+      if (event.key === "Escape" && this.local.menuOpen) {
+        this.local.menuOpen = false;
+        this.paint();
       }
     });
     document.body.append(this.host);
@@ -346,6 +397,12 @@ export class CaptionBar {
 
   get height(): number {
     return this.host.hidden ? 0 : this.bar.getBoundingClientRect().height;
+  }
+
+  // Whether the person took a failed step on themselves: the screen is theirs.
+  get doingIt(): boolean {
+    const state = this.model?.state;
+    return Boolean(state && this.local.doingIt && this.local.doingIt === this.pendingKey(state));
   }
 
   // Whether an element sits where the bar (with an open sheet) covers it.
@@ -391,6 +448,7 @@ export class CaptionBar {
     if (phase && (phase === "done" || phase === "stopped") && before && before !== "done" && before !== "stopped") {
       this.local.resultOpen = true;
       this.local.casesOpen = false;
+      this.local.menuOpen = false;
     }
     // A new run: the case list opens again when it was kept open.
     if (phase && phase !== "done" && phase !== "stopped" && (!before || before === "done" || before === "stopped")) {
@@ -432,10 +490,10 @@ export class CaptionBar {
       this.lastPending = key;
       this.waitingSince = Date.now();
       this.local.tucked = false;
-      this.local.failNote = false;
       this.local.details = false;
       this.local.why = null;
       if (key) this.local.flagOpen = false;
+      if (this.local.doingIt && this.local.doingIt !== key) this.local.doingIt = "";
     }
     const ticking = live && (Boolean(state.pending) || state.paused || Boolean(this.local.countdown));
     if (ticking && !this.ticker) this.ticker = window.setInterval(() => this.paint(), 1000);
@@ -443,13 +501,15 @@ export class CaptionBar {
       clearInterval(this.ticker);
       this.ticker = 0;
     }
+    const failure = state.pending?.kind === "failure" || state.pending?.kind === "check-failed";
+    const held = live && failure && !this.doingIt;
     const yours = live && (Boolean(state.pending) || state.paused || state.phase === "waiting-next" || Boolean(this.local.countdown));
-    const held = live && state.pending?.kind === "check-failed";
     this.bar.classList.toggle("held", held);
     this.bar.classList.toggle("you", yours && !held);
     this.paintProgress(model);
     if (live) this.paintLines(model);
     else this.paintEnded(model);
+    this.paintMenu(model, live);
     this.paintAsk(model);
     this.paintCases(model);
     this.paintResult(model);
@@ -480,6 +540,7 @@ export class CaptionBar {
     });
   }
 
+  // The case's number and its whole title.
   private caseLine(state: MachineState, into: HTMLElement): void {
     const setup = state.caseIndex < 0;
     const item = state.plan[state.caseIndex];
@@ -487,8 +548,16 @@ export class CaptionBar {
     into.append(el("span", setup ? `Getting the graph ready · step ${state.stepIndex + 1} of ${Math.max(1, state.stepCount)}` : (item?.title ?? state.caseTitle ?? ""), "ct"));
   }
 
-  // The step's own words, with where it is in the case. A case's hold is
-  // when to look: a judge line beside a code check says what for.
+  // What the case must show, in full.
+  private purposeOf(state: MachineState, into: HTMLElement): void {
+    const purpose = purposeLine(state.plan[state.caseIndex], state.caseIndex < 0);
+    if (purpose.label) into.append(el("b", purpose.label));
+    into.append(document.createTextNode(purpose.text));
+  }
+
+  // The step's own words, with where it is in the case. A hold says what to
+  // look at: the judge line beside a code check, or the case's Passes if
+  // when the kit's line only names a place.
   private stepWords(model: BarModel, ahead = false): { kind: string; text: string } {
     const state = model.state;
     const setup = state.caseIndex < 0;
@@ -496,111 +565,103 @@ export class CaptionBar {
     const kind: StepKind = kinds[state.stepIndex] ?? "doing";
     const item = state.plan[state.caseIndex];
     let text = state.stepWhy ?? "";
-    if (kind === "look" && item?.judge && item.hasCheck && !setup) text = `Look for: ${item.judge}`;
+    if (kind === "look" && !setup) text = holdLine(text, item);
     const count = state.stepCount ? `Step ${state.stepIndex + 1} of ${state.stepCount}` : "Step";
     return { kind: ahead ? "Next" : count, text };
   }
 
-  private paceButtons(state: MachineState): HTMLElement[] {
-    const label = state.speed === 0.5 ? "½×" : state.speed === 0.25 ? "¼×" : `${state.speed}×`;
-    const pace = el("span", label, "pace");
-    pace.title = "How fast the run goes";
-    return [
-      button("−", "slower", "", undefined, "Slower"),
-      pace,
-      button("+", "faster", "", undefined, "Faster"),
-    ];
+  // The setting chip: when the run pauses, and its pace. It opens the menu.
+  private chip(model: BarModel): HTMLButtonElement {
+    const label = `${pauseLabel(model.pause)} · ${paceLabel(model.state.speed)} ${this.local.menuOpen ? "▾" : "▴"}`;
+    const chip = button(label, "settings", `chip${this.local.menuOpen ? " hot" : ""}`, undefined, "When the run pauses, and how fast it goes");
+    chip.setAttribute("aria-expanded", String(this.local.menuOpen));
+    return chip;
   }
 
   private paintLines(model: BarModel): void {
     const state = model.state;
     const pending = state.pending;
-    this.left1.replaceChildren();
-    this.left2.replaceChildren();
-    this.right1.replaceChildren();
-    this.right2.replaceChildren();
-    const item = state.plan[state.caseIndex];
+    this.head.replaceChildren();
+    this.purpose.replaceChildren();
+    this.foot.replaceChildren();
+    this.purpose.classList.remove("lead");
     const waited = clock(Date.now() - this.waitingSince);
-    const left = state.plan.filter((entry) => !(state.results[entry.id] ?? entry.verdict)).length;
+    const ctrl = el("div", undefined, "ctrl");
+    const cases = button(this.local.casesOpen ? "Cases ▾" : "Cases ▴", "cases");
     if (pending) {
       const pills: Record<string, [string, string]> = {
         verdict: ["● Your call", ""],
         steps: ["● Your turn", ""],
         approval: ["● Allow code?", ""],
-        failure: ["▲ A step didn't work", ""],
-        "check-failed": ["✗ Failed", "fail"],
+        failure: [this.doingIt ? "● Your turn" : "✗ A step didn't work", ""],
+        "check-failed": ["✗ The check failed", ""],
       };
       const [label, tone] = pills[pending.kind] ?? ["● Your turn", ""];
-      this.left1.append(el("span", label, `pill ${tone}`));
-      this.caseLine(state, this.left1);
-      this.right1.append(el("span", pending.kind === "check-failed" ? "Held so you can look" : `Waiting for you · ${waited}`, "wait"));
-      if (pending.kind === "check-failed") {
-        this.right1.append(
-          button(`Continue · ${Math.max(0, left - 1)} left`, "continue", "go"),
-          button("Check again", "retry"),
-          button("✓ Mark it passed", "mark-pass", "pass"),
-        );
-      }
-      this.right1.append(button(this.local.casesOpen ? "Cases ▾" : "Cases ▴", "cases"));
-      this.left2.hidden = true;
-      this.right2.hidden = true;
+      this.head.append(el("span", label, `pill ${tone}`));
+      this.caseLine(state, this.head);
+      this.head.append(el("span", `Waiting for you · ${waited}`, "wait"));
+      // A step that didn't work shows what "works" means for the case. A
+      // failed check shows it as Expected; a call by eye and a case by hand
+      // carry their line in the ask.
+      if (pending.kind === "failure") this.purposeOf(state, this.purpose);
+      ctrl.append(this.chip(model), cases);
+      this.head.append(ctrl);
       return;
     }
-    this.left2.hidden = false;
-    this.right2.hidden = false;
-    this.left2.classList.remove("lead");
     if (this.local.countdown) {
-      this.left1.append(el("span", "❚❚ Paused", "pill"));
-      this.caseLine(state, this.left1);
+      this.head.append(el("span", "❚❚ Paused", "pill"));
+      this.caseLine(state, this.head);
       const seconds = Math.max(1, Math.ceil((this.local.countdown.until - Date.now()) / 1000));
-      this.right1.append(el("span", `Starting again in ${seconds}`, "wait"), button("Wait", "countdown-cancel"));
-      this.left2.textContent = "Take your hands off the page: the run is about to drive it again.";
+      this.purpose.textContent = "Take your hands off the page: the run is about to drive it again.";
+      this.foot.append(el("span", `Starting again in ${seconds}`, "now wait"));
+      ctrl.append(button("Wait", "countdown-cancel"));
+      this.foot.append(ctrl);
       return;
     }
     if (state.paused || state.phase === "waiting-next") {
       const stepping = !state.paused;
-      this.left1.append(el("span", stepping ? "Step through" : "❚❚ Paused", "pill"));
-      this.caseLine(state, this.left1);
-      if (stepping) {
-        this.right1.append(button("Next step", "next", "go"), button("Play on", "play-on"), this.stopButton());
-        this.right2.textContent = "The run waits before each step. Next step runs one.";
-      } else {
-        if (state.mode === "case") {
-          const tick = button("☑ Pause after each case", "toggle-pause-between", "tick", undefined, "Untick to stop pausing between cases");
-          this.right1.append(tick);
-        }
-        this.right1.append(button("▶ Resume", "resume", "go"), button("Next step", "next"), this.stopButton());
-        const before = state.plan[state.caseIndex - 1];
-        const verdict = before ? (state.results[before.id] ?? before.verdict) : null;
-        this.right2.textContent =
-          state.pausedBy === "between-cases" && before
-            ? `Case ${state.caseIndex} ${verdictWord(verdict).toLowerCase()}. Look around, then Resume.`
-            : pauseWords(state.pausedBy ?? null);
-      }
+      this.head.append(el("span", stepping ? "Every step" : "❚❚ Paused", "pill"));
+      this.caseLine(state, this.head);
       // What runs next is what a person stepping through reads every time.
       const next = this.stepWords(model, true);
-      this.left2.classList.add("lead");
-      if (state.stepWhy) this.left2.append(el("span", next.kind, "kd"), document.createTextNode(next.text));
+      if (state.stepWhy) {
+        this.purpose.classList.add("lead");
+        this.purpose.append(el("span", next.kind, "kd"), document.createTextNode(next.text));
+      }
+      const before = state.plan[state.caseIndex - 1];
+      const verdict = before ? (state.results[before.id] ?? before.verdict) : null;
+      const why = stepping
+        ? "The run waits before each step. Next step runs one."
+        : state.pausedBy === "between-cases" && before
+          ? `Case ${state.caseIndex} ${verdictWord(verdict).toLowerCase()}. Look around, then Resume.`
+          : pauseWords(state.pausedBy ?? null);
+      this.foot.append(el("span", why, "now"));
+      if (stepping) ctrl.append(button("Next step", "next", "go"));
+      else ctrl.append(button("▶ Resume", "resume", "go"), button("Next step", "next"));
+      ctrl.append(this.chip(model), this.stopButton(), cases);
+      this.foot.append(ctrl);
       return;
     }
     // The run drives.
-    this.left1.append(el("i", undefined, "dot"));
-    this.caseLine(state, this.left1);
-    const purpose = purposeLine(item, state.caseIndex < 0);
-    if (purpose.label) this.left2.append(el("b", purpose.label));
-    this.left2.append(document.createTextNode(purpose.text));
+    this.head.append(el("i", undefined, "dot"));
+    this.caseLine(state, this.head);
+    this.purposeOf(state, this.purpose);
+    const now = el("span", undefined, "now");
+    const item = state.plan[state.caseIndex];
+    if (state.phase === "checking") {
+      now.append(el("span", "Checking", "kd"), document.createTextNode(item?.checks ?? "the case's check"));
+    } else if (state.stepWhy) {
+      const words = this.stepWords(model);
+      now.append(el("span", words.kind, "kd"), document.createTextNode(words.text));
+    }
+    this.foot.append(now);
     const ahead = forecastWords(forecast(state, model.msPerStep), state.caseIndex);
     const fc = el("span", undefined, "fc");
     fc.append(el("b", ahead.you, ahead.soon ? "soon" : ""), document.createTextNode(` · ${ahead.left}`));
-    this.right1.append(fc, ...this.paceButtons(state), button("❚❚ Pause", "pause", "", undefined, "Pause (Ctrl+Alt+Space)"));
-    if (state.caseIndex >= 0) this.right1.append(button("⚑ Flag", "flag", this.local.flagOpen ? "hot" : ""));
-    this.right1.append(button(this.local.casesOpen ? "Cases ▾" : "Cases ▴", "cases"));
-    if (state.phase === "checking") {
-      this.right2.append(el("span", "Checking", "kd"), document.createTextNode(item?.checks ?? "the case's check"));
-    } else if (state.stepWhy) {
-      const now = this.stepWords(model);
-      this.right2.append(el("span", now.kind, "kd"), document.createTextNode(now.text));
-    }
+    ctrl.append(fc, this.chip(model), button("❚❚ Pause", "pause", "", undefined, "Pause (Ctrl+Alt+Space)"));
+    if (state.caseIndex >= 0) ctrl.append(button("⚑ Flag", "flag", this.local.flagOpen ? "hot" : ""));
+    ctrl.append(cases);
+    this.foot.append(ctrl);
   }
 
   private stopButton(): HTMLButtonElement {
@@ -609,21 +670,45 @@ export class CaptionBar {
   }
 
   private paintEnded(model: BarModel): void {
-    this.left1.replaceChildren();
-    this.left2.replaceChildren();
-    this.right1.replaceChildren();
-    this.right2.replaceChildren();
+    this.head.replaceChildren();
+    this.purpose.replaceChildren();
+    this.foot.replaceChildren();
     const state = model.state;
     const failed = state.plan.filter((item) => state.results[item.id] === "fail").length;
     const passed = state.plan.filter((item) => state.results[item.id] === "pass").length;
     const stopped = state.phase === "stopped";
-    this.left1.append(
-      el("span", stopped ? "Stopped" : failed ? `✗ ${failed} failed` : `✓ ${passed} passed`, `pill ${stopped ? "grey" : failed ? "fail" : "pass"}`),
+    this.head.append(
+      el("span", stopped ? "Stopped" : failed ? `✗ ${failed} failed` : "✓ No failures", `pill ${stopped ? "grey" : failed ? "fail" : "pass"}`),
       el("span", `${passed} of ${state.plan.length} passed`, "ct"),
     );
-    this.right1.append(button("Close", "close"));
-    this.left2.hidden = true;
-    this.right2.hidden = true;
+    const ctrl = el("div", undefined, "ctrl");
+    ctrl.append(button("Close", "close"));
+    this.head.append(ctrl);
+  }
+
+  // The settings menu above the chip: when the run pauses, and its pace.
+  private paintMenu(model: BarModel, live: boolean): void {
+    const open = live && this.local.menuOpen;
+    this.menu.hidden = !open;
+    this.menu.replaceChildren();
+    if (!open) return;
+    this.menu.append(el("div", "When should the run pause?", "lbl"));
+    for (const option of PAUSES) {
+      const on = option.value === model.pause;
+      const node = button("", "set-pause", `opt${on ? " on" : ""}`, { value: option.value });
+      node.setAttribute("aria-pressed", String(on));
+      node.append(el("span", on ? "◉" : "○", "rd"), el("span", option.label), el("small", option.hint));
+      this.menu.append(node);
+    }
+    this.menu.append(el("div", "Pace", "lbl"));
+    const paces = el("div", undefined, "paces");
+    for (const pace of PACES) {
+      const on = pace === model.state.speed;
+      const pick = button(paceLabel(pace), "set-pace", `pick${on ? " on" : ""}`, { value: pace });
+      pick.setAttribute("aria-pressed", String(on));
+      paces.append(pick);
+    }
+    this.menu.append(paces, el("div", "Applies from the next step, and stays for later runs in this browser.", "meta"));
   }
 
   // What grows above the lines when the run needs the person, or Flag is open.
@@ -632,15 +717,16 @@ export class CaptionBar {
     const pending = state.pending;
     const live = state.phase !== "done" && state.phase !== "stopped";
     const flag = live && !pending && this.local.flagOpen && state.caseIndex >= 0;
-    const seen = this.local.seen;
+    const history = pending?.caseId ? model.history[pending.caseId]?.passed : null;
     const key = [
       pending ? this.pendingKey(state) : flag ? `flag:${state.caseId}` : "",
+      history ? `${history.when}@${history.commit ?? ""}` : "",
       this.local.tucked,
-      this.local.failNote,
       this.local.details,
-      seen?.key === this.pendingKey(state) ? String(seen.value) : "",
+      this.local.doingIt,
+      this.local.countdown ? Math.ceil((this.local.countdown.until - Date.now()) / 1000) : "",
       this.local.copied,
-      this.local.why ?? "",
+      this.local.why?.action ?? "",
     ].join("|");
     if (key === this.askKey && this.ask.childElementCount) return;
     this.askKey = key;
@@ -655,11 +741,15 @@ export class CaptionBar {
     }
     if (!pending) return;
     const item = state.plan.find((entry) => entry.id === pending.caseId) ?? state.plan[state.caseIndex];
+    if (this.local.why) {
+      this.askWhy(this.local.why);
+      return;
+    }
     if (pending.kind === "verdict") this.askVerdict(pending.text, pending.proposal ?? null);
     else if (pending.kind === "steps") this.askByHand(item);
     else if (pending.kind === "approval") this.askApproval(pending.js, pending.why, state);
-    else if (pending.kind === "failure") this.askFailure(model, pending.error, pending.stepId);
-    else if (pending.kind === "check-failed") this.askCheckFailed(item, pending.error);
+    else if (pending.kind === "failure") this.askFailure(model, item, pending.error);
+    else if (pending.kind === "check-failed") this.askCheckFailed(model, item, pending.error);
   }
 
   private noteInput(placeholder: string, submit: string): HTMLInputElement {
@@ -676,27 +766,24 @@ export class CaptionBar {
     return (this.root.querySelector("input.note") as HTMLInputElement | null)?.value.trim() ?? "";
   }
 
-  // A skip with no reason the author can act on asks for one line first.
-  private askWhy(label: string, placeholder: string, confirm: string, action: string): void {
-    this.ask.append(el("div", label, "lbl"));
+  // One line before an answer goes; Back returns to the answers.
+  private askWhy(why: Why): void {
+    this.ask.append(el("div", why.label, "lbl"));
     const row = el("div", undefined, "acts");
-    const field = this.noteInput(placeholder, action);
-    const go = button(confirm, action, "go");
-    go.disabled = true;
-    field.addEventListener("input", () => {
-      go.disabled = !field.value.trim();
-    });
+    const field = this.noteInput(why.placeholder, why.action);
+    const go = button(why.confirm, why.action, why.className);
+    if (why.required) {
+      go.disabled = true;
+      field.addEventListener("input", () => {
+        go.disabled = !field.value.trim();
+      });
+    }
     row.append(field, go, button("Back", "why-back"));
     this.ask.append(row);
     queueMicrotask(() => field.focus());
   }
 
   private askVerdict(text: string, proposal: { verdict: string; reason?: string } | null): void {
-    if (this.local.why === "cant-tell") {
-      this.ask.append(el("div", text, "say"));
-      this.askWhy("Why can't you tell?", "One line: what's missing or unclear", "Skip: can't tell", "why-cant-tell");
-      return;
-    }
     if (this.local.tucked) {
       const row = el("div", undefined, "acts");
       row.append(button("✓ Yes, pass", "verdict-pass", "pass"), button("✗ No, fail", "verdict-fail", "fail"), button("Can't tell", "cant-tell"), button("Show the check ▴", "untuck", "link"));
@@ -717,11 +804,6 @@ export class CaptionBar {
   }
 
   private askByHand(item: PlanCase | undefined): void {
-    if (this.local.why === "hand-skip") {
-      this.ask.append(el("div", item?.intent ?? "Do what this case says.", "say"));
-      this.askWhy("Why skip this case?", "One line: what stopped you", "Skip this case", "why-hand-skip");
-      return;
-    }
     this.ask.append(el("div", "Do this by hand", "lbl"), el("div", item?.intent ?? "Do what this case says.", "say"));
     const checked = Boolean(item?.hasCheck);
     this.ask.append(
@@ -748,45 +830,59 @@ export class CaptionBar {
     this.ask.append(row);
   }
 
-  private askFailure(model: BarModel, error: string, stepId: string): void {
+  // The three answers that end a case after a failure, the same for a step and a check.
+  private endAnswers(): HTMLElement {
+    const row = el("div", undefined, "acts");
+    row.append(button("✓ It works", "it-works", "pass"), button("✗ It doesn't work", "it-fails", "fail"), button("Can't tell", "fail-cant-tell"));
+    return row;
+  }
+
+  private askFailure(model: BarModel, item: PlanCase | undefined, error: string): void {
     const state = model.state;
-    const found = trouble(error);
-    const key = this.pendingKey(state);
-    this.ask.append(el("div", `Step ${state.stepIndex + 1} of ${Math.max(1, state.stepCount)} · ${state.stepWhy ?? ""}`, "lbl"), el("div", found.plain, "say"));
-    const seen = this.local.seen?.key === key ? this.local.seen.value : null;
-    if (this.local.why === "mark-pass") {
-      this.askWhy("Why does it pass?", "One line: what you saw work", "✓ Mark it passed", "why-mark-pass");
+    const why = state.stepWhy ?? "";
+    if (this.doingIt) {
+      this.ask.append(el("div", "Your turn: do this step yourself", "lbl"), el("div", why, "say"));
+      const row = el("div", undefined, "acts");
+      if (this.local.countdown) {
+        const seconds = Math.max(1, Math.ceil((this.local.countdown.until - Date.now()) / 1000));
+        this.ask.append(el("div", "Take your hands off the page: the run is about to drive it again.", "hint"));
+        row.append(el("span", `Starting again in ${seconds}`, "wait"), button("Wait", "countdown-cancel"));
+      } else {
+        this.ask.append(el("div", "The screen is yours. Press Done when it's done. The run then goes on, and the case's check still decides.", "hint"));
+        row.append(button("Done", "did-it", "go"), button("Back", "undo-it"));
+      }
+      this.ask.append(row);
       return;
     }
+    const found = trouble(error);
+    this.ask.append(el("div", `Step ${state.stepIndex + 1} of ${Math.max(1, state.stepCount)} · ${why}`, "lbl"), el("div", found.plain, "say"));
+    const guide =
+      found.kind === "kit-code"
+        ? "That's a problem in the kit's own code, not the PR."
+        : found.kind === "database"
+          ? "Check that this machine is still connected (the proof database runs on it), then try again."
+          : historyLine(item ? model.history[item.id] : null, "step");
+    this.ask.append(el("div", guide, "guide"));
     const row = el("div", undefined, "acts");
-    row.append(
-      button("↻ Try again", "retry", seen === null ? "go" : ""),
-      button("Skip this case", "skip-failed", seen === true ? "go" : ""),
-      button("✗ Fail this case…", "fail-open", seen === false ? "fail" : ""),
-      button("✓ Mark it passed…", "mark-pass"),
-    );
+    row.append(button("I'll do it", "do-it", "go"), button("↻ Try again", "retry"));
+    row.append(el("span", "Do the step yourself and press Done. The case's check still decides.", "meta"));
+    this.ask.append(row, el("div", "Or end the case now", "lbl"), this.endAnswers());
+    this.ask.append(this.authorDetails(model, error, true));
+  }
+
+  private askCheckFailed(model: BarModel, item: PlanCase | undefined, error: string): void {
+    const box = el("div", undefined, "kv");
+    box.append(el("span", "Expected"), el("span", item?.checks ?? item?.judge ?? "The case's check to hold."), el("span", "Found"), el("span", checkWords(error)));
+    this.ask.append(box);
+    this.ask.append(el("div", `${historyLine(item ? model.history[item.id] : null, "check")} The screen is yours: look, or use it, before you answer.`, "guide"));
+    const row = this.endAnswers();
+    row.append(button("↻ Try again", "retry"));
     this.ask.append(row);
-    if (this.local.failNote) {
-      const note = el("div", undefined, "acts");
-      note.append(this.noteInput("What do you see instead?", "fail-failed"), button("Fail this case", "fail-failed", "fail"));
-      this.ask.append(note);
-    }
-    if (found.kind === "kit-code") {
-      this.ask.append(el("div", "That's a problem with the kit, not the PR. Skip this case so the result lists it as couldn't run.", "guide"));
-    } else if (found.kind === "database") {
-      this.ask.append(el("div", "Check that this machine is still connected (the proof database runs on it), then try again.", "guide"));
-    } else if (seen === null) {
-      const ask = el("div", undefined, "acts");
-      const what = found.looksFor ? `“${found.looksFor}”` : "what this step needs";
-      ask.append(
-        el("span", `Still stuck? Can you see ${what} on the screen?`, "hint"),
-        button("Yes, it's there", "seen-yes"),
-        button("No", "seen-no"),
-      );
-      this.ask.append(ask);
-    } else {
-      this.ask.append(el("div", seeAnswer(seen), "guide"));
-    }
+    this.ask.append(this.authorDetails(model, error, false));
+  }
+
+  // The error, and the step's block to fix, for whoever fixes the kit.
+  private authorDetails(model: BarModel, error: string, step: boolean): HTMLElement {
     const details = el("details") as HTMLDetailsElement;
     details.open = this.local.details;
     details.addEventListener("toggle", () => {
@@ -795,27 +891,10 @@ export class CaptionBar {
     details.append(el("summary", "Details for the kit's author"));
     details.append(el("pre", error));
     const fix = el("div", undefined, "acts");
-    if (model.stepUid) fix.append(button("Edit this step", "edit-step"), el("span", "Opens its block in the right sidebar; fix it, then Try again.", "meta"));
-    fix.append(button("Skip just this step", "skip-step", "", { stepId }));
-    if (!model.agent) fix.append(button("Ask your agent to fix it", "ask-agent", "link"));
-    details.append(fix);
-    this.ask.append(details);
-  }
-
-  private askCheckFailed(item: PlanCase | undefined, error: string): void {
-    if (this.local.why === "mark-pass") {
-      this.askWhy("Why does it pass?", "One line: what you see on the screen", "✓ Mark it passed", "why-mark-pass");
-      return;
-    }
-    const box = el("div", undefined, "kv");
-    box.append(el("span", "Expected"), el("span", item?.checks ?? item?.judge ?? "The case's check to hold."), el("span", "Found"), el("span", error));
-    this.ask.append(box);
-    this.ask.append(el("div", "The run holds here so you can look at the screen, or open devtools. Continue records the failure and goes on.", "hint"));
-    const row = el("div", undefined, "acts");
-    row.append(this.noteInput("Add a note for the author (optional)", "continue"));
-    const stop = button(`${this.model?.stopOnFail ? "☑" : "☐"} Stop when a check fails`, "toggle-stop-on-fail", "tick", undefined, "Untick to record failed checks and go on");
-    row.append(stop);
-    this.ask.append(row);
+    if (step && model.stepUid) fix.append(button("Edit this step", "edit-step"), el("span", "Opens its block in the right sidebar; fix it, then Try again.", "meta"));
+    if (step && !model.agent) fix.append(button("Ask your agent to fix it", "ask-agent", "link"));
+    if (fix.childElementCount) details.append(fix);
+    return details;
   }
 
   private paintCases(model: BarModel): void {
@@ -846,7 +925,6 @@ export class CaptionBar {
         ? howWords(verdict, item.record ?? null)
         : [covers.length ? `Done When ${covers.join(", ")}` : "", need === "judge" ? "you'll judge" : need === "by-hand" ? "by hand" : ""].filter(Boolean).join(" · ");
       row.append(el("span", icon, tone), el("span", String(index + 1), "ix"), el("span", item.title, "tt"), el("span", tag, "tg"));
-      row.title = item.title;
       sheet.append(row);
       if (current) {
         const steps = el("div", undefined, "steps");
@@ -855,7 +933,6 @@ export class CaptionBar {
         if (purpose.label) line.append(el("b", `${purpose.label} `));
         line.append(document.createTextNode(purpose.text));
         steps.append(line);
-        const kinds = model.kinds[item.id] ?? [];
         item.steps.forEach((step, at) => {
           const done = at < state.stepIndex;
           const now = at === state.stepIndex;
@@ -877,10 +954,13 @@ export class CaptionBar {
     const results = state.results;
     const count = (verdict: string): number => plan.filter((item) => results[item.id] === verdict).length;
     const failed = count("fail");
+    const skipped = count("skip");
     const stopped = state.phase === "stopped";
+    const fixes = kitFixes(plan, results);
+    const helped = plan.filter((item) => results[item.id] === "pass" && passedWithHelp(item.record)).length;
     const head = el("div", undefined, "res-hd");
     head.append(
-      el("span", stopped ? "Stopped" : failed ? `✗ ${failed} failed` : count("skip") ? `${count("skip")} couldn't run` : "✓ All passed", `pill ${stopped ? "grey" : failed ? "fail" : count("skip") ? "" : "pass"}`),
+      el("span", stopped ? "Stopped" : failed ? `✗ ${failed} failed` : "✓ No failures", `pill ${stopped ? "grey" : failed ? "fail" : "pass"}`),
       el("span", `${count("pass")} of ${plan.length} passed`, "big"),
       el("span", undefined, "grow"),
     );
@@ -890,46 +970,77 @@ export class CaptionBar {
       .join(" · ");
     if (where) head.append(el("span", where, "meta"));
     sheet.append(head);
+    const sum = [
+      skipped ? `${skipped} couldn't be tested.` : "",
+      fixes.length ? `The kit needs ${fixes.length} fix${fixes.length === 1 ? "" : "es"}${helped ? `, and ${helped} case${helped === 1 ? "" : "s"} passed with your help` : ""}.` : helped ? `${helped} case${helped === 1 ? "" : "s"} passed with your help.` : "",
+    ]
+      .filter(Boolean)
+      .join(" ");
     const { bullets, other } = doneWhen(plan);
     if (bullets.length) {
       const holding = bullets.filter((bullet) => bulletVerdict(bullet, results) === "pass").length;
-      sheet.append(el("div", `Done When: ${holding} of ${bullets.length} bullet${bullets.length === 1 ? "" : "s"} pass${stopped ? " so far" : ""}.`, "meta"));
+      sheet.append(el("div", `Done When: ${holding} of ${bullets.length} bullet${bullets.length === 1 ? "" : "s"} pass${stopped ? " so far" : ""}.${sum ? ` ${sum}` : ""}`, "meta"));
       const sec = el("div", undefined, "sec");
       sec.append(el("div", `Done When${facts.ticket ? ` · ${facts.ticket}` : ""}`, "lbl"));
       for (const bullet of bullets) {
         const verdict = bulletVerdict(bullet, results);
         const row = el("div", undefined, "dw");
         const size = `${bullet.caseIds.length} case${bullet.caseIds.length === 1 ? "" : "s"}`;
+        const yours = plan.filter((item) => bullet.caseIds.includes(item.id) && results[item.id] === "pass" && passedWithHelp(item.record)).length;
         row.append(
           el("span", verdict ? ICON[verdict] : "○", verdict ? ICON_CLASS[verdict] : "gr"),
           el("span", String(bullet.number), "meta"),
           el("span", bullet.text || "(the kit doesn't say)"),
-          el("span", verdict === "fail" ? `${size}, failed` : verdict === "skip" ? `${size}, couldn't run` : verdict ? size : `${size}, didn't run`, `tg${verdict === "fail" ? " r" : ""}`),
+          el(
+            "span",
+            verdict === "fail" ? `${size}, failed` : verdict === "skip" ? `${size}, couldn't be tested` : verdict ? `${size}${yours ? ` · ${yours} passed by you` : ""}` : `${size}, didn't run`,
+            `tg${verdict === "fail" ? " r" : ""}`,
+          ),
         );
         sec.append(row);
       }
       sheet.append(sec);
+    } else if (sum) {
+      sheet.append(el("div", sum, "meta"));
     }
-    const failures = plan.filter((item) => results[item.id] === "fail" || results[item.id] === "skip");
+    const failures = plan.filter((item) => results[item.id] === "fail");
     if (failures.length) {
       const sec = el("div", undefined, "sec");
-      sec.append(el("div", count("fail") ? "Failed" : "Couldn't run", "lbl"));
+      sec.append(el("div", "Failed", "lbl"));
       for (const item of failures) {
         const index = plan.indexOf(item);
-        const verdict = results[item.id];
-        const box = el("div", undefined, `fbox${verdict === "skip" ? " skip" : ""}`);
-        box.append(el("div", `${ICON[verdict]} Case ${index + 1} · ${item.title}`, "ft"));
+        const box = el("div", undefined, "fbox");
+        box.append(el("div", `${ICON.fail} Case ${index + 1} · ${item.title}`, "ft"));
         const kv = el("div", undefined, "kv");
         kv.append(
           el("span", "Expected"),
           el("span", item.checks ?? item.judge ?? "Every step runs."),
-          el("span", verdict === "skip" ? "What happened" : "Found"),
-          el("span", `${item.note ?? (verdict === "skip" ? "A step didn't work." : "The check gave no message.")}${item.record ? ` · ${howWords(verdict, item.record)}` : ""}`),
+          el("span", "Found"),
+          el("span", `${item.note ?? "The check gave no message."}${item.record ? ` · ${howWords("fail", item.record)}` : ""}`),
         );
-        box.append(kv);
-        if (verdict === "fail") box.append(button(this.local.copied === `bug:${item.id}` ? "Copied" : "Copy bug report", "copy-bug", "", { caseId: item.id }));
+        box.append(kv, button(this.local.copied === `bug:${item.id}` ? "Copied" : "Copy bug report", "copy-bug", "", { caseId: item.id }));
         sec.append(box);
       }
+      sheet.append(sec);
+    }
+    if (fixes.length) {
+      const sec = el("div", undefined, "sec");
+      sec.append(el("div", `The kit needs fixing · ${fixes.length}`, "lbl"));
+      const box = el("div", undefined, "kbox");
+      for (const fix of fixes) {
+        const row = el("div", undefined, "krow");
+        row.append(el("span", String(fix.index + 1), "ix"), el("span", fix.title, "tt"));
+        for (const line of fix.lines) row.append(el("span", line, "wh"));
+        box.append(row);
+      }
+      const acts = el("div", undefined, "acts");
+      acts.style.marginTop = "8px";
+      acts.append(
+        button(this.local.copied === "kit" ? "Copied" : "Copy for the kit's author", "copy-kit", "am"),
+        el("span", "Each case's step or check, what went wrong, and what you said, for whoever fixes the kit.", "meta"),
+      );
+      box.append(acts);
+      sec.append(box);
       sheet.append(sec);
     }
     const sec = el("div", undefined, "sec");
@@ -942,13 +1053,11 @@ export class CaptionBar {
     }
     if (model.notTested) sec.append(el("div", `Not tested, and why: ${model.notTested} on the proof page.`, "meta"));
     const took = (model.endedAt ?? Date.now()) - model.startedAt;
-    const skippedSteps = plan.reduce((sum, item) => sum + (item.record?.skippedSteps.length ?? 0), 0);
     const retries = plan.reduce((sum, item) => sum + (item.record?.retries ?? 0), 0);
     const how = [
-      model.choice === "watch" ? "watched" : model.choice === "step" ? "stepped through" : "just the result",
+      runWords(model.pause, state.speed),
       model.scope === "failed" ? "re-ran the cases that didn't pass" : model.scope === "resume" ? "resumed" : "",
       duration(took).replace(/^about /, ""),
-      skippedSteps ? `${skippedSteps} step${skippedSteps === 1 ? "" : "s"} skipped` : "no steps skipped",
       retries ? `${retries} tr${retries === 1 ? "y" : "ies"} again` : "",
       facts.when,
     ]
@@ -957,10 +1066,7 @@ export class CaptionBar {
     sec.append(el("div", `How this run went: ${how}`, "meta"));
     sheet.append(sec);
     const acts = el("div", undefined, "acts sec");
-    acts.append(
-      button(this.local.copied === "result" ? "Copied" : "Copy result for the PR", "copy-result", "go"),
-      button("Run again", "run"),
-    );
+    acts.append(button(this.local.copied === "result" ? "Copied" : "Copy result for the PR", "copy-result", "go"), button("Run again", "run"));
     if (model.rerun) acts.append(button(`Run the ${model.rerun === 1 ? "one" : model.rerun} that didn't pass`, "rerun"));
     acts.append(button("Open the kit page", "open-kit"), button("Close", "close"));
     sheet.append(acts);
@@ -1000,6 +1106,17 @@ export class CaptionBar {
     this.send({ kind: "command", cmd, args });
   }
 
+  // A 3-second count before the run drives again, so it doesn't start
+  // moving while a hand is still on the mouse.
+  private countdown(cmd: string): void {
+    if (this.local.countdown) return;
+    const timer = window.setTimeout(() => {
+      this.local.countdown = null;
+      this.command(cmd);
+    }, 3000);
+    this.local.countdown = { until: Date.now() + 3000, timer, cmd };
+  }
+
   private async press(target: HTMLButtonElement): Promise<void> {
     const action = target.dataset.action ?? "";
     const args = target.dataset.args ? (JSON.parse(target.dataset.args) as Record<string, unknown>) : {};
@@ -1007,6 +1124,7 @@ export class CaptionBar {
     const state = model?.state;
     const note = this.note();
     const withNote = (extra: Record<string, unknown> = {}): Record<string, unknown> => (note ? { ...extra, note } : extra);
+    const checkFailed = state?.pending?.kind === "check-failed";
     switch (action) {
       case "cases":
         this.local.casesOpen = !this.local.casesOpen;
@@ -1018,6 +1136,17 @@ export class CaptionBar {
         } catch {
           // This tab only.
         }
+        break;
+      case "settings":
+        this.local.menuOpen = !this.local.menuOpen;
+        break;
+      case "set-pause":
+        this.local.menuOpen = false;
+        this.send({ kind: "setting", key: "pause", value: args.value as PauseSetting });
+        break;
+      case "set-pace":
+        this.local.menuOpen = false;
+        this.send({ kind: "setting", key: "pace", value: Number(args.value) });
         break;
       case "flag":
         this.local.flagOpen = !this.local.flagOpen;
@@ -1043,7 +1172,7 @@ export class CaptionBar {
         break;
       case "cant-tell":
         if (note) this.command("skip-case", { note: `Can't tell: ${note}` });
-        else this.local.why = "cant-tell";
+        else this.local.why = { label: "Why can't you tell?", placeholder: "One line: what's missing or unclear", confirm: "Skip: can't tell", className: "go", action: "why-cant-tell", required: true };
         break;
       case "why-cant-tell":
         if (!note) return this.showError("Say in one line why you can't tell.");
@@ -1051,7 +1180,7 @@ export class CaptionBar {
         break;
       case "hand-skip":
         if (note) this.command("skip-case", { note });
-        else this.local.why = "hand-skip";
+        else this.local.why = { label: "Why skip this case?", placeholder: "One line: what stopped you", confirm: "Skip this case", className: "go", action: "why-hand-skip", required: true };
         break;
       case "why-hand-skip":
         if (!note) return this.showError("Say in one line why you're skipping it.");
@@ -1060,18 +1189,38 @@ export class CaptionBar {
       case "why-back":
         this.local.why = null;
         break;
-      case "mark-pass":
-        this.local.why = "mark-pass";
+      // The answers to a failure: does it work?
+      case "it-works":
+        this.local.why = { label: "What did you see work?", placeholder: "One line, for whoever fixes the kit", confirm: "✓ It works", className: "pass", action: "why-it-works", required: true };
         break;
-      case "why-mark-pass":
-        if (!note) return this.showError("Say in one line why it passes.");
+      case "why-it-works":
+        if (!note) return this.showError("Say in one line what you saw work.");
         this.command("verdict", { verdict: "pass", note });
         break;
-      case "toggle-stop-on-fail":
-        this.send({ kind: "setting", key: "stopOnFail", on: !this.model?.stopOnFail });
+      case "it-fails":
+        this.local.why = { label: "What do you see instead? (optional)", placeholder: "One line for the bug report", confirm: "✗ It doesn't work", className: "fail", action: "why-it-fails", required: false };
         break;
-      case "toggle-pause-between":
-        this.send({ kind: "setting", key: "pauseBetween", on: false });
+      case "why-it-fails":
+        if (checkFailed) this.command("continue", withNote());
+        else this.command("verdict", withNote({ verdict: "fail" }));
+        break;
+      case "fail-cant-tell":
+        this.local.why = { label: "Why can't you tell?", placeholder: "One line, for whoever fixes the kit", confirm: "Can't tell", className: "go", action: "why-fail-cant-tell", required: true };
+        break;
+      case "why-fail-cant-tell":
+        if (!note) return this.showError("Say in one line why you can't tell.");
+        this.command("skip-case", { note: `Can't tell: ${note}` });
+        break;
+      case "do-it":
+        if (state) this.local.doingIt = this.pendingKey(state);
+        this.send({ kind: "turn" });
+        break;
+      case "undo-it":
+        this.local.doingIt = "";
+        this.send({ kind: "turn" });
+        break;
+      case "did-it":
+        this.countdown("done-step");
         break;
       case "hand-pass":
         this.command("verdict", withNote({ verdict: "pass" }));
@@ -1085,47 +1234,12 @@ export class CaptionBar {
       case "skip-case":
         this.command("skip-case", withNote());
         break;
-      case "skip-failed":
-        this.command("skip-case", { note: note || (this.local.seen?.value ? "The step is out of date: what it needs is on the screen." : "A step didn't work.") });
+      case "resume":
+        this.countdown("resume");
         break;
-      case "fail-open":
-        this.local.failNote = true;
-        break;
-      case "fail-failed":
-        this.command("verdict", withNote({ verdict: "fail" }));
-        break;
-      case "seen-yes":
-      case "seen-no":
-        if (state) this.local.seen = { key: this.pendingKey(state), value: action === "seen-yes" };
-        if (action === "seen-no") this.local.failNote = true;
-        break;
-      case "continue":
-        this.command("continue", withNote());
-        break;
-      case "resume": {
-        if (this.local.countdown) break;
-        const timer = window.setTimeout(() => {
-          this.local.countdown = null;
-          this.command("resume");
-        }, 3000);
-        this.local.countdown = { until: Date.now() + 3000, timer };
-        break;
-      }
       case "countdown-cancel":
         if (this.local.countdown) clearTimeout(this.local.countdown.timer);
         this.local.countdown = null;
-        break;
-      case "slower":
-      case "faster": {
-        const speed = state?.speed ?? 1;
-        const at = SPEEDS.findIndex((value) => value >= speed);
-        const index = at < 0 ? SPEEDS.length - 1 : at;
-        const next = SPEEDS[action === "faster" ? Math.min(SPEEDS.length - 1, index + 1) : Math.max(0, index - 1)];
-        this.command("speed", { speed: next });
-        break;
-      }
-      case "play-on":
-        this.command("mode", { mode: "auto" });
         break;
       case "stop":
         if (Date.now() < this.local.armedStop) {
@@ -1143,6 +1257,9 @@ export class CaptionBar {
         return;
       case "copy-result":
         if (model) await this.copy(resultMarkdown(model.state, model.facts, model.notTested), "result");
+        return;
+      case "copy-kit":
+        if (model) await this.copy(kitReport(model.state, model.facts), "kit");
         return;
       case "copy-bug": {
         const item = model?.state.plan.find((entry) => entry.id === args.caseId);

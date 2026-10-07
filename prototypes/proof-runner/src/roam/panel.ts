@@ -1,11 +1,23 @@
 import type { MachineState } from "../core/machine";
-import { CaptionBar, type BarAction, type RunChoice } from "./bar";
+import { CaptionBar, type BarAction } from "./bar";
 import type { CheckAction, CheckItem } from "./checklist";
+import type { RunSummary } from "./outcome";
 import { roam } from "./roam";
 import { Stage } from "./stage";
-import { bulletVerdict, doneWhen, duration, type DoneWhen, type RunFacts, type StepKind } from "./words";
-
-export type { RunChoice } from "./bar";
+import {
+  PACES,
+  PAUSES,
+  bulletVerdict,
+  doneWhen,
+  duration,
+  isPauseSetting,
+  paceLabel,
+  type CaseHistory,
+  type DoneWhen,
+  type PauseSetting,
+  type RunFacts,
+  type StepKind,
+} from "./words";
 
 // The proof runner's surfaces, from the tester's side of the screen. On the
 // page, inside the {{proof}} block, a run card says what the PR does and what
@@ -52,13 +64,14 @@ export type KitSummary = {
 
 // What a run carries beside the machine's state.
 export type RunInfo = {
-  choice: RunChoice;
+  // When the run pauses for the person.
+  pause: PauseSetting;
   // Every case, a resume, or only the cases that didn't pass last time.
   scope: "all" | "resume" | "failed";
   // How many cases didn't pass, for "Run the ones that didn't pass".
   rerun: number;
-  // Whether a failed check holds the screen until the person goes on.
-  stopOnFail: boolean;
+  // Whether each case passed in a recorded run, by case id.
+  history: Record<string, CaseHistory>;
   kinds: Record<string, StepKind[]>;
   startedAt: number;
   endedAt: number | null;
@@ -81,8 +94,10 @@ export type PanelView = {
   blocks: { cases: Record<string, string>; step: string | null };
   // Cases already judged in an earlier, unfinished run of this kit.
   resumable: { caseIndex: number; results: Record<string, string> } | null;
-  // The last finished run, from the page's run log.
+  // The last finished run, from the page's run log: its line, that line read
+  // back, and whether it ran on the build this tab has loaded (null: can't say).
   lastRun: string | null;
+  last: { summary: RunSummary; thisBuild: boolean | null } | null;
   kit: KitSummary | null;
   run: RunInfo | null;
   // An agent called the runner's tools lately.
@@ -99,7 +114,8 @@ export type PanelAction =
   | { kind: "edit-step" }
   | { kind: "rerun" }
   | { kind: "open-kit" }
-  | { kind: "stop-on-fail"; on: boolean }
+  | { kind: "setting"; key: "pause"; value: PauseSetting }
+  | { kind: "setting"; key: "pace"; value: number }
   | { kind: "command"; cmd: string; args?: Record<string, unknown> };
 
 const OWN_ACTIONS = new Set(["run", "resume", "reset", "rerun", "done-by-hand", "connect", "disconnect", "load", "reload", "check-database", "ask-agent"]);
@@ -118,6 +134,8 @@ const CSS = `
   .fact { background: #26233a; border-radius: 6px; padding: 2px 8px; font-size: 12.5px; }
   .fact.ok { background: rgba(69, 196, 126, .15); color: #9fe7bd; }
   .fact.you { background: rgba(255, 181, 71, .16); color: #ffcf85; }
+  .fact.bad { background: rgba(255, 101, 91, .16); color: #ffa49d; }
+  .fact.grey { background: #2b2840; color: #c7c3d8; }
   .body { padding: 12px 16px 14px; display: grid; gap: 10px; }
   .checks { display: grid; gap: 4px; }
   .checks:empty { display: none; }
@@ -142,7 +160,7 @@ const CSS = `
   .err { color: #b9342b; white-space: pre-wrap; }
   .err:empty { display: none; }
   .lbl { font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; color: #6b6880; font-weight: 800; }
-  .choices { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; }
+  .choices { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
   .choice { text-align: left; border: 1px solid #d9d6e4; background: #fff; border-radius: 8px; padding: 7px 9px; font: 12px/1.4 system-ui, -apple-system, sans-serif;
     color: #4c4a5c; cursor: pointer; }
   .choice b { display: block; color: #1f1d29; font-size: 13px; margin-bottom: 1px; }
@@ -150,9 +168,6 @@ const CSS = `
   .paces { margin-top: 8px; }
   button.pick { font-weight: 500; padding: 3px 9px; }
   button.pick.on { background: #5541d2; border-color: #5541d2; color: #fff; }
-  button.tick { display: block; margin-top: 7px; background: none; border: 0; padding: 2px 0; font-weight: 500; color: #4c4a5c; text-align: left; }
-  button.tick:hover { background: none; color: #1f1d29; }
-  button.tick .box { color: #5541d2; font-size: 14px; }
   .meta.held { margin-top: 8px; }
   .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
   .meta { color: #6b6880; font-size: 12px; }
@@ -208,38 +223,19 @@ const ROOM_CSS = `.roam-body { height: calc(100vh - var(--proof-runner-h, 0px)) 
 // card. Keys go on: Roam's shortcuts work while editing a step.
 const BLOCK_MOUSE_EVENTS = ["mousedown", "mouseup", "click", "pointerdown"];
 
-const CHOICE_KEY = "proof-runner:run-choice";
-const PAUSE_BETWEEN_KEY = "proof-runner:pause-between";
+const PAUSE_KEY = "proof-runner:pause";
 const PACE_KEY = "proof-runner:pace";
-const STOP_ON_FAIL_KEY = "proof-runner:stop-on-fail";
-const PACES: Array<{ pace: number; label: string }> = [
-  { pace: 0.5, label: "Slower" },
-  { pace: 1, label: "Normal" },
-  { pace: 2, label: "Faster" },
-];
-const CHOICES: Array<{ choice: RunChoice; label: string; hint: string }> = [
-  { choice: "watch", label: "Watch it", hint: "Normal pace. Holds on a failure so you can look." },
-  { choice: "result", label: "Just the result", hint: "Faster. Tries a failed step again, then moves on." },
-  { choice: "step", label: "Step through", hint: "Waits before each step. Next step runs one." },
-];
+// What an earlier runner kept: a way to run and a tick for pausing after each case.
+const OLD_CHOICE_KEY = "proof-runner:run-choice";
+const OLD_PAUSE_BETWEEN_KEY = "proof-runner:pause-between";
 
-// How a run plays, picked before Run and kept in this browser. Watch it can
-// also stop after each case, so a reviewer can look around before the next
-// case's first step clears the screen.
-export type RunSettings = { choice: RunChoice; pauseBetween: boolean; pace: number; stopOnFail: boolean };
+// How a run plays: when it pauses for the person, and its pace. Picked on the
+// card or in the bar, at any time, and kept in this browser.
+export type RunSettings = { pause: PauseSetting; pace: number };
 
-const readFlag = (key: string, otherwise: boolean): boolean => {
+const remember = (key: string, value: string): void => {
   try {
-    const saved = localStorage.getItem(key);
-    return saved === null ? otherwise : saved === "1";
-  } catch {
-    return otherwise;
-  }
-};
-
-const saveFlag = (key: string, on: boolean): void => {
-  try {
-    localStorage.setItem(key, on ? "1" : "0");
+    localStorage.setItem(key, value);
   } catch {
     // Kept for this tab only.
   }
@@ -248,29 +244,33 @@ const saveFlag = (key: string, on: boolean): void => {
 const readPace = (): number => {
   try {
     const saved = Number(localStorage.getItem(PACE_KEY));
-    if (PACES.some((item) => item.pace === saved)) return saved;
+    if (PACES.includes(saved)) return saved;
   } catch {
     // No storage here: the default.
   }
   return 1;
 };
 
-const readPauseBetween = (): boolean => {
+const readPause = (): PauseSetting => {
   try {
-    return localStorage.getItem(PAUSE_BETWEEN_KEY) === "1";
-  } catch {
-    return false;
-  }
-};
-
-const readChoice = (): RunChoice => {
-  try {
-    const saved = localStorage.getItem(CHOICE_KEY);
-    if (saved === "watch" || saved === "result" || saved === "step") return saved;
+    const saved = localStorage.getItem(PAUSE_KEY);
+    if (isPauseSetting(saved)) return saved;
+    // Carried over from the three ways to run.
+    const old = localStorage.getItem(OLD_CHOICE_KEY);
+    if (old === "step") return "step";
+    if (old === "result") return "needed";
+    if (localStorage.getItem(OLD_PAUSE_BETWEEN_KEY) === "1") return "case";
   } catch {
     // No storage here: the default.
   }
-  return "watch";
+  return "failure";
+};
+
+// "2026-10-07 21:40" as "Oct 7".
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const shortDate = (stamp: string | null): string => {
+  const match = stamp ? /^(\d{4})-(\d{2})-(\d{2})/.exec(stamp) : null;
+  return match ? `${MONTHS[Number(match[2]) - 1]} ${Number(match[3])}` : "";
 };
 
 const ICONS: Record<string, string> = { pass: "✓", fail: "✗", skip: "–" };
@@ -326,13 +326,12 @@ export class ProofPanel {
   private readonly mounts = new Map<HTMLElement, Parts>();
   private flash = "";
   private flashTimer = 0;
-  private choice: RunChoice = readChoice();
-  private pauseBetween = readPauseBetween();
+  private pause: PauseSetting = readPause();
   private pace = readPace();
-  private stopOnFail = readFlag(STOP_ON_FAIL_KEY, true);
   private readonly bar: CaptionBar;
   private readonly stage: Stage;
   private lastAsk = "";
+  private lastFailure = "";
   // How long steps take here, from the run so far.
   private stepTimes: number[] = [];
   private lastStep: { key: string; at: number } | null = null;
@@ -367,12 +366,7 @@ export class ProofPanel {
   }
 
   runSettings(): RunSettings {
-    return {
-      choice: this.choice,
-      pauseBetween: this.choice === "watch" && this.pauseBetween,
-      pace: this.choice === "watch" ? this.pace : 1,
-      stopOnFail: this.choice === "result" ? false : this.choice === "step" || this.stopOnFail,
-    };
+    return { pause: this.pause, pace: this.pace };
   }
 
   // Puts a run card in host. Roam re-renders blocks, so the same panel may be
@@ -522,18 +516,23 @@ export class ProofPanel {
       facts: run.facts,
       notTested: view.kit?.notTested.length ?? 0,
       stepUid: view.blocks.step,
-      choice: run.choice,
+      pause: run.pause,
       scope: run.scope,
       rerun: run.rerun,
-      stopOnFail: run.stopOnFail,
       agent: view.agent,
       startedAt: run.startedAt,
       endedAt: run.endedAt,
+      history: run.history,
     });
     const driving = live && !state.paused && !state.pending && state.phase !== "waiting-next";
+    const failure = state.pending?.kind === "failure" || state.pending?.kind === "check-failed";
     this.stage.setLive(live);
     this.stage.setHolding(driving);
-    this.stage.setDriver(!live ? "none" : state.pending?.kind === "check-failed" ? "held" : driving ? "run" : "you");
+    this.stage.setDriver(!live ? "none" : failure && !this.bar.doingIt ? "held" : driving ? "run" : "you");
+    // Whether the person uses the page while a failure waits, for Try again's record.
+    const failing = live && failure && state.pending ? `${state.pending.kind}:${state.pending.caseId}:${state.stepIndex}` : "";
+    if (failing !== this.lastFailure) this.stage.resetTouched();
+    this.lastFailure = failing;
     if (!live || (!state.executing && state.phase !== "dwell")) {
       this.stage.ring(null);
       this.bar.setDodge(false);
@@ -573,58 +572,46 @@ export class ProofPanel {
     }
     if (action.kind === "ask-agent") return this.onAction({ kind: "ask-agent" });
     // A setting changed in the bar during the run: kept for later runs too.
-    if (action.kind === "setting") {
-      if (action.key === "pauseBetween") {
-        this.pauseBetween = action.on;
-        saveFlag(PAUSE_BETWEEN_KEY, action.on);
-        return this.onAction({ kind: "command", cmd: "mode", args: { mode: action.on ? "case" : "auto" } });
-      }
-      this.stopOnFail = action.on;
-      saveFlag(STOP_ON_FAIL_KEY, action.on);
-      return this.onAction({ kind: "stop-on-fail", on: action.on });
+    if (action.kind === "setting") return this.setting(action);
+    // Who has the screen changed in the bar alone.
+    if (action.kind === "turn") {
+      if (this.view) this.syncRun(this.view);
+      return null;
+    }
+    // Try again records whether the person used the page first.
+    if (action.kind === "command" && action.cmd === "retry" && this.stage.touched) {
+      return this.onAction({ ...action, args: { ...(action.args ?? {}), touched: true } });
     }
     const result = await this.onAction(action);
     if (this.view) this.syncRun(this.view);
     return result;
   }
 
+  // A setting picked on the card, or in the bar during a run: kept in this
+  // browser, and handed to the run going now.
+  private async setting(action: Extract<PanelAction, { kind: "setting" }>): Promise<string | null> {
+    if (action.key === "pause") {
+      this.pause = action.value;
+      remember(PAUSE_KEY, action.value);
+    } else {
+      this.pace = action.value;
+      remember(PACE_KEY, String(action.value));
+    }
+    this.repaint();
+    return this.onAction(action);
+  }
+
   private async press(target: HTMLButtonElement): Promise<void> {
     const action = target.dataset.action ?? "";
     const args = target.dataset.args ? (JSON.parse(target.dataset.args) as Record<string, unknown>) : {};
-    if (action === "choose") {
-      this.choice = args.choice as RunChoice;
-      try {
-        localStorage.setItem(CHOICE_KEY, this.choice);
-      } catch {
-        // Kept for this tab only.
-      }
-      this.repaint();
+    if (action === "set-pause" && isPauseSetting(args.value)) {
+      const error = await this.setting({ kind: "setting", key: "pause", value: args.value });
+      if (error) this.showError(error);
       return;
     }
-    if (action === "pace") {
-      this.pace = Number(args.pace);
-      try {
-        localStorage.setItem(PACE_KEY, String(this.pace));
-      } catch {
-        // Kept for this tab only.
-      }
-      this.repaint();
-      return;
-    }
-    if (action === "stop-on-fail") {
-      this.stopOnFail = !this.stopOnFail;
-      saveFlag(STOP_ON_FAIL_KEY, this.stopOnFail);
-      this.repaint();
-      return;
-    }
-    if (action === "pause-between") {
-      this.pauseBetween = !this.pauseBetween;
-      try {
-        localStorage.setItem(PAUSE_BETWEEN_KEY, this.pauseBetween ? "1" : "0");
-      } catch {
-        // Kept for this tab only.
-      }
-      this.repaint();
+    if (action === "set-pace") {
+      const error = await this.setting({ kind: "setting", key: "pace", value: Number(args.value) });
+      if (error) this.showError(error);
       return;
     }
     if (action === "show-result") {
@@ -646,17 +633,21 @@ export class ProofPanel {
     card.replaceChildren();
     card.append(this.paintHead(view));
     const body = el("div", undefined, "body");
-    if (state && isLive(state)) {
+    const live = Boolean(state && isLive(state));
+    if (state && live) {
+      // One line while the run goes: the bar at the bottom carries the rest.
       const where = state.caseIndex < 0 ? "Setting up the graph" : `Case ${state.caseIndex + 1} of ${state.caseCount} is running`;
       body.append(el("div", `${where}. The controls are in the bar at the bottom of the window.`, "status"));
     } else {
       body.append(this.paintChecklist(view));
       for (const text of view.warnings) body.append(el("div", text, "warn"));
+      if (view.kit && !view.last) body.append(el("div", "Nobody has run this kit in Roam yet, so a failure may be the kit's own. When one happens, the run asks you.", "warn"));
       if (state) body.append(this.paintEnded(state));
       body.append(this.paintStart(view));
       const folds = this.paintFolds(view);
       if (folds) body.append(folds);
     }
+    parts.plan.hidden = !state || live;
     body.append(parts.plan);
     parts.err.textContent = [view.error, this.flash].filter(Boolean).join("\n");
     body.append(parts.err);
@@ -671,17 +662,37 @@ export class ProofPanel {
     head.append(el("div", eyebrow, "eyebrow"), el("div", view.title, "title"), el("div", kit?.claim ?? "", "claim"));
     if (kit) {
       const facts = el("div", undefined, "facts");
-      const minutes = duration(kit.steps * STEP_MS + kit.cases * 1500);
-      facts.append(el("span", `${kit.cases} case${kit.cases === 1 ? "" : "s"}`, "fact"), el("span", minutes, "fact"));
+      const last = view.last?.summary ?? null;
+      // The last run's length when the page has one; otherwise a guess from the step count.
+      const time =
+        last && last.minutes !== null
+          ? `${last.minutes ? `${last.minutes} min` : "under a minute"} last time`
+          : `${duration(kit.steps * STEP_MS + kit.cases * 1500)}, a guess`;
+      facts.append(el("span", `${kit.cases} case${kit.cases === 1 ? "" : "s"}`, "fact"), el("span", time, "fact"));
       const asks = [kit.judge ? `${kit.judge} call${kit.judge === 1 ? "" : "s"} by eye` : "", kit.byHand ? `${kit.byHand} by hand` : ""].filter(Boolean);
       facts.append(
         asks.length
           ? el("span", `Needs you ${kit.judge + kit.byHand} time${kit.judge + kit.byHand === 1 ? "" : "s"}: ${asks.join(", ")}`, "fact you")
-          : el("span", "Won't need you unless a step doesn't work", "fact ok"),
+          : el("span", "Won't need you unless something fails", "fact ok"),
       );
+      facts.append(this.lastRunFact(view));
       head.append(facts);
     }
     return head;
+  }
+
+  // Whether the kit has run in Roam, and how its last run went.
+  private lastRunFact(view: PanelView): HTMLElement {
+    const last = view.last;
+    if (!last) return el("span", "Not run in Roam yet", "fact you");
+    const run = last.summary;
+    const where = last.thisBuild === true ? " on this build" : last.thisBuild === false ? " on an older build" : "";
+    const when = shortDate(run.when);
+    const tail = `${where}${when ? `, ${when}` : ""}`;
+    if (run.stopped) return el("span", `Last run: stopped, ${run.passed} of ${run.total} passed${tail}`, "fact grey");
+    if (run.failed) return el("span", `Last run: ${run.failed} failed${tail}`, "fact bad");
+    if (run.skipped) return el("span", `Last run: ${run.passed} of ${run.total} passed, ${run.skipped} couldn't be tested${tail}`, "fact you");
+    return el("span", `Last run: ${run.passed} of ${run.total} passed${tail}`, last.thisBuild === false ? "fact grey" : "fact ok");
   }
 
   // Each need with its mark and, when it isn't met, the button that meets
@@ -738,36 +749,25 @@ export class ProofPanel {
   private paintStart(view: PanelView): HTMLElement {
     const box = el("div", undefined, "start");
     const state = view.machine;
-    box.append(el("div", "How will you run it?", "lbl"));
+    box.append(el("div", "When should the run pause?", "lbl"));
     const choices = el("div", undefined, "choices");
-    for (const option of CHOICES) {
-      const node = button("", "choose", { className: `choice${this.choice === option.choice ? " on" : ""}`, args: { choice: option.choice } });
-      node.setAttribute("aria-pressed", String(this.choice === option.choice));
-      node.append(el("b", `${this.choice === option.choice ? "◉" : "○"} ${option.label}`), document.createTextNode(option.hint));
+    for (const option of PAUSES) {
+      const on = this.pause === option.value;
+      const node = button("", "set-pause", { className: `choice${on ? " on" : ""}`, args: { value: option.value } });
+      node.setAttribute("aria-pressed", String(on));
+      node.append(el("b", `${on ? "◉" : "○"} ${option.label}`), document.createTextNode(option.hint));
       choices.append(node);
     }
     box.append(choices);
-    if (this.choice === "watch") {
-      const paces = el("div", undefined, "row paces");
-      paces.append(el("span", "Pace", "lbl"));
-      for (const item of PACES) {
-        const pick = button(item.label, "pace", { className: `pick${this.pace === item.pace ? " on" : ""}`, args: { pace: item.pace } });
-        pick.setAttribute("aria-pressed", String(this.pace === item.pace));
-        paces.append(pick);
-      }
-      paces.append(el("span", "You can also change it during the run, in the bar.", "meta"));
-      box.append(paces);
-      const tick = button("", "pause-between", { className: "tick" });
-      tick.setAttribute("role", "checkbox");
-      tick.setAttribute("aria-checked", String(this.pauseBetween));
-      tick.append(el("span", this.pauseBetween ? "☑" : "☐", "box"), document.createTextNode(" Pause after each case, so you can look around before the next one starts"));
-      box.append(tick);
-      const stop = button("", "stop-on-fail", { className: "tick" });
-      stop.setAttribute("role", "checkbox");
-      stop.setAttribute("aria-checked", String(this.stopOnFail));
-      stop.append(el("span", this.stopOnFail ? "☑" : "☐", "box"), document.createTextNode(" Stop when a check fails, so you can look at the screen"));
-      box.append(stop);
+    const paces = el("div", undefined, "row paces");
+    paces.append(el("span", "Pace", "lbl"));
+    for (const pace of PACES) {
+      const pick = button(paceLabel(pace), "set-pace", { className: `pick${this.pace === pace ? " on" : ""}`, args: { value: pace } });
+      pick.setAttribute("aria-pressed", String(this.pace === pace));
+      paces.append(pick);
     }
+    paces.append(el("span", "Both can change during the run, in the bar.", "meta"));
+    box.append(paces);
     const row = el("div", undefined, "row");
     row.style.marginTop = "10px";
     const count = view.kit?.cases ?? 0;
@@ -817,7 +817,6 @@ export class ProofPanel {
       }
       if (kit.proposed) box.append(el("div", `${kit.proposed} proposed case${kit.proposed === 1 ? " waits" : "s wait"} for a decision and won't run.`, "meta"));
     }
-    if (view.lastRun) box.append(el("div", view.lastRun, "meta"));
     return box.childElementCount ? box : null;
   }
 
@@ -825,7 +824,7 @@ export class ProofPanel {
   // case running now shows its steps, and the runner's marks tint the step.
   private paintPlan(parts: Parts, view: PanelView): void {
     const state = view.machine;
-    parts.plan.hidden = !state;
+    parts.plan.hidden = !state || isLive(state);
     parts.setup.replaceChildren();
     if (state && state.caseIndex < 0 && isLive(state)) {
       parts.setup.textContent = `Setup, step ${state.stepIndex + 1} of ${state.stepCount}: ${state.stepWhy ?? "preparing the data and settings the cases need"}`;
