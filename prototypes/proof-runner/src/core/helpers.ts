@@ -204,13 +204,24 @@ export const HELPERS_INIT_SCRIPT = String.raw`(() => {
       await page.remove(title);
       return page.ensure(title, children);
     },
+    // Waits for the main window to show the page, by its uid. Roam draws the
+    // [[links]] in a title as separate pieces and can hide their brackets,
+    // so a title like "[[EVD]] - … - [[@Source]]" needn't read as itself on
+    // screen, and waiting for that text timed out on every such page.
     open: async (title) => {
-      await api().ui.mainWindow.openPage({ page: { title } });
+      const pageUid = uid(title);
+      if (!pageUid) throw new Error("No page titled " + JSON.stringify(title) + " in this graph.");
+      await api().ui.mainWindow.openPage({ page: { uid: pageUid } });
       return waitFor(
-        () =>
-          Array.from(document.querySelectorAll(".rm-title-display")).find(
-            (element) => visible(element) && textOf(element) === title,
-          ),
+        async () => {
+          if ((await api().ui.mainWindow.getOpenPageOrBlockUid()) !== pageUid) return null;
+          const shown = document.querySelector(
+            '.roam-article .rm-title-display-container[data-page-uid="' + pageUid + '"] .rm-title-display',
+          );
+          if (shown) return visible(shown) ? shown : null;
+          // A Roam that doesn't mark the title with its uid: the main window's title, now that it's this page.
+          return Array.from(document.querySelectorAll(".roam-article .rm-title-display")).find((element) => visible(element)) || null;
+        },
         { what: "the page " + title },
       );
     },
