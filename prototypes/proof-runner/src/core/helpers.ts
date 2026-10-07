@@ -94,13 +94,26 @@ export const HELPERS_INIT_SCRIPT = String.raw`(() => {
     return "changed";
   };
 
+  // Blueprint v3 closes a dialog on an Escape keydown that reaches its overlay
+  // with which 27. A constructed event has which 0 and, sent to the document,
+  // never reaches the overlay, so DG's settings (no close button) stayed open.
+  const pressEscapeOn = (target) => {
+    const event = new KeyboardEvent("keydown", { key: "Escape", code: "Escape", bubbles: true, cancelable: true, composed: true });
+    Object.defineProperty(event, "keyCode", { get: () => 27 });
+    Object.defineProperty(event, "which", { get: () => 27 });
+    target.dispatchEvent(event);
+  };
+
+  // Closes the top dialog first: its close button when it has one, else Escape.
   const closeDialogs = async () => {
     for (let attempt = 0; attempt < 6 && dialogs().length; attempt += 1) {
-      const close = document.querySelector(
-        ".bp3-dialog button[aria-label='Close'], .rm-settings-close-button",
-      );
+      const open = dialogs();
+      const top = open[open.length - 1];
+      const close =
+        top.querySelector("button[aria-label='Close']") ||
+        document.querySelector(".rm-settings-close-button");
       if (close) close.click();
-      else document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+      else pressEscapeOn(top);
       await sleep(300);
     }
     return dialogs().length === 0;

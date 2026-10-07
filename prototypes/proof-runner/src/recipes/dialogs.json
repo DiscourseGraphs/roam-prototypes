@@ -69,7 +69,7 @@
     "steps": [
       {
         "do": {
-          "js": "(async () => { await proof.closeDialogs(); proof.toasts.clear(); await proof.sidebar.clearRight(); })()"
+          "js": "(async () => { if (!(await proof.closeDialogs())) throw new Error('A dialog would not close: ' + proof.dialogText().slice(0, 120)); proof.toasts.clear(); await proof.sidebar.clearRight(); })()"
         },
         "why": "clear the screen"
       }
