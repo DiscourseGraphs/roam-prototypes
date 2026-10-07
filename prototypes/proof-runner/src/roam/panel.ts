@@ -12,6 +12,7 @@ import {
   duration,
   isPauseSetting,
   paceLabel,
+  plainText,
   type CaseHistory,
   type DoneWhen,
   type PauseSetting,
@@ -659,7 +660,7 @@ export class ProofPanel {
     const head = el("div", undefined, "head");
     const kit = view.kit;
     const eyebrow = ["Proof", kit?.pr ? `PR #${kit.pr}` : null, kit?.ticket].filter(Boolean).join(" · ");
-    head.append(el("div", eyebrow, "eyebrow"), el("div", view.title, "title"), el("div", kit?.claim ?? "", "claim"));
+    head.append(el("div", eyebrow, "eyebrow"), el("div", plainText(view.title), "title"), el("div", plainText(kit?.claim ?? ""), "claim"));
     if (kit) {
       const facts = el("div", undefined, "facts");
       const last = view.last?.summary ?? null;
@@ -804,7 +805,7 @@ export class ProofPanel {
       if (kit.doneWhen.length || kit.other) {
         const lines = kit.doneWhen.map((bullet) => {
           const verdict = view.machine ? bulletVerdict(bullet, results) : null;
-          return `${verdict ? `${ICONS[verdict]} ` : ""}Done When ${bullet.number}: ${bullet.text || "(the kit doesn't say)"} · ${bullet.caseIds.length} case${bullet.caseIds.length === 1 ? "" : "s"}`;
+          return `${verdict ? `${ICONS[verdict]} ` : ""}Done When ${bullet.number}: ${plainText(bullet.text) || "(the kit doesn't say)"} · ${bullet.caseIds.length} case${bullet.caseIds.length === 1 ? "" : "s"}`;
         });
         if (kit.other) lines.push(`${kit.other} more case${kit.other === 1 ? "" : "s"} for what the change could break next to it.`);
         fold(`What it checks: ${kit.doneWhen.length ? `${kit.doneWhen.length} Done When bullet${kit.doneWhen.length === 1 ? "" : "s"}, ` : ""}${kit.other} more case${kit.other === 1 ? "" : "s"}`, lines);
@@ -812,7 +813,7 @@ export class ProofPanel {
       if (kit.notTested.length) {
         fold(
           `Not tested, and why (${kit.notTested.length})`,
-          kit.notTested.map((item) => `${item.title}${item.reason ? `: ${item.reason}` : ""}`),
+          kit.notTested.map((item) => plainText(`${item.title}${item.reason ? `: ${item.reason}` : ""}`)),
         );
       }
       if (kit.proposed) box.append(el("div", `${kit.proposed} proposed case${kit.proposed === 1 ? " waits" : "s wait"} for a decision and won't run.`, "meta"));

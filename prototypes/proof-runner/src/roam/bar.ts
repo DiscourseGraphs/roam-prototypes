@@ -16,6 +16,7 @@ import {
   kitReport,
   needOf,
   paceLabel,
+  plainText,
   passedWithHelp,
   pauseLabel,
   pauseWords,
@@ -535,7 +536,7 @@ export class CaptionBar {
         fill.style.width = `${Math.round(share * 100)}%`;
         seg.append(fill);
       }
-      seg.title = `${index + 1}. ${item.title}${verdict ? ` · ${verdictWord(verdict)}` : ""}`;
+      seg.title = `${index + 1}. ${plainText(item.title)}${verdict ? ` · ${verdictWord(verdict)}` : ""}`;
       this.prog.append(seg);
     });
   }
@@ -545,7 +546,7 @@ export class CaptionBar {
     const setup = state.caseIndex < 0;
     const item = state.plan[state.caseIndex];
     into.append(el("span", setup ? "Setup" : `Case ${state.caseIndex + 1} of ${state.caseCount}`, "cn"));
-    into.append(el("span", setup ? `Getting the graph ready · step ${state.stepIndex + 1} of ${Math.max(1, state.stepCount)}` : (item?.title ?? state.caseTitle ?? ""), "ct"));
+    into.append(el("span", setup ? `Getting the graph ready · step ${state.stepIndex + 1} of ${Math.max(1, state.stepCount)}` : plainText(item?.title ?? state.caseTitle ?? ""), "ct"));
   }
 
   // What the case must show, in full.
@@ -564,8 +565,8 @@ export class CaptionBar {
     const kinds = model.kinds[setup ? "setup" : (state.caseId ?? "")] ?? [];
     const kind: StepKind = kinds[state.stepIndex] ?? "doing";
     const item = state.plan[state.caseIndex];
-    let text = state.stepWhy ?? "";
-    if (kind === "look" && !setup) text = holdLine(text, item);
+    let text = plainText(state.stepWhy ?? "");
+    if (kind === "look" && !setup) text = holdLine(state.stepWhy ?? "", item);
     const count = state.stepCount ? `Step ${state.stepIndex + 1} of ${state.stepCount}` : "Step";
     return { kind: ahead ? "Next" : count, text };
   }
@@ -790,7 +791,7 @@ export class CaptionBar {
       this.ask.append(row);
       return;
     }
-    this.ask.append(el("div", text, "say"), el("div", "Is that what you see?", "hint"));
+    this.ask.append(el("div", plainText(text), "say"), el("div", "Is that what you see?", "hint"));
     if (proposal) this.ask.append(el("div", `Your agent thinks: ${proposal.verdict === "pass" ? "pass" : "fail"}${proposal.reason ? `. ${proposal.reason}` : "."}`, "hint"));
     const row = el("div", undefined, "acts");
     row.append(
@@ -804,7 +805,7 @@ export class CaptionBar {
   }
 
   private askByHand(item: PlanCase | undefined): void {
-    this.ask.append(el("div", "Do this by hand", "lbl"), el("div", item?.intent ?? "Do what this case says.", "say"));
+    this.ask.append(el("div", "Do this by hand", "lbl"), el("div", plainText(item?.intent ?? "Do what this case says."), "say"));
     const checked = Boolean(item?.hasCheck);
     this.ask.append(
       el("div", checked ? "Roam is yours. Press Done when you've done it, and the case's check decides." : "Roam is yours. The run won't touch anything until you answer.", "hint"),
@@ -839,7 +840,7 @@ export class CaptionBar {
 
   private askFailure(model: BarModel, item: PlanCase | undefined, error: string): void {
     const state = model.state;
-    const why = state.stepWhy ?? "";
+    const why = plainText(state.stepWhy ?? "");
     if (this.doingIt) {
       this.ask.append(el("div", "Your turn: do this step yourself", "lbl"), el("div", why, "say"));
       const row = el("div", undefined, "acts");
@@ -872,7 +873,7 @@ export class CaptionBar {
 
   private askCheckFailed(model: BarModel, item: PlanCase | undefined, error: string): void {
     const box = el("div", undefined, "kv");
-    box.append(el("span", "Expected"), el("span", item?.checks ?? item?.judge ?? "The case's check to hold."), el("span", "Found"), el("span", checkWords(error)));
+    box.append(el("span", "Expected"), el("span", plainText(item?.checks ?? item?.judge ?? "The case's check to hold.")), el("span", "Found"), el("span", checkWords(error)));
     this.ask.append(box);
     this.ask.append(el("div", `${historyLine(item ? model.history[item.id] : null, "check")} The screen is yours: look, or use it, before you answer.`, "guide"));
     const row = this.endAnswers();
@@ -924,7 +925,7 @@ export class CaptionBar {
       const tag = verdict
         ? howWords(verdict, item.record ?? null)
         : [covers.length ? `Done When ${covers.join(", ")}` : "", need === "judge" ? "you'll judge" : need === "by-hand" ? "by hand" : ""].filter(Boolean).join(" · ");
-      row.append(el("span", icon, tone), el("span", String(index + 1), "ix"), el("span", item.title, "tt"), el("span", tag, "tg"));
+      row.append(el("span", icon, tone), el("span", String(index + 1), "ix"), el("span", plainText(item.title), "tt"), el("span", tag, "tg"));
       sheet.append(row);
       if (current) {
         const steps = el("div", undefined, "steps");
@@ -936,7 +937,7 @@ export class CaptionBar {
         item.steps.forEach((step, at) => {
           const done = at < state.stepIndex;
           const now = at === state.stepIndex;
-          steps.append(el("div", `${done ? "✓" : now ? "▶" : "○"} ${step.why}`, done ? "d" : now ? "n" : ""));
+          steps.append(el("div", `${done ? "✓" : now ? "▶" : "○"} ${plainText(step.why)}`, done ? "d" : now ? "n" : ""));
         });
         sheet.append(steps);
       }
@@ -990,7 +991,7 @@ export class CaptionBar {
         row.append(
           el("span", verdict ? ICON[verdict] : "○", verdict ? ICON_CLASS[verdict] : "gr"),
           el("span", String(bullet.number), "meta"),
-          el("span", bullet.text || "(the kit doesn't say)"),
+          el("span", plainText(bullet.text) || "(the kit doesn't say)"),
           el(
             "span",
             verdict === "fail" ? `${size}, failed` : verdict === "skip" ? `${size}, couldn't be tested` : verdict ? `${size}${yours ? ` · ${yours} passed by you` : ""}` : `${size}, didn't run`,
@@ -1010,11 +1011,11 @@ export class CaptionBar {
       for (const item of failures) {
         const index = plan.indexOf(item);
         const box = el("div", undefined, "fbox");
-        box.append(el("div", `${ICON.fail} Case ${index + 1} · ${item.title}`, "ft"));
+        box.append(el("div", `${ICON.fail} Case ${index + 1} · ${plainText(item.title)}`, "ft"));
         const kv = el("div", undefined, "kv");
         kv.append(
           el("span", "Expected"),
-          el("span", item.checks ?? item.judge ?? "Every step runs."),
+          el("span", plainText(item.checks ?? item.judge ?? "Every step runs.")),
           el("span", "Found"),
           el("span", `${item.note ?? "The check gave no message."}${item.record ? ` · ${howWords("fail", item.record)}` : ""}`),
         );
@@ -1029,8 +1030,8 @@ export class CaptionBar {
       const box = el("div", undefined, "kbox");
       for (const fix of fixes) {
         const row = el("div", undefined, "krow");
-        row.append(el("span", String(fix.index + 1), "ix"), el("span", fix.title, "tt"));
-        for (const line of fix.lines) row.append(el("span", line, "wh"));
+        row.append(el("span", String(fix.index + 1), "ix"), el("span", plainText(fix.title), "tt"));
+        for (const line of fix.lines) row.append(el("span", plainText(line), "wh"));
         box.append(row);
       }
       const acts = el("div", undefined, "acts");
@@ -1047,9 +1048,9 @@ export class CaptionBar {
     if (bullets.length && other.length) {
       const others = plan.filter((item) => other.includes(item.id));
       const ok = others.filter((item) => results[item.id] === "pass").length;
-      sec.append(this.foldList(`Other cases: ${ok} of ${others.length} passed`, others.map((item) => `${ICON[results[item.id]] ?? "○"} ${item.title} · ${howWords(results[item.id] ?? null, item.record ?? null)}`)));
+      sec.append(this.foldList(`Other cases: ${ok} of ${others.length} passed`, others.map((item) => `${ICON[results[item.id]] ?? "○"} ${plainText(item.title)} · ${howWords(results[item.id] ?? null, item.record ?? null)}`)));
     } else if (!bullets.length) {
-      sec.append(this.foldList(`Every case: ${count("pass")} of ${plan.length} passed`, plan.map((item) => `${ICON[results[item.id]] ?? "○"} ${item.title} · ${howWords(results[item.id] ?? null, item.record ?? null)}`)));
+      sec.append(this.foldList(`Every case: ${count("pass")} of ${plan.length} passed`, plan.map((item) => `${ICON[results[item.id]] ?? "○"} ${plainText(item.title)} · ${howWords(results[item.id] ?? null, item.record ?? null)}`)));
     }
     if (model.notTested) sec.append(el("div", `Not tested, and why: ${model.notTested} on the proof page.`, "meta"));
     const took = (model.endedAt ?? Date.now()) - model.startedAt;

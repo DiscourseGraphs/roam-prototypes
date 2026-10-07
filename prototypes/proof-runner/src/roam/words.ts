@@ -9,6 +9,11 @@ import type { CaseRecord, MachineState, PauseCause, PlanCase } from "../core/mac
 
 export type StepKind = "doing" | "waiting" | "look" | "behind";
 
+// Kit lines keep page names in backticks, so the kit page in Roam doesn't
+// turn a name like [[EVD]] - … into links; the bar and the card show them as
+// plain text. What a tester copies keeps them: they read as code on GitHub.
+export const plainText = (text: string): string => text.replace(/`([^`\n]*)`/g, "$1");
+
 // When the run pauses for the person, from most often to least. Each one also
 // pauses for everything after it in this list, and every one waits for a call
 // by eye, a case done by hand and code to allow.
@@ -64,9 +69,9 @@ export const needOf = (item: Pick<PlanCase, "judge" | "hasCheck" | "intent" | "s
 export const purposeLine = (item: PlanCase | undefined, setup: boolean): { label: string; text: string } => {
   if (setup || !item) return { label: "", text: "Getting the graph ready. You don't need to watch this part." };
   const need = needOf(item);
-  if (need === "by-hand") return { label: "You'll do this one by hand.", text: item.checks ? `Then it checks: ${item.checks}` : "" };
-  if (need === "judge") return { label: "You'll judge:", text: item.judge ?? "" };
-  if (item.checks) return { label: "Passes if", text: item.checks };
+  if (need === "by-hand") return { label: "You'll do this one by hand.", text: item.checks ? `Then it checks: ${plainText(item.checks)}` : "" };
+  if (need === "judge") return { label: "You'll judge:", text: plainText(item.judge ?? "") };
+  if (item.checks) return { label: "Passes if", text: plainText(item.checks) };
   if (item.hasCheck) return { label: "Passes if", text: "its check holds." };
   return { label: "", text: "Nothing is checked at the end: it passes if every step runs." };
 };
@@ -170,13 +175,13 @@ export const historyLine = (history: CaseHistory | null | undefined, what: "step
 
 // A hold whose line only names a place ("Pause on the result") says what to
 // look at instead: the case's Passes if.
-const BARE_HOLD = /^(?:pause|hold|wait|look)\b(?:\s+(?:on|at|for|here))?(?:\s+(?:the|a|this))?[^:,.]{0,30}\.?$/i;
+const BARE_HOLD = /^(?:(?:pause|hold)(?:\s+(?:on|at|over)\s+(?:the|a|this)\s+[^:,.]{1,25})?|look|wait)\.?$/i;
 
 export const holdLine = (why: string, item: Pick<PlanCase, "judge" | "hasCheck" | "checks"> | undefined): string => {
-  if (!item) return why;
-  if (item.judge && item.hasCheck) return `Look for: ${item.judge}`;
-  if (item.checks && BARE_HOLD.test(why.trim())) return `Look at: ${item.checks}`;
-  return why;
+  if (!item) return plainText(why);
+  if (item.judge && item.hasCheck) return `Look for: ${plainText(item.judge)}`;
+  if (item.checks && BARE_HOLD.test(why.trim())) return `Look at: ${plainText(item.checks)}`;
+  return plainText(why);
 };
 
 // Why the run paused, short enough to sit beside what runs next.

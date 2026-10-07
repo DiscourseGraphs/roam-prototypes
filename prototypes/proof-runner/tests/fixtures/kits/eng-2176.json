@@ -3,7 +3,7 @@
   "cases": [
     {
       "id": "format-matches-its-title",
-      "title": "The `Claim (draft) - …` page is recognized as a Draft Claim",
+      "title": "`Claim (draft) - Sleep improves memory consolidation` is recognized as a Draft Claim",
       "steps": [
         {
           "id": "s1",
@@ -24,7 +24,7 @@
         },
         {
           "id": "s3",
-          "why": "Pause on the page",
+          "why": "Look at the discourse context under the title",
           "source": "kit",
           "do": {
             "pause": 2
@@ -40,11 +40,11 @@
     },
     {
       "id": "look-alike-does-not-match",
-      "title": "The look-alike `Claim draft - …` page, without parentheses, isn't a Draft Claim",
+      "title": "`Claim draft - Naps replace a night of sleep`, without parentheses, isn't a Draft Claim",
       "steps": [
         {
           "id": "s1",
-          "why": "Open the look-alike page `Claim draft - Naps replace a night of sleep`",
+          "why": "Open the page `Claim draft - Naps replace a night of sleep`, whose title has no parentheses",
           "source": "kit",
           "use": "page.open",
           "with": {
@@ -53,7 +53,7 @@
         },
         {
           "id": "s2",
-          "why": "Pause on the page",
+          "why": "Look under the title: there's no discourse context",
           "source": "kit",
           "do": {
             "pause": 2
@@ -69,7 +69,7 @@
     },
     {
       "id": "node-search-finds-it",
-      "title": "Node search lists the `Claim (draft) - …` page under Draft Claim",
+      "title": "Node search lists `Claim (draft) - Sleep improves memory consolidation` under Draft Claim",
       "steps": [
         {
           "id": "s1",
@@ -83,7 +83,7 @@
         },
         {
           "id": "s2",
-          "why": "Pause on the results",
+          "why": "Look at the Draft Claim heading in the results",
           "source": "kit",
           "do": {
             "pause": 2
@@ -100,7 +100,7 @@
     },
     {
       "id": "node-index-lists-it",
-      "title": "The Draft Claim index lists the `Claim (draft) - …` page and skips the look-alike",
+      "title": "The Draft Claim index lists the page with parentheses and not the one without",
       "steps": [
         {
           "id": "s1",
@@ -132,7 +132,7 @@
         },
         {
           "id": "s5",
-          "why": "Open the Index tab, which runs the Draft Claim query",
+          "why": "Open the Index tab",
           "source": "kit",
           "do": {
             "click": ".bp3-dialog:visible .bp3-tab:has-text(\"Index\") >> nth=0"
@@ -140,7 +140,7 @@
         },
         {
           "id": "run-query",
-          "why": "Press Query to run the index",
+          "why": "Press Query to run the Draft Claim query",
           "do": {
             "when": {
               "js": "Boolean(Array.from(document.querySelectorAll('.bp3-dialog button')).find((button) => proof.visible(button) && button.textContent.trim() === 'Query'))",
@@ -154,7 +154,7 @@
         },
         {
           "id": "s6",
-          "why": "Pause on the index",
+          "why": "Look at the index: the page with parentheses is listed, the one without isn't",
           "source": "kit",
           "do": {
             "pause": 2
@@ -162,7 +162,7 @@
         }
       ],
       "proves": "Done When 1: `Claim (draft) - {content}` matches its titles and extracts `content` in both apps.",
-      "checks": "The Draft Claim index lists the Draft Claim page and not the look-alike. The index runs Roam's \"is a Draft Claim\" query.",
+      "checks": "The Draft Claim index lists `Claim (draft) - Sleep improves memory consolidation` and not `Claim draft - Naps replace a night of sleep`. The index runs Roam's \"is a Draft Claim\" query.",
       "caption": "Roam's queries match the format too: the Draft Claim index lists the page with the parentheses and leaves out the look-alike.",
       "expect": {
         "js": "(async () => { await proof.waitFor(() => proof.dialogText().includes('Sleep improves memory consolidation'), { what: 'the Draft Claim page in the index', timeout: 15000 }); proof.assert(!proof.dialogText().includes('Naps replace a night of sleep'), 'The index lists the look-alike page.'); })()"
@@ -171,7 +171,7 @@
     },
     {
       "id": "roam-publish-extracts-content",
-      "title": "Publishing the Draft Claim page sends only its content as the title",
+      "title": "Publishing `Claim (draft) - Sleep improves memory consolidation` sends only its content as the title",
       "steps": [
         {
           "id": "s1",
@@ -181,7 +181,7 @@
         },
         {
           "id": "s2",
-          "why": "Open \"Share current node\" on the Draft Claim page",
+          "why": "Open \"Share current node\" on the page `Claim (draft) - Sleep improves memory consolidation`",
           "source": "kit",
           "use": "share.current-node",
           "with": {
@@ -214,7 +214,7 @@
         },
         {
           "id": "s6",
-          "why": "Pause on the result",
+          "why": "Look at the publish message",
           "source": "kit",
           "do": {
             "pause": 1.5
@@ -245,7 +245,7 @@
           "with": {
             "title": "Claim {v2} - Coffee helps focus"
           },
-          "why": "Open \"Share current node\" on the PK Versioned Claim page"
+          "why": "Open \"Share current node\" on the page `Claim {v2} - Coffee helps focus`"
         },
         {
           "do": {
@@ -269,7 +269,7 @@
           "do": {
             "pause": 1.5
           },
-          "why": "Pause on the result"
+          "why": "Look at the publish message"
         }
       ],
       "expect": {
@@ -300,7 +300,7 @@
         },
         {
           "id": "s2",
-          "why": "Open \"Share current node\" on the baseline Claim page",
+          "why": "Open \"Share current node\" on the page `[[CLM]] - PK baseline claim`",
           "source": "kit",
           "use": "share.current-node",
           "with": {
@@ -333,7 +333,7 @@
         },
         {
           "id": "s6",
-          "why": "Pause on the result",
+          "why": "Look at the publish message",
           "source": "kit",
           "do": {
             "pause": 1.5
@@ -361,7 +361,7 @@
           "with": {
             "title": "@PK baseline source"
           },
-          "why": "Open \"Share current node\" on the baseline Source page, so the Evidence's source is published first"
+          "why": "Open \"Share current node\" on the page `@PK baseline source`, so the Evidence's Source is published first"
         },
         {
           "do": {
@@ -385,7 +385,7 @@
           "do": {
             "pause": 1.5
           },
-          "why": "Pause on the result"
+          "why": "Look at the publish message"
         },
         {
           "use": "ui.quiet",
@@ -396,7 +396,7 @@
           "with": {
             "title": "[[EVD]] - PK baseline evidence - [[@PK baseline source]]"
           },
-          "why": "Open \"Share current node\" on the baseline Evidence page"
+          "why": "Open \"Share current node\" on the page `[[EVD]] - PK baseline evidence - [[@PK baseline source]]`"
         },
         {
           "do": {
@@ -420,7 +420,7 @@
           "do": {
             "pause": 1.5
           },
-          "why": "Pause on the result"
+          "why": "Look at the publish message"
         }
       ],
       "proves": "Done When 3: Formats without metacharacters behave identically to today.",
@@ -444,7 +444,7 @@
         "at": "2026-10-05T02:40:15.963Z"
       },
       "surface": "s-existing-formats-that-relied-on",
-      "checks": "The PK Pipe Question page is a discourse node. `Q why do we sleep` isn't, though the old pattern matched it through the `|`."
+      "checks": "`Q* | ^why do we sleep$` is a discourse node. `Q why do we sleep` isn't, though the old pattern matched it through the `|`."
     },
     {
       "id": "qa-format-containing-a-backslash",
@@ -474,11 +474,11 @@
           "do": {
             "click": ".bp3-dialog:visible .bp3-tab:has-text(\"Index\") >> nth=0"
           },
-          "why": "Open the Index tab, which runs the type's query"
+          "why": "Open the Index tab"
         },
         {
           "id": "run-query",
-          "why": "Press Query to run the index",
+          "why": "Press Query to run the PK Backslash Note query",
           "do": {
             "when": {
               "js": "Boolean(Array.from(document.querySelectorAll('.bp3-dialog button')).find((button) => proof.visible(button) && button.textContent.trim() === 'Query'))",
@@ -494,7 +494,7 @@
           "do": {
             "pause": 2
           },
-          "why": "Pause on the index"
+          "why": "Look at the index: `Note\\ an idea worth keeping` is listed, `Note an idea worth keeping` isn't"
         }
       ],
       "expect": {
@@ -510,7 +510,7 @@
     },
     {
       "id": "qa-create-relation-dialog-offers",
-      "title": "The Add relation dialog offers the `Claim (draft) - …` page as a target",
+      "title": "The Add relation dialog offers `Claim (draft) - Sleep improves memory consolidation` as a target",
       "steps": [
         {
           "use": "ui.quiet",
@@ -521,7 +521,7 @@
           "with": {
             "title": "[[EVD]] - PK baseline evidence - [[@PK baseline source]]"
           },
-          "why": "Open the baseline Evidence page"
+          "why": "Open the page `[[EVD]] - PK baseline evidence - [[@PK baseline source]]`"
         },
         {
           "do": {
@@ -551,7 +551,7 @@
           "do": {
             "click": ".bp3-popover .bp3-menu-item:has-text(\"PK cites draft\")"
           },
-          "why": "Pick PK cites draft, whose targets are Draft Claims"
+          "why": "Pick the relation “PK cites draft”, whose targets are Draft Claims"
         },
         {
           "do": {
@@ -567,7 +567,7 @@
           "do": {
             "pause": 1.5
           },
-          "why": "Pause on the target list"
+          "why": "Look at the target list: the page with parentheses is offered, the one without isn't"
         }
       ],
       "expect": {
@@ -579,7 +579,7 @@
         "at": "2026-10-05T02:40:15.963Z"
       },
       "surface": "s-create-relation-dialog",
-      "checks": "With PK cites draft picked, the target list offers the Draft Claim page and not the look-alike."
+      "checks": "With the relation “PK cites draft” picked, the target list offers `Claim (draft) - Sleep improves memory consolidation` and not `Claim draft - Naps replace a night of sleep`."
     },
     {
       "id": "qa-source-placed-before-content-resolves",
@@ -594,7 +594,7 @@
           "with": {
             "title": "@PK baseline source"
           },
-          "why": "Open \"Share current node\" on the baseline Source page, so the reference has a published target"
+          "why": "Open \"Share current node\" on the page `@PK baseline source`, so the reference has a published target"
         },
         {
           "do": {
@@ -618,7 +618,7 @@
           "do": {
             "pause": 1.5
           },
-          "why": "Pause on the result"
+          "why": "Look at the publish message"
         },
         {
           "use": "ui.quiet",
@@ -629,7 +629,7 @@
           "with": {
             "title": "PKS [[@PK baseline source]]: caffeine helps focus"
           },
-          "why": "Open \"Share current node\" on the PK Source First page"
+          "why": "Open \"Share current node\" on the page `PKS [[@PK baseline source]]: caffeine helps focus`"
         },
         {
           "do": {
@@ -653,7 +653,7 @@
           "do": {
             "pause": 1.5
           },
-          "why": "Pause on the result"
+          "why": "Look at the publish message"
         }
       ],
       "expect": {
@@ -704,7 +704,7 @@
           "do": {
             "pause": 1.5
           },
-          "why": "Pause on the result"
+          "why": "Look at the publish message"
         }
       ],
       "expect": {
@@ -756,7 +756,7 @@
         },
         {
           "do": {
-            "js": "(() => { const qb = window.roamjs.extension.queryBuilder; proof.assert(qb.isDiscourseNode(proof.uid('Claim (draft) - Sleep improves memory consolidation')), 'The Draft Claim page is not recognized'); proof.assert(!qb.isDiscourseNode(proof.uid('Claim draft - Naps replace a night of sleep')), 'The look-alike matches') + ' with the specification on.'); })()"
+            "js": "(() => { const qb = window.roamjs.extension.queryBuilder; proof.assert(qb.isDiscourseNode(proof.uid('Claim (draft) - Sleep improves memory consolidation')), 'The Draft Claim page is not recognized'); proof.assert(!qb.isDiscourseNode(proof.uid('Claim draft - Naps replace a night of sleep')), 'The look-alike matches with the specification on.'); })()"
           },
           "why": "Check which pages match with the specification on"
         },
@@ -764,7 +764,7 @@
           "do": {
             "pause": 1.5
           },
-          "why": "Pause on the specification"
+          "why": "Look at the specification in the Format tab"
         },
         {
           "do": {
@@ -778,7 +778,7 @@
         }
       ],
       "expect": {
-        "js": "(() => { const qb = window.roamjs.extension.queryBuilder; proof.assert(qb.isDiscourseNode(proof.uid('Claim (draft) - Sleep improves memory consolidation')), 'The Draft Claim page is not recognized'); proof.assert(!qb.isDiscourseNode(proof.uid('Claim draft - Naps replace a night of sleep')), 'The look-alike matches') + ' after the specification is off again.'); })()"
+        "js": "(() => { const qb = window.roamjs.extension.queryBuilder; proof.assert(qb.isDiscourseNode(proof.uid('Claim (draft) - Sleep improves memory consolidation')), 'The Draft Claim page is not recognized'); proof.assert(!qb.isDiscourseNode(proof.uid('Claim draft - Naps replace a night of sleep')), 'The look-alike matches after the specification is off again.'); })()"
       },
       "decision": {
         "status": "approved",
@@ -786,7 +786,7 @@
         "at": "2026-10-05T02:40:15.963Z"
       },
       "surface": "s-node-type-format-in-discourse-node",
-      "checks": "With the specification on, the Draft Claim page is still a discourse node and the look-alike isn't. The case turns the specification off and checks the same again."
+      "checks": "With the specification on, `Claim (draft) - Sleep improves memory consolidation` is still a discourse node and `Claim draft - Naps replace a night of sleep` isn't. The case turns the specification off again and checks the same."
     },
     {
       "id": "qa-format-with-brackets-and-plus-still",

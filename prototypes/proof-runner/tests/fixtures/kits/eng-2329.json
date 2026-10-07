@@ -46,7 +46,7 @@
         },
         {
           "id": "s6",
-          "why": "Pause on the result",
+          "why": "Look at the publish result",
           "source": "kit",
           "do": {
             "pause": 2
@@ -105,7 +105,7 @@
         },
         {
           "id": "s6",
-          "why": "Pause on the result",
+          "why": "Look at the publish result",
           "source": "kit",
           "do": {
             "pause": 2
@@ -175,7 +175,7 @@
         },
         {
           "id": "s6",
-          "why": "Pause on the result",
+          "why": "Look at the publish result",
           "source": "kit",
           "do": {
             "pause": 2
@@ -227,7 +227,7 @@
           "do": {
             "pause": 2
           },
-          "why": "Pause on the result"
+          "why": "Look at the publish result"
         },
         {
           "use": "ui.quiet",
@@ -262,7 +262,7 @@
           "do": {
             "pause": 2
           },
-          "why": "Pause on the result"
+          "why": "Look at the publish result"
         },
         {
           "do": {
@@ -303,7 +303,7 @@
           "do": {
             "pause": 2
           },
-          "why": "Pause on the result"
+          "why": "Look at the publish result"
         }
       ],
       "intent": "Publish Evidence A and B (both naming the Source) before the Source, in one or two publishes. Then publish the Source alone to the eng-2329-demo group.",
@@ -355,7 +355,7 @@
           "do": {
             "pause": 2
           },
-          "why": "Pause on the result"
+          "why": "Look at the publish result"
         },
         {
           "use": "ui.quiet",
@@ -390,7 +390,7 @@
           "do": {
             "pause": 2
           },
-          "why": "Pause on the result"
+          "why": "Look at the publish result"
         },
         {
           "do": {
@@ -431,7 +431,7 @@
           "do": {
             "pause": 2
           },
-          "why": "Pause on the result"
+          "why": "Look at the publish result"
         }
       ],
       "intent": "Publish the Source first, then Evidence A (it gets a reference). Edit nothing. Publish the Source again, alone.",
@@ -484,7 +484,7 @@
           "do": {
             "pause": 2
           },
-          "why": "Pause on the result"
+          "why": "Look at the publish result"
         },
         {
           "do": {
@@ -525,7 +525,7 @@
           "do": {
             "pause": 2
           },
-          "why": "Pause on the result"
+          "why": "Look at the publish result"
         }
       ],
       "intent": "Publish Evidence A without its Source. Edit A's body in Roam without republishing. Publish the Source.",
@@ -578,7 +578,7 @@
           "do": {
             "pause": 2
           },
-          "why": "Pause on the result"
+          "why": "Look at the publish result"
         }
       ],
       "intent": "After the previous case, publish Evidence A again from Roam with its new body.",
@@ -640,7 +640,7 @@
           "do": {
             "pause": 2
           },
-          "why": "Pause on the result"
+          "why": "Look at the publish result"
         },
         {
           "do": {
@@ -681,7 +681,7 @@
           "do": {
             "pause": 2
           },
-          "why": "Pause on the result"
+          "why": "Look at the publish result"
         }
       ],
       "expect": {
@@ -725,7 +725,7 @@
           "do": {
             "pause": 2
           },
-          "why": "Pause on the result"
+          "why": "Look at the publish result"
         },
         {
           "use": "ui.quiet",
@@ -760,7 +760,7 @@
           "do": {
             "pause": 2
           },
-          "why": "Pause on the result"
+          "why": "Look at the publish result"
         }
       ],
       "intent": "Create a Claim and an ordinary page whose titles contain the Source's title text (the Claim already published). Publish the Source.",
@@ -813,7 +813,7 @@
           "do": {
             "pause": 2
           },
-          "why": "Pause on the result"
+          "why": "Look at the publish result"
         },
         {
           "use": "ui.quiet",
@@ -848,7 +848,7 @@
           "do": {
             "pause": 2
           },
-          "why": "Pause on the result"
+          "why": "Look at the publish result"
         },
         {
           "do": {
@@ -889,7 +889,7 @@
           "do": {
             "pause": 2
           },
-          "why": "Pause on the result"
+          "why": "Look at the publish result"
         }
       ],
       "intent": "Create Source 'Smith 2020' and Source 'Smith 2020 appendix', with Evidence naming only the longer one. Publish both Sources.",
@@ -942,7 +942,7 @@
           "do": {
             "pause": 2
           },
-          "why": "Pause on the result"
+          "why": "Look at the publish result"
         },
         {
           "do": {
@@ -983,7 +983,7 @@
           "do": {
             "pause": 2
           },
-          "why": "Pause on the result"
+          "why": "Look at the publish result"
         },
         {
           "do": {
@@ -1059,7 +1059,7 @@
           "do": {
             "pause": 3
           },
-          "why": "Pause on the result"
+          "why": "Look at the publish result"
         }
       ],
       "intent": "Select the Source and Evidence A together and publish them to the group in a single action.",
