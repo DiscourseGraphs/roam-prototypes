@@ -6,7 +6,13 @@ import { attribute, codeBlock, isProofRoot, kitBlocks, pageKit, rootConfig, unqu
 
 const KITS = path.join(__dirname, "fixtures/kits");
 
-const withoutLast = (kit: Kit): Kit => ({ ...kit, cases: kit.cases.map(({ last: _last, ...rest }) => rest) });
+// As a page reads back: no last-run note, and the rejected cases at the end,
+// where the page keeps them under "Not tested, and why".
+const withoutLast = (kit: Kit): Kit => {
+  const cases = kit.cases.map(({ last: _last, ...rest }) => rest);
+  const rejected = cases.filter((testCase) => testCase.decision?.status === "rejected");
+  return { ...kit, cases: [...cases.filter((testCase) => !rejected.includes(testCase)), ...rejected] };
+};
 
 // Blocks as Roam stores them: strings only.
 const stored = (node: BlockNode): BlockNode => JSON.parse(JSON.stringify(node)) as BlockNode;

@@ -96,7 +96,10 @@ const CASE_KEYS = [
   "reason",
 ] as const;
 // Containers: blocks whose children the parser reads, or skips on purpose.
-const KIT_SECTIONS = ["prepare", "target", "needs", "surface", "runs"];
+// Rejected cases sit together under this block, collapsed, so the cases a
+// visitor sees are the ones that run.
+export const NOT_TESTED = "Not tested, and why";
+const KIT_SECTIONS = ["prepare", "target", "needs", "surface", "runs", NOT_TESTED.toLowerCase()];
 const ACTION_ALIASES: Record<string, string> = {
   palette: "command_palette",
   "command palette": "command_palette",
@@ -392,15 +395,24 @@ export const pageKit = (root: BlockNode): PageKit => {
   let target: KitTarget | undefined;
   const heading = root.string.trim().replace(PROOF_ROOT, "").trim();
 
+  const addCase = (child: BlockNode, title: string): void => {
+    const read = readCase(child, title, `case "${title}"`);
+    cases.push(read.raw);
+    caseUids.push(child.uid);
+    stepUids.push(read.stepUids);
+  };
   for (const child of childrenOf(root)) {
     const attr = attribute(child.string);
     const section = child.string.trim().replace(/::$/, "").toLowerCase();
     if (attr?.key === "case") {
-      const at = `case "${attr.value}"`;
-      const read = readCase(child, attr.value, at);
-      cases.push(read.raw);
-      caseUids.push(child.uid);
-      stepUids.push(read.stepUids);
+      addCase(child, attr.value);
+      continue;
+    }
+    if (section === NOT_TESTED.toLowerCase()) {
+      for (const nested of childrenOf(child)) {
+        const nestedAttr = attribute(nested.string);
+        if (nestedAttr?.key === "case") addCase(nested, nestedAttr.value);
+      }
       continue;
     }
     if (attr && (KIT_KEYS as readonly string[]).includes(attr.key)) {
@@ -588,7 +600,9 @@ export const kitBlocks = (
     if (Object.keys(rest).length) children.push(block("target", [jsonBlock(rest)], false));
   }
   if (kit.surface?.length) children.push(block("surface", kit.surface.map(surfaceBlock), false));
-  for (const testCase of kit.cases) children.push({ ...caseBlock(testCase), open: false });
+  const rejected = kit.cases.filter((testCase) => testCase.decision?.status === "rejected");
+  for (const testCase of kit.cases.filter((item) => !rejected.includes(item))) children.push({ ...caseBlock(testCase), open: false });
+  if (rejected.length) children.push(block(NOT_TESTED, rejected.map((testCase) => ({ ...caseBlock(testCase), open: false })), false));
   // Collapsed: the page shows the panel, whose case list says what each case
   // tests; the kit's own blocks stay one click away.
   return block(`{{proof}} ${kit.title ?? kit.name}`, children, false);
