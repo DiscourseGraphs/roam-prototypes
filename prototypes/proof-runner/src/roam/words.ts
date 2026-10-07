@@ -28,6 +28,17 @@ export const PAUSES: Array<{ value: PauseSetting; label: string; hint: string; l
 
 export const PACES = [0.5, 1, 2, 4];
 
+// How the run shows where each step acts: a ring around the target, or a
+// drawn cursor that moves there and clicks.
+export type PointerSetting = "ring" | "cursor";
+
+export const POINTERS: Array<{ value: PointerSetting; label: string }> = [
+  { value: "ring", label: "Ring" },
+  { value: "cursor", label: "Cursor" },
+];
+
+export const isPointerSetting = (value: unknown): value is PointerSetting => value === "ring" || value === "cursor";
+
 export const isPauseSetting = (value: unknown): value is PauseSetting => PAUSES.some((item) => item.value === value);
 
 export const pauseLabel = (value: PauseSetting): string => PAUSES.find((item) => item.value === value)?.label ?? "On failure";

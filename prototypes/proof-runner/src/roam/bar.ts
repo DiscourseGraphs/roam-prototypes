@@ -2,6 +2,7 @@ import type { MachineState, PlanCase } from "../core/machine";
 import {
   PACES,
   PAUSES,
+  POINTERS,
   bugReport,
   bulletVerdict,
   clock,
@@ -27,6 +28,7 @@ import {
   verdictWord,
   type CaseHistory,
   type PauseSetting,
+  type PointerSetting,
   type RunFacts,
   type StepKind,
 } from "./words";
@@ -50,6 +52,8 @@ export type BarModel = {
   stepUid: string | null;
   // When the run pauses for the person; the pace is the machine's speed.
   pause: PauseSetting;
+  // How each step's target is shown: a ring, or a drawn cursor.
+  pointer: PointerSetting;
   scope: "all" | "resume" | "failed";
   // How many cases didn't pass, for "Run the ones that didn't pass".
   rerun: number;
@@ -71,6 +75,7 @@ export type BarAction =
   // A run setting changed during the run.
   | { kind: "setting"; key: "pause"; value: PauseSetting }
   | { kind: "setting"; key: "pace"; value: number }
+  | { kind: "setting"; key: "pointer"; value: PointerSetting }
   // The person took a failed step on themselves, or handed it back: who has
   // the screen changed without the machine knowing.
   | { kind: "turn" }
@@ -709,7 +714,15 @@ export class CaptionBar {
       pick.setAttribute("aria-pressed", String(on));
       paces.append(pick);
     }
-    this.menu.append(paces, el("div", "Applies from the next step, and stays for later runs in this browser.", "meta"));
+    this.menu.append(paces, el("div", "Show each step with", "lbl"));
+    const pointers = el("div", undefined, "paces");
+    for (const option of POINTERS) {
+      const on = option.value === model.pointer;
+      const pick = button(option.label, "set-pointer", `pick${on ? " on" : ""}`, { value: option.value });
+      pick.setAttribute("aria-pressed", String(on));
+      pointers.append(pick);
+    }
+    this.menu.append(pointers, el("div", "Applies from the next step, and stays for later runs in this browser.", "meta"));
   }
 
   // What grows above the lines when the run needs the person, or Flag is open.
@@ -1152,6 +1165,10 @@ export class CaptionBar {
       case "set-pace":
         this.local.menuOpen = false;
         this.send({ kind: "setting", key: "pace", value: Number(args.value) });
+        break;
+      case "set-pointer":
+        this.local.menuOpen = false;
+        this.send({ kind: "setting", key: "pointer", value: args.value === "cursor" ? "cursor" : "ring" });
         break;
       case "flag":
         this.local.flagOpen = !this.local.flagOpen;

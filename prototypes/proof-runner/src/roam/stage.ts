@@ -8,6 +8,10 @@
 // Who has the screen: the run, you, or you with a failure waiting on you.
 export type Driver = "run" | "you" | "held" | "none";
 
+// How a step's target is shown: a ring around it, or a drawn cursor that
+// moves there and clicks.
+export type Pointer = "ring" | "cursor";
+
 const TOP = "2147483646";
 const RUN_COLOR = "#6c58f0";
 const YOU_COLOR = "#f0a020";
@@ -19,6 +23,19 @@ const HELD = ["pointerdown", "pointerup", "mousedown", "mouseup", "click", "dblc
 // The mouse moving or resting over the page is held too, without pausing:
 // an idle mouse would otherwise open Roam's link preview over the next target.
 const HOVER = ["pointerover", "pointerout", "pointerenter", "pointerleave", "pointermove", "mouseover", "mouseout", "mouseenter", "mouseleave", "mousemove"];
+// The run's cursor: violet, so it can't pass for the person's own pointer.
+const CURSOR_ID = "proof-runner-cursor-style";
+const CURSOR_CSS = `
+.proof-runner-cursor { position: fixed; left: 0; top: 0; width: 0; height: 0; z-index: ${TOP}; pointer-events: none; transition-property: transform, opacity; transition-timing-function: cubic-bezier(.3, .7, .4, 1); }
+.proof-runner-cursor svg { position: absolute; left: -2px; top: -1px; width: 22px; height: 22px; filter: drop-shadow(0 1px 1.5px rgba(0, 0, 0, .35)); }
+.proof-runner-cursor .tag { position: absolute; left: 18px; top: 18px; background: ${RUN_COLOR}; color: #fff; font: 700 11px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; padding: 1px 7px; border-radius: 4px; white-space: nowrap; }
+.proof-runner-cursor .pulse { position: absolute; left: -14px; top: -14px; width: 28px; height: 28px; border-radius: 50%; border: 2px solid ${RUN_COLOR}; opacity: 0; }
+.proof-runner-cursor.click .pulse { animation: proof-runner-pulse .45s ease-out; }
+@keyframes proof-runner-pulse { from { transform: scale(.3); opacity: .9; } to { transform: scale(1.4); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .proof-runner-cursor { transition: none !important; } .proof-runner-cursor.click .pulse { animation: none; } }
+`;
+const ARROW = `<svg viewBox="0 0 22 22" aria-hidden="true"><path d="M3 2 L3 18 L7.2 14 L10.2 20.5 L13 19.2 L10 12.8 L15.8 12.8 Z" fill="${RUN_COLOR}" stroke="#fff" stroke-width="1.6" stroke-linejoin="round"/></svg>`;
+
 const SAY: Record<Exclude<Driver, "none">, string> = {
   run: "The run has the screen.",
   you: "The screen is yours.",
@@ -49,6 +66,11 @@ export class Stage {
   private audio: AudioContext | null = null;
   private driver: Driver = "none";
   private voice: HTMLElement | null = null;
+  private pointer: Pointer = "ring";
+  private cursor: HTMLElement | null = null;
+  private cursorTag: HTMLElement | null = null;
+  private cursorAt: { x: number; y: number } | null = null;
+  private clickTimer = 0;
   // The person's clicks and keys on the page while it was theirs, since the
   // last reset: whether they used the page before pressing Try again.
   private touches = 0;
@@ -63,9 +85,12 @@ export class Stage {
     if (driver === "none") {
       this.frame?.remove();
       this.frame = null;
+      this.hideCursor();
       return;
     }
     if (changed) this.say(SAY[driver]);
+    // The run's cursor fades while the screen isn't the run's.
+    if (this.cursor) this.cursor.style.opacity = driver === "run" ? "1" : ".35";
     if (!this.frame) {
       const frame = document.createElement("div");
       frame.className = "proof-runner-frame";
@@ -79,10 +104,24 @@ export class Stage {
     this.frame.dataset.driver = driver;
   }
 
-  // A ring on the element a step acts on, following it while it moves.
-  ring(element: Element | null, verb = ""): void {
+  setPointer(pointer: Pointer): void {
+    if (pointer === this.pointer) return;
+    this.pointer = pointer;
+    if (pointer === "ring") this.hideCursor();
+    else if (this.ringBox) this.ringBox.hidden = true;
+  }
+
+  // A ring on the element a step acts on, following it while it moves; or,
+  // with the cursor, the run's cursor moving there within leadMs, then a
+  // click's pulse.
+  ring(element: Element | null, verb = "", leadMs = 0): void {
     this.ringOn = element;
     cancelAnimationFrame(this.ringFrame);
+    if (this.pointer === "cursor") {
+      if (this.ringBox) this.ringBox.hidden = true;
+      this.moveCursor(element, verb, leadMs);
+      return;
+    }
     if (!element) {
       if (this.ringBox) this.ringBox.hidden = true;
       return;
@@ -128,6 +167,64 @@ export class Stage {
 
   get ringed(): Element | null {
     return this.ringOn;
+  }
+
+  private moveCursor(element: Element | null, verb: string, leadMs: number): void {
+    if (!element) {
+      if (this.cursorTag) this.cursorTag.hidden = true;
+      return;
+    }
+    if (!document.getElementById(CURSOR_ID)) {
+      const style = document.createElement("style");
+      style.id = CURSOR_ID;
+      style.textContent = CURSOR_CSS;
+      document.head.append(style);
+    }
+    if (!this.cursor) {
+      const cursor = document.createElement("div");
+      cursor.className = "proof-runner-cursor";
+      cursor.setAttribute("data-proof-runner-ui", "");
+      cursor.setAttribute("aria-hidden", "true");
+      cursor.innerHTML = `<span class="pulse"></span>${ARROW}`;
+      const tag = document.createElement("span");
+      tag.className = "tag";
+      cursor.append(tag);
+      document.body.append(cursor);
+      this.cursor = cursor;
+      this.cursorTag = tag;
+    }
+    const cursor = this.cursor;
+    const box = element.getBoundingClientRect();
+    const to = { x: box.left + box.width / 2, y: box.top + box.height / 2 };
+    // The first time, it starts beside the target rather than flying in from a corner.
+    const from = this.cursorAt ?? { x: to.x - 40, y: to.y + 30 };
+    const glide = Math.max(0, Math.round(leadMs * 0.75));
+    cursor.hidden = false;
+    cursor.classList.remove("click");
+    cursor.style.transitionDuration = "0ms";
+    cursor.style.transform = `translate(${from.x}px, ${from.y}px)`;
+    void cursor.getBoundingClientRect();
+    cursor.style.transitionDuration = `${glide}ms`;
+    cursor.style.transform = `translate(${to.x}px, ${to.y}px)`;
+    this.cursorAt = to;
+    if (this.cursorTag) {
+      this.cursorTag.textContent = verb;
+      this.cursorTag.hidden = !verb;
+    }
+    clearTimeout(this.clickTimer);
+    if (/click|^Press/i.test(verb)) {
+      this.clickTimer = window.setTimeout(() => {
+        cursor.classList.add("click");
+      }, glide);
+    }
+  }
+
+  private hideCursor(): void {
+    clearTimeout(this.clickTimer);
+    this.cursor?.remove();
+    this.cursor = null;
+    this.cursorTag = null;
+    this.cursorAt = null;
   }
 
   // Tells a screen reader whose turn it is now. New asks speak for
@@ -259,6 +356,8 @@ export class Stage {
     this.setDriver("none");
     this.voice?.remove();
     this.voice = null;
+    this.hideCursor();
+    document.getElementById(CURSOR_ID)?.remove();
     this.ring(null);
     this.ringBox?.remove();
     this.ringBox = null;

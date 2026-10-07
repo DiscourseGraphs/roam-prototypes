@@ -11,11 +11,13 @@ import {
   doneWhen,
   duration,
   isPauseSetting,
+  isPointerSetting,
   paceLabel,
   plainText,
   type CaseHistory,
   type DoneWhen,
   type PauseSetting,
+  type PointerSetting,
   type RunFacts,
   type StepKind,
 } from "./words";
@@ -117,6 +119,7 @@ export type PanelAction =
   | { kind: "open-kit" }
   | { kind: "setting"; key: "pause"; value: PauseSetting }
   | { kind: "setting"; key: "pace"; value: number }
+  | { kind: "setting"; key: "pointer"; value: PointerSetting }
   | { kind: "command"; cmd: string; args?: Record<string, unknown> };
 
 const OWN_ACTIONS = new Set(["run", "resume", "reset", "rerun", "done-by-hand", "connect", "disconnect", "load", "reload", "check-database", "ask-agent"]);
@@ -226,6 +229,7 @@ const BLOCK_MOUSE_EVENTS = ["mousedown", "mouseup", "click", "pointerdown"];
 
 const PAUSE_KEY = "proof-runner:pause";
 const PACE_KEY = "proof-runner:pace";
+const POINTER_KEY = "proof-runner:pointer";
 // What an earlier runner kept: a way to run and a tick for pausing after each case.
 const OLD_CHOICE_KEY = "proof-runner:run-choice";
 const OLD_PAUSE_BETWEEN_KEY = "proof-runner:pause-between";
@@ -265,6 +269,16 @@ const readPause = (): PauseSetting => {
     // No storage here: the default.
   }
   return "failure";
+};
+
+const readPointer = (): PointerSetting => {
+  try {
+    const saved = localStorage.getItem(POINTER_KEY);
+    if (isPointerSetting(saved)) return saved;
+  } catch {
+    // No storage here: the default.
+  }
+  return "ring";
 };
 
 // "2026-10-07 21:40" as "Oct 7".
@@ -329,6 +343,7 @@ export class ProofPanel {
   private flashTimer = 0;
   private pause: PauseSetting = readPause();
   private pace = readPace();
+  private pointer: PointerSetting = readPointer();
   private readonly bar: CaptionBar;
   private readonly stage: Stage;
   private lastAsk = "";
@@ -368,6 +383,11 @@ export class ProofPanel {
 
   runSettings(): RunSettings {
     return { pause: this.pause, pace: this.pace };
+  }
+
+  // How each step's target is shown; the run gives a cursor longer to get there.
+  get pointerSetting(): PointerSetting {
+    return this.pointer;
   }
 
   // Puts a run card in host. Roam re-renders blocks, so the same panel may be
@@ -455,8 +475,8 @@ export class ProofPanel {
 
   // The step a run is about to act on, from the executor: the ring goes on
   // it, and the bar steps aside when it's underneath.
-  target(element: Element | null, verb = ""): void {
-    this.stage.ring(element, verb);
+  target(element: Element | null, verb = "", leadMs = 0): void {
+    this.stage.ring(element, verb, leadMs);
     this.bar.setDodge(Boolean(element && this.bar.covers(element.getBoundingClientRect())));
   }
 
@@ -518,6 +538,7 @@ export class ProofPanel {
       notTested: view.kit?.notTested.length ?? 0,
       stepUid: view.blocks.step,
       pause: run.pause,
+      pointer: this.pointer,
       scope: run.scope,
       rerun: run.rerun,
       agent: view.agent,
@@ -527,6 +548,7 @@ export class ProofPanel {
     });
     const driving = live && !state.paused && !state.pending && state.phase !== "waiting-next";
     const failure = state.pending?.kind === "failure" || state.pending?.kind === "check-failed";
+    this.stage.setPointer(this.pointer);
     this.stage.setLive(live);
     this.stage.setHolding(driving);
     this.stage.setDriver(!live ? "none" : failure && !this.bar.doingIt ? "held" : driving ? "run" : "you");
@@ -591,6 +613,14 @@ export class ProofPanel {
   // A setting picked on the card, or in the bar during a run: kept in this
   // browser, and handed to the run going now.
   private async setting(action: Extract<PanelAction, { kind: "setting" }>): Promise<string | null> {
+    // The pointer is the stage's alone: the run itself doesn't change.
+    if (action.key === "pointer") {
+      this.pointer = action.value;
+      remember(POINTER_KEY, action.value);
+      this.stage.setPointer(action.value);
+      if (this.view) this.syncRun(this.view);
+      return null;
+    }
     if (action.key === "pause") {
       this.pause = action.value;
       remember(PAUSE_KEY, action.value);

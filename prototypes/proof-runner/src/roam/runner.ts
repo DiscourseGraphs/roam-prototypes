@@ -323,6 +323,8 @@ export const playFor = (pause: PauseSetting): { mode: "auto" | "step" | "case"; 
 
 const DWELL_MS = 1200;
 const LEAD_MS = 300;
+// A drawn cursor needs longer than a ring to get to the target before the step acts.
+const CURSOR_LEAD_MS = 600;
 
 // What a terminal run (cli.ts) sets before pressing Run: how to play it, and
 // that the run line should say it came from the terminal.
@@ -889,6 +891,7 @@ export class ProofRun {
     const speed = typeof driven.pace === "number" && PACES.includes(driven.pace) ? driven.pace : settings.pace;
     const play = playFor(pause);
     this.runInfo = { pause, terminal: driven.driver === "terminal", startedAt: Date.now(), endedAt: null, setup };
+    const lead = (): number => (this.panel.pointerSetting === "cursor" ? CURSOR_LEAD_MS : LEAD_MS) / Math.max(0.25, this.state?.speed ?? speed);
     this.tries.clear();
     this.handled = new WeakSet();
     const journal = new Journal((event) => {
@@ -901,9 +904,9 @@ export class ProofRun {
         this.paint();
         this.unattended(state);
       },
-      target: (element, verb) => this.panel.target(element, verb),
+      target: (element, verb) => this.panel.target(element, verb, lead()),
       // The ring shows longer when the run goes slower.
-      lead: () => LEAD_MS / Math.max(0.25, this.state?.speed ?? speed),
+      lead: () => lead(),
       palette: (label) => this.env.palette.run(label),
       fill: (value) => fillIn(value, context),
       note: (text) => {
@@ -938,6 +941,7 @@ export class ProofRun {
       this.paint();
       return null;
     }
+    if (action.key === "pointer") return null;
     if (action.key === "pace") return this.command("speed", { speed: action.value });
     this.runInfo.pause = action.value;
     const play = playFor(action.value);
