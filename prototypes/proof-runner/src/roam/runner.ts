@@ -757,8 +757,7 @@ export class ProofRun {
       setup,
       journal,
       executor,
-      mode: "auto",
-      speed: 1,
+      ...this.panel.runSettings(),
       dwellMs: 700,
       expand: makeExpander(this.env.recipes),
     });

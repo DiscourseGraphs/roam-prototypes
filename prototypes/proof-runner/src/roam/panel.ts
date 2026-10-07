@@ -141,6 +141,10 @@ const CSS = `
   button.hot { box-shadow: 0 0 0 2px #e7b04c; }
   button[hidden] { display: none; }
   .speed { min-width: 36px; text-align: center; font: 12px ui-monospace, Menlo, monospace; }
+  .lbl { font-size: 12px; color: #5d6778; }
+  button.pick { font-weight: 500; padding: 3px 8px; }
+  button.pick.on { background: #2c62c9; border-color: #2c62c9; color: #fff; }
+  .hint { flex-basis: 100%; font-size: 12px; color: #5d6778; }
 `;
 
 // The case blocks live in the light DOM, where the shadow root's styles
@@ -258,6 +262,26 @@ const keepFocus = (event: Event): void => {
 
 const PERSON_PAUSED = "Paused: you used the page while the run was using it. Press Resume when you're done.";
 
+// How a run plays, picked before Run and kept in this browser.
+export type RunSettings = { mode: "auto" | "step" | "case"; speed: number };
+const RUN_SETTINGS_KEY = "proof-runner:run-settings";
+const RUN_SPEEDS = [0.5, 1, 2];
+const MODE_HINTS: Record<RunSettings["mode"], string> = {
+  auto: "Auto plays every step on its own.",
+  step: "Step stops before every step until you press Next.",
+  case: "Case stops between cases until you press Resume.",
+};
+
+const readRunSettings = (): RunSettings => {
+  try {
+    const saved = JSON.parse(localStorage.getItem(RUN_SETTINGS_KEY) ?? "null") as RunSettings | null;
+    if (saved && saved.mode in MODE_HINTS && RUN_SPEEDS.includes(saved.speed)) return saved;
+  } catch {
+    // No storage here: the defaults.
+  }
+  return { mode: "auto", speed: 1 };
+};
+
 const ICONS: Record<string, string> = { pass: "✓", fail: "✗", skip: "⏭" };
 const MARKS: Record<CheckItem["state"], string> = { ok: "✓", working: "…", waiting: "○", "needs-you": "▶", blocked: "✗", optional: "○" };
 const MODES = ["auto", "step", "case"];
@@ -342,6 +366,11 @@ export class ProofPanel {
   private bar: Bar | null = null;
   private barTimer = 0;
   private watchingPerson = false;
+  private runChoice: RunSettings = readRunSettings();
+
+  runSettings(): RunSettings {
+    return { ...this.runChoice };
+  }
 
   constructor(
     private readonly onAction: (action: PanelAction) => Promise<string | null> | string | null,
@@ -451,6 +480,19 @@ export class ProofPanel {
     const args = target.dataset.args ? (JSON.parse(target.dataset.args) as Record<string, unknown>) : {};
     const state = this.view?.machine ?? null;
     let request: PanelAction | null = null;
+    if (action === "pick-mode" || action === "pick-speed") {
+      this.runChoice =
+        action === "pick-mode"
+          ? { ...this.runChoice, mode: args.mode as RunSettings["mode"] }
+          : { ...this.runChoice, speed: Number(args.speed) };
+      try {
+        localStorage.setItem(RUN_SETTINGS_KEY, JSON.stringify(this.runChoice));
+      } catch {
+        // Kept for this tab only.
+      }
+      this.repaint();
+      return;
+    }
     if (OWN_ACTIONS.has(action)) {
       request = { kind: action } as PanelAction;
     } else if (action === "toggle") {
@@ -843,6 +885,16 @@ export class ProofPanel {
     const state = view.machine;
     const live = state && state.phase !== "done" && state.phase !== "stopped";
     if (!live) {
+      const choice = this.runChoice;
+      box.append(el("span", "Mode", "lbl"));
+      for (const mode of MODES) {
+        box.append(button(mode, "pick-mode", { className: `pick${choice.mode === mode ? " on" : ""}`, args: { mode } }));
+      }
+      box.append(el("span", "Speed", "lbl"));
+      for (const speed of RUN_SPEEDS) {
+        box.append(button(`${speed}×`, "pick-speed", { className: `pick${choice.speed === speed ? " on" : ""}`, args: { speed } }));
+      }
+      box.append(el("div", MODE_HINTS[choice.mode], "hint"));
       const run = button(state ? "Run again" : "Run", "run", {
         className: view.blocked ? "" : "primary",
         title: view.blocked ?? "Run every case on this page",
