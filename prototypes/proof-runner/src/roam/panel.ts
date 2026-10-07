@@ -239,8 +239,8 @@ const paintTesting = (box: HTMLElement, state: MachineState | null): void => {
     box.append(row);
   };
   line("Proves", item.proves);
-  line("Checks", item.checks);
-  line("You judge", item.judge);
+  line("Passes if", item.checks);
+  line("You check", item.judge);
   if (!item.steps.length) line("By hand", item.intent);
   if (!item.steps.length) return;
   const list = el("ol");
