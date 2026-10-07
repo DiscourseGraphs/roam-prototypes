@@ -76,6 +76,13 @@ export const RUNNER_HINT = `To run this kit, turn on the proof runner once for t
 // The note's openings, today's and earlier ones, so older pages are found.
 const HINT_STARTS = ["To run this kit", "First time here?"];
 const HINTS_STYLE_ID = "proof-runner-hints";
+
+// Roam's Settings names a developer extension loaded from a URL by that URL,
+// in a tab list that never wraps, so the runner's entry took half the dialog.
+// Cap the list and end long names with an ellipsis.
+const SETTINGS_STYLE_ID = "proof-runner-settings";
+const SETTINGS_CSS = `.rm-settings-tabs > .bp3-tab-list { max-width: 260px; }
+.rm-settings-tabs > .bp3-tab-list .bp3-tab { overflow: hidden; text-overflow: ellipsis; }`;
 // How long Connect waits for this machine's helper: the proof database
 // takes about 20 s to start, longer when it migrates.
 const CONNECT_TIMEOUT_MS = 120_000;
@@ -668,6 +675,7 @@ class ProofRunner {
     }
     document.getElementById("proof-run-marks")?.remove();
     document.getElementById(HINTS_STYLE_ID)?.remove();
+    document.getElementById(SETTINGS_STYLE_ID)?.remove();
     if (!this.extensionAPI) {
       for (const label of Object.values(PALETTE)) await roam().ui.commandPalette.removeCommand({ label });
     }
@@ -794,6 +802,12 @@ export const startRunner = async ({ extensionAPI }: { extensionAPI?: ExtensionAP
   if (installedHelpers) await evaluate(HELPERS_INIT_SCRIPT);
   const runner = new ProofRunner(extensionAPI);
   win.proofRunner = runner.api();
+  if (!document.getElementById(SETTINGS_STYLE_ID)) {
+    const style = document.createElement("style");
+    style.id = SETTINGS_STYLE_ID;
+    style.textContent = SETTINGS_CSS;
+    document.head.append(style);
+  }
   runner.keepKitWindows();
   await runner.registerCommands();
   if (registerAgentTools(extensionAPI, runner.agentHost())) console.log("[proof] agent tools registered with Roam's AI API.");
