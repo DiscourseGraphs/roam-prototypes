@@ -497,9 +497,9 @@
         },
         {
           "do": {
-            "js": "(async () => { const caret = await proof.waitFor('.discourse-graph-title-additions .rm-caret', { what: 'the discourse context caret' }); if (!document.querySelector('.discourse-graph-title-additions button')) caret.click(); })()"
+            "js": "(async () => { const addRelation = () => Array.from(document.querySelectorAll('.discourse-graph-title-additions button')).find((button) => proof.visible(button) && (button.textContent || '').includes('Add relation')); if (!addRelation()) { const toggle = await proof.waitFor('.discourse-graph-title-additions .roamjs-discourse-context-overlay', { what: 'the discourse context button under the title' }); toggle.click(); } await proof.waitFor(addRelation, { what: 'the Add relation button in the discourse context' }); })()"
           },
-          "why": "Open its discourse context"
+          "why": "Open the discourse context under the title"
         },
         {
           "do": {
