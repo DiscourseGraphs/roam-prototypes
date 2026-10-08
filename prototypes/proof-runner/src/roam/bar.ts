@@ -318,6 +318,9 @@ type Local = {
   // What's typed in the note box and the add-case form: kept across repaints,
   // a closed box and the run's own questions.
   flagDraft: string;
+  // A case being left out of the run, and the reason typed so far.
+  leaving: { caseId: string; index: number; title: string } | null;
+  leaveDraft: string;
   adding: boolean;
   addDraft: { title: string; intent: string; passes: string };
   // Flag or Add a case asked the run to pause; the box stays up until it says
@@ -372,6 +375,8 @@ export class CaptionBar {
     flagOpen: false,
     flagFor: null,
     flagDraft: "",
+    leaving: null,
+    leaveDraft: "",
     adding: false,
     addDraft: { title: "", intent: "", passes: "" },
     awaitingPause: false,
@@ -448,7 +453,7 @@ export class CaptionBar {
         this.local.menuOpen = false;
         this.paint();
       }
-      if (event.key === "Escape" && (this.local.flagOpen || this.local.adding) && input?.matches?.("input.note")) {
+      if (event.key === "Escape" && (this.local.flagOpen || this.local.adding || this.local.leaving) && input?.matches?.("input.note")) {
         this.closeBoxes();
         this.paint();
       }
@@ -590,7 +595,7 @@ export class CaptionBar {
     // The run reported the pause the box asked for.
     if (state.paused) this.local.awaitingPause = false;
     // The run goes on without the box: it was resumed some other way.
-    if (!state.paused && state.phase !== "waiting-next" && !this.local.awaitingPause && (this.local.flagOpen || this.local.adding)) this.closeBoxes(false);
+    if (!state.paused && state.phase !== "waiting-next" && !this.local.awaitingPause && (this.local.flagOpen || this.local.adding || this.local.leaving)) this.closeBoxes(false);
     const ticking = live && (Boolean(state.pending) || state.paused || Boolean(this.local.countdown));
     if (ticking && !this.ticker) this.ticker = window.setInterval(() => this.paint(), 1000);
     if (!ticking && this.ticker) {
@@ -725,7 +730,7 @@ export class CaptionBar {
       // failed check shows it as Expected; a call by eye and a case by hand
       // carry their line in the ask.
       if (pending.kind === "failure") this.purposeOf(state, this.purpose);
-      ctrl.append(this.chip(model), cases);
+      ctrl.append(this.chip(model), this.stopButton(), cases);
       this.head.append(ctrl);
       return;
     }
@@ -751,14 +756,17 @@ export class CaptionBar {
         this.purpose.classList.add("lead");
         this.purpose.append(el("span", next.kind, "kd"), document.createTextNode(next.text));
       }
-      const before = state.plan[state.caseIndex - 1];
+      // The last case that played: cases the person left out in between didn't.
+      let back = state.caseIndex - 1;
+      while (back >= 0 && state.plan[back]?.leftOut) back -= 1;
+      const before = state.plan[back];
       const verdict = before ? (state.results[before.id] ?? before.verdict) : null;
       const why = stepping
         ? "The run waits before each step. Next step runs one."
         : pausing
           ? "Stops before its next click or key. Resume goes on from there."
           : state.pausedBy === "between-cases" && before
-          ? `Case ${state.caseIndex} ${verdictWord(verdict).toLowerCase()}. Look around, then Resume.`
+          ? `Case ${back + 1} ${verdictWord(verdict).toLowerCase()}. Look around, then Resume.`
           : pauseWords(state.pausedBy ?? null);
       this.foot.append(el("span", why, "now"));
       if (stepping) ctrl.append(button("Next step", "next", "go"));
@@ -787,7 +795,7 @@ export class CaptionBar {
     fc.append(el("b", ahead.you, ahead.soon ? "soon" : ""), document.createTextNode(` · ${ahead.left}`));
     ctrl.append(fc, this.chip(model), button("❚❚ Pause", "pause", "", undefined, "Pause (Ctrl+Alt+Space)"));
     if (state.caseIndex >= 0) ctrl.append(this.flagButton());
-    ctrl.append(cases);
+    ctrl.append(this.stopButton(), cases);
     this.foot.append(ctrl);
   }
 
@@ -857,9 +865,10 @@ export class CaptionBar {
     const live = state.phase !== "done" && state.phase !== "stopped";
     const flag = live && !pending && this.local.flagOpen && state.caseIndex >= 0;
     const add = live && !pending && this.local.adding;
+    const leave = live && !pending && this.local.leaving !== null;
     const history = pending?.caseId ? model.history[pending.caseId]?.passed : null;
     const key = [
-      pending ? this.pendingKey(state) : flag ? `flag:${this.local.flagFor?.caseId ?? ""}:${this.local.flagFor?.caseId === state.caseId}` : add ? "add" : "",
+      pending ? this.pendingKey(state) : flag ? `flag:${this.local.flagFor?.caseId ?? ""}:${this.local.flagFor?.caseId === state.caseId}` : add ? "add" : leave ? `leave:${this.local.leaving?.caseId}` : "",
       history ? `${history.when}@${history.commit ?? ""}` : "",
       this.local.tucked,
       this.local.details,
@@ -873,9 +882,10 @@ export class CaptionBar {
     const hadKeyboard = this.ask.contains(this.root.activeElement);
     this.ask.replaceChildren();
     if (!live) return;
-    if (flag || add) {
+    if (flag || add || leave) {
       if (flag) this.askFlag(state);
-      else this.askAdd();
+      else if (add) this.askAdd();
+      else this.askLeave();
       // The box takes the keyboard when it opens, and keeps it through a repaint.
       const field = this.ask.querySelector("input.note") as HTMLInputElement | null;
       if (field && (hadKeyboard || this.local.focusAsk)) {
@@ -911,15 +921,33 @@ export class CaptionBar {
       this.local.flagDraft = field.value;
     });
     row.append(field, button("Add note", "flag-note"));
-    if (here) row.append(button("✗ Fail this case", "flag-fail", "fail"), button("Skip this case", "flag-skip"));
+    if (here) row.append(button("✗ Fail this case", "flag-fail", "fail"), button("Leave out this case", "flag-leave"));
     row.append(button("Cancel", "flag"));
+    this.ask.append(row);
+  }
+
+  // Leave a case out of the run, with one line on why. The run is paused while
+  // it's open.
+  private askLeave(): void {
+    const target = this.local.leaving;
+    this.ask.append(
+      el("div", `Leave out case ${(target?.index ?? 0) + 1}: ${plainText(target?.title ?? "")}`, "lbl"),
+      el("div", "Cases can build on earlier ones, so leaving one out can make a later one fail. The result says it was left out, and why.", "hint"),
+    );
+    const row = el("div", undefined, "acts");
+    const field = this.noteInput("Why leave it out? One line", "leave-confirm");
+    field.value = this.local.leaveDraft;
+    field.addEventListener("input", () => {
+      this.local.leaveDraft = field.value;
+    });
+    row.append(field, button("Leave out", "leave-confirm", "go"), button("Cancel", "leave-cancel"));
     this.ask.append(row);
   }
 
   // Add a case: a title, and optionally what to do and what should happen. It
   // plays by hand at the end of the run.
   private askAdd(): void {
-    this.ask.append(el("div", "Add a case", "lbl"), el("div", "It runs by hand at the end of this run, and it's saved on the kit page for the next one.", "hint"));
+    this.ask.append(el("div", "Add a case", "lbl"), el("div", "It runs by hand at the end of this run. It's saved on the kit page as a proposal for the kit's author, so the kit itself doesn't change.", "hint"));
     const draft = this.local.addDraft;
     const form = el("div", undefined, "form");
     const make = (name: keyof typeof draft, placeholder: string): HTMLInputElement => {
@@ -939,16 +967,17 @@ export class CaptionBar {
 
   // Opens the note box or the add-case form, and pauses a run that drives:
   // typing needs the keyboard, and the run must not take it back.
-  private openBox(kind: "flag" | "add"): void {
+  private openBox(kind: "flag" | "add" | "leave", target?: { caseId: string; index: number; title: string }): void {
     const state = this.model?.state;
     if (!state || state.pending) return;
     if (kind === "flag" && state.caseIndex < 0) return;
-    if (!this.local.flagOpen && !this.local.adding) {
+    if (!this.local.flagOpen && !this.local.adding && !this.local.leaving) {
       const active = document.activeElement as HTMLElement | null;
       this.local.back = active && active !== document.body && !active.closest?.("[data-proof-runner-ui]") ? active : null;
     }
     this.local.flagOpen = kind === "flag";
     this.local.adding = kind === "add";
+    this.local.leaving = kind === "leave" && target ? target : null;
     this.local.focusAsk = true;
     if (kind === "flag" && state.caseId) this.local.flagFor = { caseId: state.caseId, index: state.caseIndex };
     if (!state.paused && state.phase !== "waiting-next") {
@@ -960,9 +989,10 @@ export class CaptionBar {
   // Takes the boxes down; what was typed stays. The keyboard goes back to where
   // it was before the box opened, if that's still on the page.
   private closeBoxes(restore = true): void {
-    const was = this.local.flagOpen || this.local.adding;
+    const was = this.local.flagOpen || this.local.adding || this.local.leaving !== null;
     this.local.flagOpen = false;
     this.local.adding = false;
+    this.local.leaving = null;
     this.local.awaitingPause = false;
     const back = this.local.back;
     this.local.back = null;
@@ -1032,7 +1062,7 @@ export class CaptionBar {
     const row = el("div", undefined, "acts");
     if (checked) row.append(button("Done", "done-by-hand", "go"));
     else row.append(button("✓ Done, it worked", "hand-pass", "pass"), button("✗ Done, it didn't", "hand-fail", "fail"));
-    row.append(button("Skip this case", "hand-skip"));
+    row.append(button("Leave out this case", "hand-leave"));
     if (!checked) row.append(this.noteInput("Add a note (optional)", ""));
     if (!this.model?.agent) row.append(button("Ask your agent to do it", "ask-agent", "link"));
     this.ask.append(row);
@@ -1154,7 +1184,7 @@ export class CaptionBar {
           : [covers.length ? `Done When ${covers.join(", ")}` : "", need === "judge" ? "you'll judge" : need === "by-hand" ? "by hand" : ""].filter(Boolean).join(" · ");
       row.append(el("span", icon, tone), el("span", String(index + 1), "ix"), el("span", plainText(item.title), "tt"), el("span", tag, "tg"));
       // A case still ahead can be left out of this run, and put back until its turn.
-      if (ahead) row.append(item.leftOut ? button("Put back", "put-back", "link", { caseId: item.id }) : button("Skip", "leave-out", "link", { caseId: item.id }));
+      if (ahead) row.append(item.leftOut ? button("Put back", "put-back", "link", { caseId: item.id }) : button("Leave out", "leave-out", "link", { caseId: item.id }));
       sheet.append(row);
       if (current) {
         const steps = el("div", undefined, "steps");
@@ -1191,6 +1221,8 @@ export class CaptionBar {
     const leftOut = plan.filter((item) => item.leftOut && !results[item.id]).length;
     const stopped = state.phase === "stopped";
     const fixes = kitFixes(plan, results);
+    // A case passed with a note that the kit's fixes don't already carry.
+    const noted = plan.filter((item) => results[item.id] === "pass" && item.record?.yourNote && !fixes.some((fix) => fix.caseId === item.id));
     const helped = plan.filter((item) => results[item.id] === "pass" && passedWithHelp(item.record)).length;
     const head = el("div", undefined, "res-hd");
     head.append(
@@ -1263,6 +1295,16 @@ export class CaptionBar {
         );
         box.append(kv, button(this.local.copied === `bug:${item.id}` ? "Copied" : "Copy bug report", "copy-bug", "", { caseId: item.id }));
         sec.append(box);
+      }
+      sheet.append(sec);
+    }
+    if (noted.length) {
+      const sec = el("div", undefined, "sec");
+      sec.append(el("div", "Passed, with your note", "lbl"));
+      for (const item of noted) {
+        const row = el("div", undefined, "dw");
+        row.append(el("span", ICON.pass, "g"), el("span", String(plan.indexOf(item) + 1), "meta"), el("span", `${plainText(item.title)}: “${plainText(item.record?.yourNote ?? "")}”`), el("span"));
+        sec.append(row);
       }
       sheet.append(sec);
     }
@@ -1409,14 +1451,33 @@ export class CaptionBar {
         return;
       }
       case "flag-fail":
-        this.command("verdict", withNote({ verdict: "fail" }));
+        this.command("verdict", withNote({ verdict: "fail", ...(this.local.flagFor ? { caseId: this.local.flagFor.caseId } : {}) }));
         this.local.flagDraft = "";
         this.closeBoxes();
         break;
-      case "flag-skip":
-        if (!note) return this.showError("Say in one line why you're skipping it.");
-        this.command("skip-case", { note });
+      case "flag-leave":
+        if (!note) return this.showError("Say in one line why you're leaving it out.");
+        this.command("leave-out", { caseId: this.local.flagFor?.caseId ?? state?.caseId, note });
         this.local.flagDraft = "";
+        this.closeBoxes();
+        break;
+      case "leave-out": {
+        const index = state?.plan.findIndex((item) => item.id === args.caseId) ?? -1;
+        const item = state?.plan[index];
+        if (item) this.openBox("leave", { caseId: item.id, index, title: item.title });
+        break;
+      }
+      case "leave-confirm": {
+        const target = this.local.leaving;
+        if (!target) break;
+        if (!note) return this.showError("Say in one line why you're leaving it out.");
+        this.command("leave-out", { caseId: target.caseId, note });
+        this.local.leaveDraft = "";
+        this.closeBoxes();
+        this.say(`Left out case ${target.index + 1}. The run is paused: Resume when you're ready.`);
+        return;
+      }
+      case "leave-cancel":
         this.closeBoxes();
         break;
       case "add-open":
@@ -1458,13 +1519,13 @@ export class CaptionBar {
         if (!note) return this.showError("Say in one line why you can't tell.");
         this.command("skip-case", { note: `Can't tell: ${note}` });
         break;
-      case "hand-skip":
-        if (note) this.command("skip-case", { note });
-        else this.local.why = { label: "Why skip this case?", placeholder: "One line: what stopped you", confirm: "Skip this case", className: "go", action: "why-hand-skip", required: true };
+      case "hand-leave":
+        if (note) this.command("leave-out", { caseId: state?.caseId, note });
+        else this.local.why = { label: "Why leave this case out?", placeholder: "One line: what stopped you", confirm: "Leave out this case", className: "go", action: "why-hand-leave", required: true };
         break;
-      case "why-hand-skip":
-        if (!note) return this.showError("Say in one line why you're skipping it.");
-        this.command("skip-case", { note });
+      case "why-hand-leave":
+        if (!note) return this.showError("Say in one line why you're leaving it out.");
+        this.command("leave-out", { caseId: state?.caseId, note });
         break;
       case "why-back":
         this.local.why = null;

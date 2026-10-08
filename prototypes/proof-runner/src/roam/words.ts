@@ -201,7 +201,7 @@ export const holdLine = (why: string, item: Pick<PlanCase, "judge" | "hasCheck" 
 // Why the run paused, short enough to sit beside what runs next.
 export const pauseWords = (cause: PauseCause | null): string => {
   if (cause === "page") return "You clicked the page; your click didn't reach Roam.";
-  if (cause === "flag") return "You flagged this case, so the run is paused. Resume when you're ready.";
+  if (cause === "flag") return "You flagged a case, so the run is paused. Resume when you're ready.";
   if (cause === "between-cases") return "Paused between cases. Look around, then Resume.";
   if (cause === "agent") return "Your agent paused the run.";
   return "You paused the run.";
@@ -226,8 +226,8 @@ export const howWords = (verdict: string | null, record: CaseRecord | null): str
 };
 
 // How a case ended, or that the person left it out of the run.
-export const endWords = (item: Pick<PlanCase, "leftOut" | "record">, verdict: string | null): string =>
-  item.leftOut && !verdict ? "left out by you" : howWords(verdict, item.record ?? null);
+export const endWords = (item: Pick<PlanCase, "leftOut" | "leftWhy" | "record">, verdict: string | null): string =>
+  item.leftOut && !verdict ? `left out by you${item.leftWhy ? `: ${firstLine(item.leftWhy, 200)}` : ""}` : howWords(verdict, item.record ?? null);
 
 export const verdictWord = (verdict: string | null): string =>
   verdict === "pass" ? "Passed" : verdict === "fail" ? "Failed" : verdict === "skip" ? "Couldn't be tested" : "Didn't run";
@@ -473,7 +473,14 @@ export const resultMarkdown = (state: Pick<MachineState, "plan" | "results">, fa
   }
   if (leftOut.length) {
     lines.push("", "Left out by the tester");
-    for (const item of leftOut) lines.push(`- Case ${plan.indexOf(item) + 1}: ${item.title}.`);
+    for (const item of leftOut) lines.push(`- Case ${plan.indexOf(item) + 1}: ${item.title}.${item.leftWhy ? ` The tester said: "${firstLine(item.leftWhy, 300)}"` : ""}`);
+  }
+  // A case that passed after the tester flagged it: what they said goes with it.
+  const fixed = kitFixes(plan, state.results);
+  const noted = plan.filter((item) => state.results[item.id] === "pass" && item.record?.yourNote && !fixed.some((fix) => fix.caseId === item.id));
+  if (noted.length) {
+    lines.push("", "Passed, with a note from the tester");
+    for (const item of noted) lines.push(`- Case ${plan.indexOf(item) + 1}: ${item.title}. The tester said: "${firstLine(item.record?.yourNote ?? "", 300)}"`);
   }
   const fixes = kitFixes(plan, state.results).length;
   if (fixes) lines.push("", `The kit needs ${fixes} fix${fixes === 1 ? "" : "es"}, listed on ${facts.page ?? "the proof page"} under runs.`);

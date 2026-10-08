@@ -116,8 +116,8 @@ export type PanelView = {
 };
 
 export type PanelAction =
-  // leave: the cases the person left out of this run.
-  | { kind: "run"; leave?: string[] }
+  // leave: the cases the person left out of this run, and why.
+  | { kind: "run"; leave?: string[]; why?: string }
   | { kind: CheckAction }
   | { kind: "resume" }
   | { kind: "reset" }
@@ -395,6 +395,8 @@ export class ProofPanel {
   private addOpen = false;
   private addFocused = false;
   private readonly draft = { title: "", intent: "", passes: "" };
+  // Why the cases left out were left out: one line for the lot.
+  private leaveWhy = "";
   // How long steps take here, from the run so far.
   private stepTimes: number[] = [];
   private lastStep: { key: string; at: number } | null = null;
@@ -638,7 +640,7 @@ export class ProofPanel {
     }
     if (action.kind === "run" || action.kind === "rerun") {
       this.stage.prime();
-      return this.onAction(action.kind === "run" ? { kind: "run", leave: this.leaveList() } : { kind: "rerun" });
+      return this.onAction(action.kind === "run" ? this.runRequest() : { kind: "rerun" });
     }
     if (action.kind === "ask-agent") return this.onAction({ kind: "ask-agent" });
     // A setting changed in the bar during the run: kept for later runs too.
@@ -683,6 +685,12 @@ export class ProofPanel {
   private leaveList(): string[] {
     const ids = new Set((this.view?.kit?.list ?? []).map((item) => item.plan.id));
     return [...this.left].filter((id) => ids.has(id));
+  }
+
+  // Run, less the cases left out, with the reason given for them.
+  private runRequest(): PanelAction {
+    const leave = this.leaveList();
+    return leave.length ? { kind: "run", leave, why: this.leaveWhy.trim() } : { kind: "run", leave };
   }
 
   private async press(target: HTMLButtonElement): Promise<void> {
@@ -738,7 +746,7 @@ export class ProofPanel {
     }
     if (action === "run" || action === "resume" || action === "rerun") this.stage.prime();
     const request: PanelAction | null =
-      action === "run" ? { kind: "run", leave: this.leaveList() } : OWN_ACTIONS.has(action) ? ({ kind: action } as PanelAction) : { kind: "command", cmd: action, args };
+      action === "run" ? this.runRequest() : OWN_ACTIONS.has(action) ? ({ kind: action } as PanelAction) : { kind: "command", cmd: action, args };
     const error = await this.onAction(request);
     if (error) this.showError(error);
   }
@@ -792,16 +800,27 @@ export class ProofPanel {
     if (kit) {
       const facts = el("div", undefined, "facts");
       const last = view.last?.summary ?? null;
+      // What this run plays: the cases that are ticked.
+      const left = new Set(this.leaveList());
+      const played = kit.list.filter((item) => !left.has(item.plan.id));
+      const mine = kit.list.length
+        ? {
+            cases: played.length,
+            steps: played.reduce((sum, item) => sum + item.plan.steps.length, 0),
+            judge: played.filter((item) => needOf(item.plan) === "judge").length,
+            byHand: played.filter((item) => needOf(item.plan) === "by-hand").length,
+          }
+        : kit;
       // The last run's length when the page has one; otherwise a guess from the step count.
       const time =
-        last && last.minutes !== null
+        last && last.minutes !== null && !left.size
           ? `${last.minutes ? `${last.minutes} min` : "under a minute"} last time`
-          : `${duration(kit.steps * STEP_MS + kit.cases * 1500)}, a guess`;
-      facts.append(el("span", `${kit.cases} case${kit.cases === 1 ? "" : "s"}`, "fact"), el("span", time, "fact"));
-      const asks = [kit.judge ? `${kit.judge} call${kit.judge === 1 ? "" : "s"} by eye` : "", kit.byHand ? `${kit.byHand} by hand` : ""].filter(Boolean);
+          : `${duration(mine.steps * STEP_MS + mine.cases * 1500)}, a guess`;
+      facts.append(el("span", `${left.size ? `${mine.cases} of ${kit.cases}` : mine.cases} case${kit.cases === 1 ? "" : "s"}`, "fact"), el("span", time, "fact"));
+      const asks = [mine.judge ? `${mine.judge} call${mine.judge === 1 ? "" : "s"} by eye` : "", mine.byHand ? `${mine.byHand} by hand` : ""].filter(Boolean);
       facts.append(
         asks.length
-          ? el("span", `Needs you ${kit.judge + kit.byHand} time${kit.judge + kit.byHand === 1 ? "" : "s"}: ${asks.join(", ")}`, "fact you")
+          ? el("span", `Needs you ${mine.judge + mine.byHand} time${mine.judge + mine.byHand === 1 ? "" : "s"}: ${asks.join(", ")}`, "fact you")
           : el("span", "Won't need you unless something fails", "fact ok"),
       );
       facts.append(this.lastRunFact(view));
@@ -927,9 +946,25 @@ export class ProofPanel {
       }
       box.append(row);
     });
+    if (left.size) {
+      const why = el("div", undefined, "add");
+      const field = document.createElement("input");
+      field.type = "text";
+      field.placeholder = "Why leave these out? One line";
+      field.value = this.leaveWhy;
+      field.dataset.field = "leaveWhy";
+      field.setAttribute("aria-label", "Why leave these cases out");
+      // Run waits on this line, so the card repaints as it's typed; the keyboard stays in the field.
+      field.addEventListener("input", () => {
+        this.leaveWhy = field.value;
+        this.repaint();
+      });
+      why.append(field, el("div", "Cases can build on earlier ones, so leaving one out can make a later one fail. The result says what was left out, and why.", "meta"));
+      box.append(why);
+    }
     if (this.addOpen) {
       const form = el("div", undefined, "add");
-      form.append(el("div", "Add a case", "lbl"), el("div", "It runs by hand, after the others, and it's saved on the kit page for the next run.", "meta"));
+      form.append(el("div", "Add a case", "lbl"), el("div", "It runs by hand, after the others. It's saved on the kit page as a proposal for the kit's author, so the kit itself doesn't change.", "meta"));
       const make = (name: "title" | "intent" | "passes", placeholder: string): HTMLInputElement => {
         const field = document.createElement("input");
         field.type = "text";
@@ -996,7 +1031,8 @@ export class ProofPanel {
       "run",
       { className: "primary", title: view.blocked ?? (some ? "Run the cases that are ticked" : "Run every case on this page") },
     );
-    run.disabled = Boolean(view.error) || Boolean(view.blocked) || (Boolean(view.kit) && plays === 0);
+    const unsaid = some && !this.leaveWhy.trim();
+    run.disabled = Boolean(view.error) || Boolean(view.blocked) || (Boolean(view.kit) && plays === 0) || unsaid;
     row.append(run);
     if (view.resumable && !state) row.append(button(`Resume from case ${view.resumable.caseIndex + 1}`, "resume"));
     const rerun = view.run?.rerun ?? 0;
@@ -1004,6 +1040,7 @@ export class ProofPanel {
     if (state || view.resumable) row.append(button("Reset", "reset", { title: "Forget this tab's run of the kit" }));
     if (view.blocked) row.append(el("span", `Waiting on ${view.blocked.split(":")[0]}`, "meta"));
     else if (view.kit && plays === 0) row.append(el("span", "Every case is left out. Tick at least one.", "meta"));
+    else if (unsaid) row.append(el("span", "Say why you left cases out, then Run.", "meta"));
     box.append(row);
     // Said before the first click is held, so it doesn't read as Roam freezing.
     box.append(el("div", "While it runs, a click on the page pauses the run instead of landing. Scrolling still works, and Ctrl+Alt+Space pauses too.", "meta held"));

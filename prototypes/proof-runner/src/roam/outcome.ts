@@ -30,8 +30,11 @@ export const outcomeText = (record: CaseRecord): string => {
   return parts.join(" · ");
 };
 
-export const logLine = (title: string, record: CaseRecord | null, earlier: boolean, leftOut = false): string =>
-  record ? `${ICON[record.verdict]} ${title} · ${outcomeText(record)}${earlier ? " · from the earlier run" : ""}` : `○ ${title} · ${leftOut ? "left out by the tester" : "not run"}`;
+// left: the tester left the case out, and said why (or didn't).
+export const logLine = (title: string, record: CaseRecord | null, earlier: boolean, left?: { why: string | null }): string =>
+  record
+    ? `${ICON[record.verdict]} ${title} · ${outcomeText(record)}${earlier ? " · from the earlier run" : ""}`
+    : `○ ${title} · ${left ? `left out by the tester${left.why ? `: ${firstLine(left.why)}` : ""}` : "not run"}`;
 
 export type LastResult = { icon: string; verdict: Verdict | null; detail: string };
 

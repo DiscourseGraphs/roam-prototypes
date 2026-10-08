@@ -87,6 +87,8 @@ export type PlanCase = {
   record: CaseRecord | null;
   // Left out of this run by the person: it won't play, and has no verdict.
   leftOut: boolean;
+  // Why they left it out, in their words.
+  leftWhy: string | null;
   steps: { why: string; source: StepSource }[];
 };
 
@@ -219,8 +221,9 @@ export type MachineOptions = {
   onIdle?: () => Promise<void>;
   holdOnCheckFail?: boolean;
   // Cases (by id) this run leaves out; the person can change that until each
-  // one's turn.
+  // one's turn. They give one reason for the lot.
   leaveOut?: string[];
+  leaveOutWhy?: string | Record<string, string>;
 };
 
 const firstLine = (value: unknown, limit = 160): string =>
@@ -309,6 +312,9 @@ export class Machine {
   // What the person said about a case before it ended, with its record after.
   private readonly handNotes: Record<string, string[]> = {};
   private readonly leftOut: Set<string>;
+  private readonly leftWhy = new Map<string, string>();
+  // The case running was left out: it ends with no verdict.
+  private leaveCurrent = false;
   private tracks: Tracks = freshTracks();
   private lastFailure: { why: string; index: number; error: string } | null = null;
   private lastCheckError: string | null = null;
@@ -346,6 +352,10 @@ export class Machine {
     this.onIdle = options.onIdle;
     this.holdOnCheckFail = options.holdOnCheckFail ?? false;
     this.leftOut = new Set(options.leaveOut ?? []);
+    for (const id of this.leftOut) {
+      const why = typeof options.leaveOutWhy === "string" ? options.leaveOutWhy : options.leaveOutWhy?.[id];
+      if (why?.trim()) this.leftWhy.set(id, why.trim().slice(0, 1000));
+    }
     this.expand =
       options.expand ??
       ((step) => {
@@ -368,6 +378,11 @@ export class Machine {
   // The cases this run leaves out now, in kit order.
   get leftOutIds(): string[] {
     return this.kit.cases.filter((testCase) => this.leftOut.has(testCase.id)).map((testCase) => testCase.id);
+  }
+
+  // Why each case left out was left out, for a resume and the run's line.
+  get leftOutWhys(): Record<string, string> {
+    return Object.fromEntries(this.leftWhy);
   }
 
   get caseRecords(): Record<string, CaseRecord> {
@@ -411,6 +426,7 @@ export class Machine {
         note: this.verdictNotes[item.id] ?? null,
         record: this.records[item.id] ?? null,
         leftOut: this.leftOut.has(item.id),
+        leftWhy: this.leftWhy.get(item.id) ?? null,
         steps: item.steps.map((planStep) => ({
           why: planStep.why,
           source: planStep.source ?? "kit",
@@ -597,6 +613,7 @@ export class Machine {
       case "skip-case": {
         const testCase = this.currentCase();
         if (!testCase) throw new Error("No case is running.");
+        this.requireCase(args, testCase);
         const reason = typeof args.note === "string" && args.note.trim() ? args.note.trim().slice(0, 1000) : undefined;
         this.skipNote = reason;
         this.skipCaseRequested = true;
@@ -658,16 +675,27 @@ export class Machine {
       case "put-back": {
         const testCase = typeof args.caseId === "string" ? this.findCase(args.caseId) : undefined;
         if (!testCase) throw new Error(`No case "${String(args.caseId ?? "")}".`);
-        if (this.kit.cases.indexOf(testCase) <= this.caseIndex) {
-          throw new Error(
-            cmd === "leave-out"
-              ? "Only a case that hasn't started can be left out. To end the one running, fail it or skip it."
-              : "The run is already past that case.",
-          );
+        const index = this.kit.cases.indexOf(testCase);
+        if (cmd === "put-back") {
+          if (index <= this.caseIndex) throw new Error("The run is already past that case.");
+          this.leftOut.delete(testCase.id);
+          this.leftWhy.delete(testCase.id);
+          this.log("case-put-back", { caseId: testCase.id, by: source });
+          return this.state();
         }
-        if (cmd === "leave-out") this.leftOut.add(testCase.id);
-        else this.leftOut.delete(testCase.id);
-        this.log(cmd === "leave-out" ? "case-left-out" : "case-put-back", { caseId: testCase.id, by: source });
+        if (index < this.caseIndex) throw new Error("That case is already over, so it can't be left out.");
+        const why = typeof args.note === "string" ? args.note.trim().slice(0, 1000) : "";
+        this.leftOut.add(testCase.id);
+        if (index === this.caseIndex) {
+          // The case running now ends here, with no verdict. What was said about it earlier goes with the reason.
+          this.leftWhy.set(testCase.id, joinNotes(...(this.handNotes[testCase.id] ?? []), why));
+          this.leaveCurrent = true;
+          this.skipCaseRequested = true;
+          if (this.pending?.kind === "failure" || this.pending?.kind === "check-failed") this.failureAnswered = true;
+        } else if (why) {
+          this.leftWhy.set(testCase.id, why);
+        }
+        this.log("case-left-out", { caseId: testCase.id, by: source, why: why || null, running: index === this.caseIndex });
         return this.state();
       }
       case "say": {
@@ -782,6 +810,8 @@ export class Machine {
     if (verdict !== "pass" && verdict !== "fail") {
       throw new Error('verdict must be "pass" or "fail".');
     }
+    const open = this.currentCase();
+    if (source === "hud" && open) this.requireCase(args, open);
     const rawNote = typeof args.note === "string" ? args.note : args.reason;
     const note =
       typeof rawNote === "string" && rawNote.trim()
@@ -853,6 +883,7 @@ export class Machine {
 
   private async runCase(testCase: TestCase): Promise<void> {
     this.skipCaseRequested = false;
+    this.leaveCurrent = false;
     this.forcedVerdict = null;
     this.tracks = freshTracks();
     this.lastFailure = null;
@@ -880,9 +911,21 @@ export class Machine {
     let outcome: CaseOutcome | null;
     if (this.forcedVerdict) outcome = this.forcedVerdict;
     else if (!finished) outcome = this.skipped();
-    else outcome = await this.judge(testCase);
+    else {
+      // A pause holds the case before its check too, so a case the person
+      // flagged can't pass while they're still writing.
+      await this.holdBeforeCheck();
+      outcome = this.interrupted() ? null : await this.judge(testCase);
+    }
     // A Fail pressed while the check ran wins over the check.
     if (this.forcedVerdict) outcome = this.forcedVerdict;
+    if (this.leaveCurrent && !this.stopRequested) {
+      this.leaveCurrent = false;
+      this.skipCaseRequested = false;
+      this.forcedVerdict = null;
+      delete this.handNotes[testCase.id];
+      return;
+    }
     if (!outcome) {
       if (this.stopRequested) {
         this.log("case-interrupted", { caseId: testCase.id });
@@ -1066,6 +1109,25 @@ export class Machine {
       this.stepStartedAt = null;
       void this.render();
     }
+  }
+
+  // A pause holds a case before its check. One press of Next step lets the
+  // check run.
+  private async holdBeforeCheck(): Promise<void> {
+    while (this.paused && !this.interrupted()) {
+      if (this.stepOnce) {
+        this.stepOnce = false;
+        return;
+      }
+      this.setPhase("paused");
+      await this.signal();
+    }
+  }
+
+  // A command that names a case acts on that case only: if it has ended since
+  // the person looked, the command is refused, not applied to the next one.
+  private requireCase(args: Record<string, unknown>, current: TestCase): void {
+    if (typeof args.caseId === "string" && args.caseId !== current.id) throw new Error("That case is already over.");
   }
 
   // A pause stops an action before it clicks or types, not only between steps,

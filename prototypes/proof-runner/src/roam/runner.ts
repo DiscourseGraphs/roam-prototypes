@@ -80,8 +80,9 @@ type RunRecord = {
   // Each judged case's record: its verdict, how it was reached, and its notes.
   records: Record<string, CaseRecord>;
   commit: string | null;
-  // The cases the run left out, so a resume leaves them out too.
+  // The cases the run left out, and why, so a resume leaves them out too.
   left?: string[];
+  leftWhy?: Record<string, string>;
 };
 
 const hash = (value: unknown): string => {
@@ -349,6 +350,7 @@ export const planCaseOf = (item: Kit["cases"][number], record: CaseRecord | null
   note: record ? [record.note, record.yourNote].filter(Boolean).join(" · ") || null : null,
   record,
   leftOut: false,
+  leftWhy: null,
   steps: item.steps.map((step) => ({ why: step.why, source: step.source ?? "kit" })),
 });
 
@@ -371,6 +373,9 @@ export class ProofRun {
   // The page's run lines, newest first: for the card's last run and each case's history.
   private runLog: RunLogBlock[] = [];
   private histories: Record<string, CaseHistory> = {};
+  // Cases the person added in this tab: they play in this tab's runs. The page
+  // keeps each as a proposal for the kit's author.
+  private added: Kit["cases"] = [];
   private runInfo: { pause: PauseSetting; terminal: boolean; startedAt: number; endedAt: number | null; setup: Step[] } | null = null;
   // Only when needed: failed steps already tried again, and failures handled.
   private readonly tries = new Map<string, number>();
@@ -409,9 +414,13 @@ export class ProofRun {
     return Boolean(this.state && this.state.phase !== "done" && this.state.phase !== "stopped");
   }
 
-  // The cases a run plays: written by hand, or approved.
+  // The cases a run plays: written by hand, or approved, and the ones added in this tab.
   private get runKit(): Kit | null {
-    return this.kit ? runnableKit(this.kit.kit) : null;
+    if (!this.kit) return null;
+    const run = runnableKit(this.kit.kit);
+    const known = new Set(run.cases.map((item) => item.id));
+    const extra = this.added.filter((item) => !known.has(item.id));
+    return extra.length ? { ...run, cases: [...run.cases, ...extra] } : run;
   }
 
   get pageKit(): PageKit | null {
@@ -585,7 +594,7 @@ export class ProofRun {
       notTested: page.cases
         .filter((item) => decisionOf(item) === "rejected")
         .map((item) => ({ title: item.title, reason: item.decision?.reason ?? null })),
-      proposed: page.cases.filter((item) => decisionOf(item) === "proposed").length,
+      proposed: page.cases.filter((item) => decisionOf(item) === "proposed" && !this.added.some((mine) => mine.id === item.id)).length,
       list: cases.map((item) => ({ plan: planCaseOf(item), uid: this.kit?.blocks.cases[item.id] ?? null })),
     };
   }
@@ -684,7 +693,7 @@ export class ProofRun {
 
   private async act(action: PanelAction): Promise<string | null> {
     try {
-      if (action.kind === "run") return await this.start({ leave: action.leave });
+      if (action.kind === "run") return await this.start({ leave: action.leave, why: action.why });
       if (action.kind === "add-case") return await this.addCase(action);
       if (action.kind === "edit-case") {
         const uid = this.runBlocks?.cases[action.caseId] ?? this.kit?.blocks.cases[action.caseId];
@@ -757,12 +766,16 @@ export class ProofRun {
   async addCase(input: { title: string; intent: string; passes: string }): Promise<string | null> {
     if (!this.kit || !this.tree) return this.error ?? "This page has no kit.";
     if (!input.title.trim()) return "Say what the case should check.";
-    const taken = new Set([...this.kit.kit.cases, ...(this.machine?.kit.cases ?? [])].map((item) => item.id));
+    const taken = new Set([...this.kit.kit.cases, ...this.added, ...(this.machine?.kit.cases ?? [])].map((item) => item.id));
     const testCase = newCase(input, taken);
+    // The page keeps it as a proposal by this person, for the kit's author to approve or reject;
+    // the runs in this tab play it.
+    const proposal = { ...testCase, decision: { status: "proposed" as const, by: (await userName()) ?? "a tester", at: stamp(new Date()) } };
     if (this.running) {
       const error = this.command("add-case", { case: testCase });
       if (error) return error;
     }
+    this.added.push(testCase);
     const uid = roam().util.generateUID();
     const children = this.tree.children ?? [];
     let at = children.length;
@@ -770,7 +783,7 @@ export class ProofRun {
       if (attribute(child.string)?.key === "case") at = index + 1;
     });
     try {
-      await createTree(this.rootUid, [{ ...caseBlockOf(testCase), uid }], at);
+      await createTree(this.rootUid, [{ ...caseBlockOf(proposal), uid }], at);
     } catch (error) {
       return `${this.running ? "The run has it, but the page doesn't: " : ""}Couldn't write the case to the page: ${describe(error)}`;
     }
@@ -891,19 +904,20 @@ export class ProofRun {
 
   // Starts a run: every case, the cases from `from` on (a resume), or only
   // those listed (the ones that didn't pass); less the ones the person left out.
-  async start(options: { from?: number; only?: string[]; leave?: string[] } = {}): Promise<string | null> {
+  async start(options: { from?: number; only?: string[]; leave?: string[]; why?: string } = {}): Promise<string | null> {
     if (this.running) return "A run is already going.";
     await this.refresh();
     if (!this.kit) return this.error ?? "This page has no kit.";
     const blocked = runBlocked(this.checklist());
     if (blocked) return blocked;
-    // Proposed and rejected cases stay on the page and don't run.
-    const source = runnableKit(this.kit.kit);
-    if (source.cases.length === 0) return "No case on this page is approved yet, so there's nothing to run.";
+    // Proposed and rejected cases stay on the page and don't run, but the ones added in this tab do.
+    const source = this.runKit;
+    if (!source || source.cases.length === 0) return "No case on this page is approved yet, so there's nothing to run.";
     const kit: Kit = JSON.parse(JSON.stringify(source)) as Kit;
     this.runBlocks = this.tree ? runBlocksFor(this.kit, this.tree, source) : null;
     const earlier = this.bestRecords();
     let leave = options.leave;
+    let whys: string | Record<string, string> | undefined = options.why;
     if (options.only) {
       const only = new Set(options.only);
       kit.cases = kit.cases.filter((item) => only.has(item.id));
@@ -914,6 +928,7 @@ export class ProofRun {
       kit.cases = kit.cases.slice(Math.min(options.from, kit.cases.length - 1));
       this.carried = record ? { ...record.records } : {};
       leave ??= record?.left;
+      whys ??= record?.leftWhy;
       this.scope = "resume";
     } else {
       this.carried = {};
@@ -923,6 +938,7 @@ export class ProofRun {
     const here = new Set(kit.cases.map((item) => item.id));
     const leaveOut = (leave ?? []).filter((id) => here.has(id));
     if (leaveOut.length >= kit.cases.length) return "Every case is left out. Tick at least one.";
+    if (leaveOut.length && !(typeof whys === "string" ? whys.trim() : whys && Object.keys(whys).length)) return "Say in one line why you left cases out.";
     this.runIds = kit.cases.map((item) => item.id).filter((id) => !leaveOut.includes(id));
     const baseline = kit.baseline ? this.env.baselines.get(kit.baseline) : null;
     const setup = [...inSessionSteps(fixturesFor(kit, this.env)), ...smokeSteps(baseline?.smoke ?? [])];
@@ -968,6 +984,7 @@ export class ProofRun {
       holdOnCheckFail: play.holdOnCheckFail,
       expand: makeExpander(this.env.recipes),
       leaveOut,
+      leaveOutWhy: whys,
     });
     this.machine = machine;
     this.state = machine.state();
@@ -1069,6 +1086,7 @@ export class ProofRun {
       records,
       commit: this.env.build?.commit ?? null,
       left,
+      leftWhy: machine.leftOutWhys,
     });
   }
 
@@ -1082,7 +1100,7 @@ export class ProofRun {
     // Cases added during the run are on the page now, so its line lists them too.
     const logged: Kit = { ...source, cases: [...source.cases, ...machine.kit.cases.filter((item) => !source.cases.some((known) => known.id === item.id))] };
     try {
-      await this.writeRunLog(logged, records, Object.keys(machine.caseRecords), stopped, machine.leftOutIds);
+      await this.writeRunLog(logged, records, Object.keys(machine.caseRecords), stopped, machine.leftOutIds, machine.leftOutWhys);
     } catch (error) {
       this.panel.showError(`Couldn't write the run log: ${describe(error)}`);
     }
@@ -1091,7 +1109,7 @@ export class ProofRun {
 
   // A line in the {{proof}} block's runs list, newest first, with a child
   // per case, so whoever opens the page sees what passed on which build.
-  private async writeRunLog(source: Kit, records: Record<string, CaseRecord>, ran: string[], stopped: boolean, leftOut: string[] = []): Promise<void> {
+  private async writeRunLog(source: Kit, records: Record<string, CaseRecord>, ran: string[], stopped: boolean, leftOut: string[] = [], whys: Record<string, string> = {}): Promise<void> {
     const tree = await readTree(this.rootUid);
     if (!tree) return;
     let runs = (tree.children ?? []).find((child) => child.string.trim().toLowerCase() === "runs");
@@ -1136,7 +1154,7 @@ export class ProofRun {
           string: summary,
           open: false,
           children: source.cases.map((item) => ({
-            string: logLine(item.title, records[item.id] ?? null, Boolean(records[item.id]) && !fresh.has(item.id), leftOut.includes(item.id)),
+            string: logLine(item.title, records[item.id] ?? null, Boolean(records[item.id]) && !fresh.has(item.id), leftOut.includes(item.id) ? { why: whys[item.id] ?? null } : undefined),
           })),
         },
       ],
