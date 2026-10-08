@@ -1,0 +1,1408 @@
+{
+  "name": "eng-2296",
+  "cases": [
+    {
+      "id": "dialog-renamed",
+      "title": "Running DG: Import shared nodes opens a dialog titled Import shared nodes",
+      "steps": [
+        {
+          "id": "s1",
+          "why": "Run DG: Import shared nodes from the command palette",
+          "source": "kit",
+          "do": {
+            "command_palette": "DG: Import shared nodes"
+          }
+        },
+        {
+          "id": "s2",
+          "why": "Wait for the dialog",
+          "source": "kit",
+          "do": {
+            "wait_for": ".bp3-dialog:visible"
+          }
+        },
+        {
+          "id": "s3",
+          "why": "Wait for the shared nodes to load",
+          "source": "kit",
+          "do": {
+            "wait_for": ".bp3-dialog tbody tr:has-text(\"Daylight exposure resets the circadian clock\")"
+          }
+        },
+        {
+          "id": "s4",
+          "why": "Pause on the dialog title",
+          "source": "kit",
+          "do": {
+            "pause": 1.5
+          }
+        }
+      ],
+      "proves": "Done When 8: Change the dialog title and entry points labeled \"Discover shared nodes\" to \"Import shared nodes\"",
+      "checks": "The dialog's title is Import shared nodes, and nothing in it says Discover shared nodes.",
+      "caption": "The command and the dialog are now called Import shared nodes.",
+      "expect": {
+        "js": "proof.waitFor(() => { const dialog = proof.dialogs()[0]; const title = dialog && dialog.querySelector('.bp3-dialog-header'); return Boolean(title) && title.innerText.trim() === 'Import shared nodes' && !proof.dialogText().includes('Discover shared nodes'); }, { what: 'a dialog titled Import shared nodes' })"
+      }
+    },
+    {
+      "id": "columns-removed",
+      "title": "The import table shows only the Source space, Title and Modified columns",
+      "steps": [
+        {
+          "id": "s1",
+          "why": "Pause on the column headers",
+          "source": "kit",
+          "do": {
+            "pause": 1.5
+          }
+        }
+      ],
+      "proves": "Done When 2: The status, source node ID, and \"Source app\" columns are removed.",
+      "checks": "The column headers are exactly Source space, Title and Modified.",
+      "caption": "Status, source node ID and Source app are gone. Source space, Title and Modified are left.",
+      "expect": {
+        "js": "(() => { const heads = Array.from(document.querySelectorAll('.bp3-dialog thead th')).map((cell) => cell.innerText.trim()).filter(Boolean); proof.assert(JSON.stringify(heads) === JSON.stringify(['Source space', 'Title', 'Modified']), 'The columns are ' + JSON.stringify(heads)); const text = proof.dialogText(); proof.assert(!/Status|Source app|Source node ID|Source ID/.test(text), 'A removed column is still on screen.'); })()"
+      }
+    },
+    {
+      "id": "sort-default-newest-first",
+      "title": "The import table opens sorted by Modified, newest first",
+      "steps": [
+        {
+          "id": "s1",
+          "why": "Pause on the table's order",
+          "source": "kit",
+          "do": {
+            "pause": 1.5
+          }
+        }
+      ],
+      "proves": "Done When 3: Users can sort the table by its data columns. The default order is last modified, most recent first.",
+      "checks": "The nodes run from the newest Modified time to the oldest, and Modified shows the sort arrow.",
+      "caption": "With no click, the newest node is first and the oldest is last.",
+      "expect": {
+        "js": "(() => { const rows = Array.from(document.querySelectorAll('.bp3-dialog tbody tr')).filter((row) => /Daylight exposure|Caffeine after noon|Cool bedrooms|Light therapy/.test(row.innerText)); proof.assert(rows.length === 4, 'Expected the four published nodes, found ' + rows.length); const times = rows.map((row) => Date.parse(row.querySelector('td[title]').getAttribute('title'))); proof.assert(new Set(times).size === 4, 'The modified times are not all different.'); proof.assert(times.every((time, index) => index === 0 || times[index - 1] > time), 'The rows are not newest first.'); proof.assert(rows[0].innerText.includes('Light therapy lifts winter mood'), 'The newest node is not first.'); proof.assert(Array.from(document.querySelectorAll('.bp3-dialog th')).find((cell) => cell.innerText.trim() === 'Modified').getAttribute('aria-sort') === 'descending', 'Modified is not the sorted column.'); })()"
+      }
+    },
+    {
+      "id": "sort-icon-shows-on-click",
+      "title": "A column shows its sort arrow only after its header is clicked",
+      "steps": [
+        {
+          "id": "s1",
+          "why": "Note which headers show an arrow",
+          "source": "kit",
+          "do": {
+            "js": "window.__sortIconBefore = Array.from(document.querySelectorAll('.bp3-dialog thead th button')).map((button) => button.innerText.trim() + ':' + (button.querySelector('.bp3-icon').classList.contains('invisible') ? 'hidden' : 'shown')).join(',')"
+          }
+        },
+        {
+          "id": "s2",
+          "why": "Click the Title header",
+          "source": "kit",
+          "do": {
+            "click": ".bp3-dialog thead th button:has-text(\"Title\")"
+          }
+        },
+        {
+          "id": "s3",
+          "why": "Pause on the arrow",
+          "source": "kit",
+          "do": {
+            "pause": 1.5
+          }
+        }
+      ],
+      "proves": "Done When 4: This can be a hidden UI that only shows up on click",
+      "checks": "Before the click only Modified shows an arrow. After it only Title does.",
+      "caption": "No arrow on Title until it's clicked.",
+      "expect": {
+        "js": "(() => { proof.assert(window.__sortIconBefore === 'Source space:hidden,Title:hidden,Modified:shown', 'Before the click: ' + window.__sortIconBefore); const after = Array.from(document.querySelectorAll('.bp3-dialog thead th button')).map((button) => button.innerText.trim() + ':' + (button.querySelector('.bp3-icon').classList.contains('invisible') ? 'hidden' : 'shown')).join(','); proof.assert(after === 'Source space:hidden,Title:shown,Modified:hidden', 'After the click: ' + after); })()"
+      }
+    },
+    {
+      "id": "sort-click-toggles-direction",
+      "title": "Clicking Title sorts Z to A, and clicking it again sorts A to Z",
+      "steps": [
+        {
+          "id": "s1",
+          "why": "Note the order",
+          "source": "kit",
+          "do": {
+            "js": "window.__titlesAfterFirstClick = Array.from(document.querySelectorAll('.bp3-dialog tbody tr')).filter((row) => /Daylight exposure|Caffeine after noon|Cool bedrooms|Light therapy/.test(row.innerText)).map((row) => row.querySelectorAll('td')[2].innerText.trim()); window.__sortAfterFirstClick = Array.from(document.querySelectorAll('.bp3-dialog th')).find((cell) => cell.innerText.trim() === 'Title').getAttribute('aria-sort')"
+          }
+        },
+        {
+          "id": "s2",
+          "why": "Click Title again",
+          "source": "kit",
+          "do": {
+            "click": ".bp3-dialog thead th button:has-text(\"Title\")"
+          }
+        },
+        {
+          "id": "s3",
+          "why": "Pause on the new order",
+          "source": "kit",
+          "do": {
+            "pause": 1.5
+          }
+        }
+      ],
+      "proves": "Done When 5, 6 and 7: on click sort descending, on click against ascending; see relations as example",
+      "checks": "After one click the titles run Z to A. After the second they run A to Z.",
+      "caption": "First click on Title sorts Z to A, the next one A to Z.",
+      "expect": {
+        "js": "(() => { const compare = (a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }); const first = window.__titlesAfterFirstClick; proof.assert(window.__sortAfterFirstClick === 'descending', 'The first click gave ' + window.__sortAfterFirstClick); proof.assert(first.length === 4 && first.every((title, index) => index === 0 || compare(first[index - 1], title) >= 0), 'The first click did not sort Z to A: ' + JSON.stringify(first)); const second = Array.from(document.querySelectorAll('.bp3-dialog tbody tr')).filter((row) => /Daylight exposure|Caffeine after noon|Cool bedrooms|Light therapy/.test(row.innerText)).map((row) => row.querySelectorAll('td')[2].innerText.trim()); proof.assert(Array.from(document.querySelectorAll('.bp3-dialog th')).find((cell) => cell.innerText.trim() === 'Title').getAttribute('aria-sort') === 'ascending', 'The second click did not give ascending.'); proof.assert(second.every((title, index) => index === 0 || compare(second[index - 1], title) <= 0), 'The second click did not sort A to Z: ' + JSON.stringify(second)); })()",
+        "text": "The arrow and the click behaviour match the relations table's sort headers (see the ticket's screenshot)."
+      }
+    },
+    {
+      "id": "qa-sort-each-column-and-toggle-direction",
+      "title": "Each column header sorts descending on the first click and ascending on the next",
+      "steps": [
+        {
+          "do": {
+            "js": "window.__sortSnaps = []"
+          },
+          "why": "Start noting the table's order"
+        },
+        {
+          "do": {
+            "click": ".bp3-dialog thead th button:has-text(\"Source space\")"
+          },
+          "why": "Click Source space"
+        },
+        {
+          "do": {
+            "js": "window.__sortSnaps.push((() => { const rows = Array.from(document.querySelectorAll('.bp3-dialog tbody tr')).filter((row) => /PKS - /.test(row.innerText)); return { sorted: Array.from(document.querySelectorAll('.bp3-dialog thead th[aria-sort]')).filter((cell) => cell.getAttribute('aria-sort') !== 'none').map((cell) => cell.innerText.trim() + ':' + cell.getAttribute('aria-sort')), titles: rows.map((row) => row.querySelectorAll('td')[2].innerText.trim()), spaces: rows.map((row) => row.querySelectorAll('td')[1].querySelector('div').innerText.trim()), times: rows.map((row) => Date.parse(row.querySelector('td[title]').getAttribute('title'))) }; })())"
+          },
+          "why": "Note the order"
+        },
+        {
+          "do": {
+            "click": ".bp3-dialog thead th button:has-text(\"Source space\")"
+          },
+          "why": "Click Source space again"
+        },
+        {
+          "do": {
+            "js": "window.__sortSnaps.push((() => { const rows = Array.from(document.querySelectorAll('.bp3-dialog tbody tr')).filter((row) => /PKS - /.test(row.innerText)); return { sorted: Array.from(document.querySelectorAll('.bp3-dialog thead th[aria-sort]')).filter((cell) => cell.getAttribute('aria-sort') !== 'none').map((cell) => cell.innerText.trim() + ':' + cell.getAttribute('aria-sort')), titles: rows.map((row) => row.querySelectorAll('td')[2].innerText.trim()), spaces: rows.map((row) => row.querySelectorAll('td')[1].querySelector('div').innerText.trim()), times: rows.map((row) => Date.parse(row.querySelector('td[title]').getAttribute('title'))) }; })())"
+          },
+          "why": "Note the order"
+        },
+        {
+          "do": {
+            "click": ".bp3-dialog thead th button:has-text(\"Title\")"
+          },
+          "why": "Click Title"
+        },
+        {
+          "do": {
+            "js": "window.__sortSnaps.push((() => { const rows = Array.from(document.querySelectorAll('.bp3-dialog tbody tr')).filter((row) => /PKS - /.test(row.innerText)); return { sorted: Array.from(document.querySelectorAll('.bp3-dialog thead th[aria-sort]')).filter((cell) => cell.getAttribute('aria-sort') !== 'none').map((cell) => cell.innerText.trim() + ':' + cell.getAttribute('aria-sort')), titles: rows.map((row) => row.querySelectorAll('td')[2].innerText.trim()), spaces: rows.map((row) => row.querySelectorAll('td')[1].querySelector('div').innerText.trim()), times: rows.map((row) => Date.parse(row.querySelector('td[title]').getAttribute('title'))) }; })())"
+          },
+          "why": "Note the order"
+        },
+        {
+          "do": {
+            "click": ".bp3-dialog thead th button:has-text(\"Title\")"
+          },
+          "why": "Click Title again"
+        },
+        {
+          "do": {
+            "js": "window.__sortSnaps.push((() => { const rows = Array.from(document.querySelectorAll('.bp3-dialog tbody tr')).filter((row) => /PKS - /.test(row.innerText)); return { sorted: Array.from(document.querySelectorAll('.bp3-dialog thead th[aria-sort]')).filter((cell) => cell.getAttribute('aria-sort') !== 'none').map((cell) => cell.innerText.trim() + ':' + cell.getAttribute('aria-sort')), titles: rows.map((row) => row.querySelectorAll('td')[2].innerText.trim()), spaces: rows.map((row) => row.querySelectorAll('td')[1].querySelector('div').innerText.trim()), times: rows.map((row) => Date.parse(row.querySelector('td[title]').getAttribute('title'))) }; })())"
+          },
+          "why": "Note the order"
+        },
+        {
+          "do": {
+            "click": ".bp3-dialog thead th button:has-text(\"Modified\")"
+          },
+          "why": "Click Modified"
+        },
+        {
+          "do": {
+            "js": "window.__sortSnaps.push((() => { const rows = Array.from(document.querySelectorAll('.bp3-dialog tbody tr')).filter((row) => /PKS - /.test(row.innerText)); return { sorted: Array.from(document.querySelectorAll('.bp3-dialog thead th[aria-sort]')).filter((cell) => cell.getAttribute('aria-sort') !== 'none').map((cell) => cell.innerText.trim() + ':' + cell.getAttribute('aria-sort')), titles: rows.map((row) => row.querySelectorAll('td')[2].innerText.trim()), spaces: rows.map((row) => row.querySelectorAll('td')[1].querySelector('div').innerText.trim()), times: rows.map((row) => Date.parse(row.querySelector('td[title]').getAttribute('title'))) }; })())"
+          },
+          "why": "Note the order"
+        },
+        {
+          "do": {
+            "pause": 1.5
+          },
+          "why": "Pause on the table"
+        }
+      ],
+      "intent": "Click Title once, then again. Click Source space, then Modified. Use titles with numbers like 'Claim 9' and 'Claim 10' and mixed case.",
+      "expect": {
+        "js": "(() => { const compare = (a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }); const snaps = window.__sortSnaps; proof.assert(snaps.length === 5, 'Expected five snapshots, got ' + snaps.length); snaps.forEach((snap) => proof.assert(snap.titles.length === 4, 'Expected the four sort-test nodes, got ' + JSON.stringify(snap.titles))); const s = snaps; proof.assert(s[0].sorted.join() === 'Source space:descending' && s[0].spaces.every((name, i) => i === 0 || compare(s[0].spaces[i - 1], name) >= 0), 'Source space first click: ' + JSON.stringify(s[0])); proof.assert(new Set(s[0].spaces).size === 2, 'Expected two source spaces: ' + JSON.stringify(s[0].spaces)); proof.assert(s[1].sorted.join() === 'Source space:ascending' && s[1].spaces.every((name, i) => i === 0 || compare(s[1].spaces[i - 1], name) <= 0), 'Source space second click: ' + JSON.stringify(s[1])); proof.assert(s[2].sorted.join() === 'Title:descending' && JSON.stringify(s[2].titles) === JSON.stringify(['PKS - Claim 10', 'PKS - Claim 9', 'PKS - claim 2', 'PKS - Claim 1']), 'Title descending: ' + JSON.stringify(s[2].titles)); proof.assert(s[3].sorted.join() === 'Title:ascending' && JSON.stringify(s[3].titles) === JSON.stringify(['PKS - Claim 1', 'PKS - claim 2', 'PKS - Claim 9', 'PKS - Claim 10']), 'Title ascending: ' + JSON.stringify(s[3].titles)); proof.assert(s[4].sorted.join() === 'Modified:descending' && s[4].times.every((time, i) => i === 0 || s[4].times[i - 1] > time), 'Modified: ' + JSON.stringify(s[4])); })()"
+      },
+      "decision": {
+        "status": "approved",
+        "by": "Claude, for sid",
+        "at": "2026-10-05T07:12:18.909Z"
+      },
+      "surface": "s-shared-node-table-search-sort-and",
+      "caption": "Source space, Title and Modified each sort descending on the first click and ascending on the second. Claim 9 sorts before Claim 10, whatever the case.",
+      "checks": "Each click orders the four PKS nodes by the clicked column in the direction it asks for, with numbers in order and case ignored: Claim 1, claim 2, Claim 9, Claim 10. Modified ends newest first."
+    },
+    {
+      "id": "qa-sort-and-search-keep-selection-intact",
+      "title": "Ticked nodes stay ticked through a sort and a search",
+      "steps": [
+        {
+          "do": {
+            "js": "window.__selectionLog = []"
+          },
+          "why": "Start noting which nodes are ticked"
+        },
+        {
+          "do": {
+            "click": ".bp3-dialog tbody tr:has-text(\"PKS - Claim 9\") label.bp3-checkbox"
+          },
+          "why": "Tick Claim 9"
+        },
+        {
+          "do": {
+            "click": ".bp3-dialog tbody tr:has-text(\"PKS - claim 2\") label.bp3-checkbox"
+          },
+          "why": "Tick claim 2"
+        },
+        {
+          "do": {
+            "click": ".bp3-dialog thead th button:has-text(\"Source space\")"
+          },
+          "why": "Click Source space"
+        },
+        {
+          "do": {
+            "js": "window.__selectionLog.push((() => { const rows = Array.from(document.querySelectorAll('.bp3-dialog tbody tr')).filter((row) => /PKS - /.test(row.innerText)); return { rows: rows.map((row) => row.querySelectorAll('td')[2].innerText.trim()), checked: rows.map((row) => row.querySelector('input[type=checkbox]').checked), button: Array.from(document.querySelectorAll('.bp3-dialog .bp3-dialog-footer button')).map((button) => button.innerText.trim()).find((text) => text.startsWith('Import selected')) }; })())"
+          },
+          "why": "Note which nodes are ticked"
+        },
+        {
+          "do": {
+            "fill": {
+              "into": ".bp3-dialog input[placeholder=\"Search shared nodes\"]",
+              "text": "Claim 9"
+            }
+          },
+          "why": "Search for Claim 9"
+        },
+        {
+          "do": {
+            "wait_for": ".bp3-dialog tbody tr:has-text(\"PKS - Claim 9\")"
+          },
+          "why": "Wait for the table to narrow"
+        },
+        {
+          "do": {
+            "pause": 1
+          },
+          "why": "Pause on the table"
+        },
+        {
+          "do": {
+            "js": "window.__selectionLog.push((() => { const rows = Array.from(document.querySelectorAll('.bp3-dialog tbody tr')).filter((row) => /PKS - /.test(row.innerText)); return { rows: rows.map((row) => row.querySelectorAll('td')[2].innerText.trim()), checked: rows.map((row) => row.querySelector('input[type=checkbox]').checked), button: Array.from(document.querySelectorAll('.bp3-dialog .bp3-dialog-footer button')).map((button) => button.innerText.trim()).find((text) => text.startsWith('Import selected')) }; })())"
+          },
+          "why": "Note which nodes are ticked"
+        },
+        {
+          "do": {
+            "fill": {
+              "into": ".bp3-dialog input[placeholder=\"Search shared nodes\"]",
+              "text": "pk-2296-sort"
+            }
+          },
+          "why": "Search for text that was only in a source node ID"
+        },
+        {
+          "do": {
+            "wait_for": ".bp3-dialog:has-text(\"No matching shared nodes\")"
+          },
+          "why": "Wait for No matching shared nodes"
+        },
+        {
+          "do": {
+            "fill": {
+              "into": ".bp3-dialog input[placeholder=\"Search shared nodes\"]",
+              "text": ""
+            }
+          },
+          "why": "Clear the search"
+        },
+        {
+          "do": {
+            "wait_for": ".bp3-dialog tbody tr:has-text(\"PKS - claim 2\")"
+          },
+          "why": "Wait for the table to come back"
+        },
+        {
+          "do": {
+            "pause": 1
+          },
+          "why": "Pause on the table"
+        },
+        {
+          "do": {
+            "js": "window.__selectionLog.push((() => { const rows = Array.from(document.querySelectorAll('.bp3-dialog tbody tr')).filter((row) => /PKS - /.test(row.innerText)); return { rows: rows.map((row) => row.querySelectorAll('td')[2].innerText.trim()), checked: rows.map((row) => row.querySelector('input[type=checkbox]').checked), button: Array.from(document.querySelectorAll('.bp3-dialog .bp3-dialog-footer button')).map((button) => button.innerText.trim()).find((text) => text.startsWith('Import selected')) }; })())"
+          },
+          "why": "Note which nodes are ticked"
+        },
+        {
+          "do": {
+            "pause": 1
+          },
+          "why": "Pause on the table"
+        }
+      ],
+      "intent": "Tick two nodes, then sort a different column and type a search term that hides one selected node. Clear the search and check the button count. Search for text that only matched the old Source ID or platform.",
+      "expect": {
+        "js": "(() => { const log = window.__selectionLog; proof.assert(log.length === 3, 'Expected three snapshots.'); proof.assert(log[0].checked.length === 4 && log[0].checked.filter(Boolean).length === 2, 'After the sort: ' + JSON.stringify(log[0])); proof.assert(log[1].rows.length === 1 && log[1].rows[0] === 'PKS - Claim 9' && log[1].checked[0] === true, 'During the search: ' + JSON.stringify(log[1])); proof.assert(log[1].button === 'Import selected (2)', 'The button during the search says ' + log[1].button); proof.assert(log[2].rows.length === 4 && log[2].checked.filter(Boolean).length === 2 && log[2].button === 'Import selected (2)', 'After clearing: ' + JSON.stringify(log[2])); })()"
+      },
+      "decision": {
+        "status": "approved",
+        "by": "Claude, for sid",
+        "at": "2026-10-05T07:12:18.909Z"
+      },
+      "surface": "s-shared-node-table-search-sort-and",
+      "caption": "Tick two nodes, sort, then search: the ticks stay, and old Source ID text no longer finds anything.",
+      "checks": "Both nodes stay ticked after the sort and after the search is cleared. Text that was only in a source node ID finds nothing. Import selected keeps counting the node the search hid."
+    },
+    {
+      "id": "dialog-height-fixed",
+      "title": "The dialog keeps its height, and the search field, column headers and footer stay in view while the rows scroll",
+      "steps": [
+        {
+          "id": "s1",
+          "why": "Note the dialog's height",
+          "source": "kit",
+          "do": {
+            "js": "window.__dialogHeights = [Math.round(document.querySelector('.bp3-dialog').getBoundingClientRect().height)]"
+          }
+        },
+        {
+          "id": "s1a",
+          "why": "Scroll the table to its last row",
+          "source": "kit",
+          "do": {
+            "js": "(() => { const table = document.querySelector('.bp3-dialog table'); let box = table.parentElement; while (box && !box.classList.contains('bp3-dialog') && !(box.scrollHeight > box.clientHeight + 1 && /auto|scroll/.test(getComputedStyle(box).overflowY))) box = box.parentElement; proof.assert(box && !box.classList.contains('bp3-dialog'), 'Nothing in the dialog scrolls the rows.'); box.scrollTop = box.scrollHeight; })()"
+          }
+        },
+        {
+          "id": "s1b",
+          "why": "Pause on the last rows",
+          "source": "kit",
+          "do": {
+            "pause": 1
+          }
+        },
+        {
+          "id": "s1c",
+          "why": "Note where the search field, column headers, last row and footer sit",
+          "source": "kit",
+          "do": {
+            "js": "(() => { const dialog = document.querySelector('.bp3-dialog'); const box = (element) => element.getBoundingClientRect(); const footer = dialog.querySelector('.bp3-dialog-footer'); const buttons = Array.from(footer.querySelectorAll('button')); const close = buttons.find((button) => button.innerText.trim() === 'Close'); const importButton = buttons.find((button) => button.innerText.includes('Import selected')); const count = footer.querySelector('span'); window.__dialogLayout = { bodyTop: box(dialog.querySelector('.bp3-dialog-body')).top, searchTop: box(dialog.querySelector('input[placeholder=\"Search shared nodes\"]')).top, searchBottom: box(dialog.querySelector('input[placeholder=\"Search shared nodes\"]')).bottom, columnsTop: box(dialog.querySelector('thead')).top, columnsBottom: box(dialog.querySelector('thead')).bottom, lastRowBottom: box(dialog.querySelector('tbody tr:last-child')).bottom, footerTop: box(footer).top, footerRight: box(footer).right, countRight: box(count).right, closeLeft: box(close).left, importRight: box(importButton).right }; })()"
+          }
+        },
+        {
+          "id": "s2",
+          "why": "Search for text no node has",
+          "source": "kit",
+          "do": {
+            "fill": {
+              "into": ".bp3-dialog input[placeholder=\"Search shared nodes\"]",
+              "text": "no shared node has this text"
+            }
+          }
+        },
+        {
+          "id": "s3",
+          "why": "Wait for No matching shared nodes",
+          "source": "kit",
+          "do": {
+            "wait_for": ".bp3-dialog:has-text(\"No matching shared nodes\")"
+          }
+        },
+        {
+          "id": "s4",
+          "why": "Note the dialog's height again",
+          "source": "kit",
+          "do": {
+            "js": "window.__dialogHeights.push(Math.round(document.querySelector('.bp3-dialog').getBoundingClientRect().height))"
+          }
+        },
+        {
+          "id": "s5",
+          "why": "Pause on the dialog",
+          "source": "kit",
+          "do": {
+            "pause": 1.5
+          }
+        },
+        {
+          "id": "s6",
+          "why": "Close the dialog",
+          "source": "kit",
+          "use": "dialog.close-all"
+        }
+      ],
+      "proves": "Done When 9: The dialog keeps a fixed height as its contents change. Its contents scroll while the header and footer remain visible.",
+      "checks": "The dialog is the same height with a full table and an empty one. With the rows scrolled to the end, the search field and the column headers show in full at the top of the dialog body, the last row sits above the footer, and the footer has the node count on the left and the buttons on the right.",
+      "caption": "The dialog stays the same height when the list empties out. The title and the buttons stay in view.",
+      "expect": {
+        "js": "(() => { const heights = window.__dialogHeights; proof.assert(heights.length === 2 && heights[0] === heights[1], 'The dialog height changed: ' + JSON.stringify(heights)); proof.assert(heights[0] <= window.innerHeight, 'The dialog is taller than the window.'); const layout = window.__dialogLayout; const at = ' ' + JSON.stringify(layout); proof.assert(layout.searchTop >= layout.bodyTop - 1, 'The search field is cut off at the top of the dialog body.' + at); proof.assert(layout.columnsTop >= layout.searchBottom - 1, 'The column headers scrolled out of view.' + at); proof.assert(layout.lastRowBottom <= layout.footerTop + 1, 'The last row is hidden behind the footer.' + at); proof.assert(layout.importRight >= layout.footerRight - 2, 'Import selected is not at the right of the footer.' + at); proof.assert(layout.closeLeft - layout.countRight > 40, 'The buttons sit next to the node count instead of on the right.' + at); })()"
+      }
+    },
+    {
+      "id": "result-lists-links",
+      "title": "After an import, the result lists every imported node as a link",
+      "steps": [
+        {
+          "id": "s1",
+          "why": "Run DG: Import shared nodes from the command palette",
+          "source": "kit",
+          "do": {
+            "command_palette": "DG: Import shared nodes"
+          }
+        },
+        {
+          "id": "s2",
+          "why": "Wait for the dialog",
+          "source": "kit",
+          "do": {
+            "wait_for": ".bp3-dialog:visible"
+          }
+        },
+        {
+          "id": "s3",
+          "why": "Wait for the Daylight exposure row",
+          "source": "kit",
+          "do": {
+            "wait_for": ".bp3-dialog tbody tr:has-text(\"Daylight exposure resets the circadian clock\")"
+          }
+        },
+        {
+          "id": "s4",
+          "why": "Tick Daylight exposure resets the circadian clock",
+          "source": "kit",
+          "do": {
+            "click": ".bp3-dialog tbody tr:has-text(\"Daylight exposure resets the circadian clock\") label.bp3-checkbox"
+          }
+        },
+        {
+          "id": "s5",
+          "why": "Tick Caffeine after noon delays sleep onset",
+          "source": "kit",
+          "do": {
+            "click": ".bp3-dialog tbody tr:has-text(\"Caffeine after noon delays sleep onset\") label.bp3-checkbox"
+          }
+        },
+        {
+          "id": "s6",
+          "why": "Click Import selected (2)",
+          "source": "kit",
+          "do": {
+            "click": ".bp3-dialog button:has-text(\"Import selected (2)\")"
+          }
+        },
+        {
+          "id": "s7",
+          "why": "Wait for the result",
+          "source": "kit",
+          "do": {
+            "wait_for": ".bp3-dialog .bp3-callout:has-text(\"imported\")"
+          }
+        },
+        {
+          "id": "s8",
+          "why": "Pause on the result",
+          "source": "kit",
+          "do": {
+            "pause": 2
+          }
+        }
+      ],
+      "proves": "Done When 10: After import, clicking an imported-node link in the result opens the imported node in Roam.",
+      "caption": "Import two shared claims. The result now lists each imported node as a link, not only the ones with warnings.",
+      "expect": {
+        "js": "(async () => { const callout = await proof.waitFor(() => { const found = proof.byText('.bp3-dialog .bp3-callout', 'imported'); if (!found) return false; const texts = Array.from(found.querySelectorAll('li a')).map((link) => link.innerText); return found.innerText.includes('2 imported') && texts.some((text) => text.includes('Daylight exposure')) && texts.some((text) => text.includes('Caffeine after noon')) && found; }, { what: 'a result listing both imported claims as links', timeout: 20000 }); proof.assert(callout.scrollHeight <= callout.clientHeight + 1, 'The result is squeezed: it shows ' + callout.clientHeight + 'px of its ' + callout.scrollHeight + 'px.'); const body = document.querySelector('.bp3-dialog .bp3-dialog-body').getBoundingClientRect(); const search = document.querySelector('.bp3-dialog input[placeholder=\"Search shared nodes\"]').getBoundingClientRect(); proof.assert(search.top >= body.top - 1 && search.height >= 20, 'The search field is cut off once the result shows.'); })()"
+      },
+      "checks": "The result counts 2 imported and lists both claims as links. The result shows in full, and the search field above it isn't cut off."
+    },
+    {
+      "id": "imported-rows-leave-the-table",
+      "title": "Imported nodes leave the import table",
+      "steps": [
+        {
+          "id": "s1",
+          "why": "Pause on the table",
+          "source": "kit",
+          "do": {
+            "pause": 1
+          }
+        }
+      ],
+      "proves": "Done When 1: The table only shows nodes available to import. Already imported nodes are hidden.",
+      "caption": "Imported nodes leave the table, as in Obsidian's import, so only the claim still to import is left.",
+      "expect": {
+        "js": "proof.waitFor(() => { const rows = Array.from(document.querySelectorAll('.bp3-dialog tbody tr')).map((row) => row.innerText); return rows.some((text) => text.includes('Cool bedrooms')) && !rows.some((text) => text.includes('Daylight exposure') || text.includes('Caffeine after noon')); }, { what: 'only the unimported claim in the table' })"
+      },
+      "checks": "Cool bedrooms is still in the table, and the two imported claims aren't."
+    },
+    {
+      "id": "link-opens-the-page",
+      "title": "Clicking a node in the result opens its page and closes the dialog",
+      "steps": [
+        {
+          "id": "s1",
+          "why": "Click Daylight exposure resets the circadian clock in the result",
+          "source": "kit",
+          "do": {
+            "click": ".bp3-dialog .bp3-callout li a:has-text(\"Daylight exposure\")"
+          }
+        },
+        {
+          "id": "s2",
+          "why": "Pause on the page",
+          "source": "kit",
+          "do": {
+            "pause": 2
+          }
+        }
+      ],
+      "proves": "Done When 10 and 11: After import, clicking an imported-node link in the result opens the imported node in Roam.",
+      "caption": "Clicking a result opens that page and closes the dialog.",
+      "expect": {
+        "js": "proof.waitFor(() => !proof.dialogs().length && Array.from(document.querySelectorAll('.rm-title-display')).some((title) => proof.visible(title) && title.innerText.includes('Daylight exposure resets the circadian clock')), { what: 'the imported page open with the dialog closed' })"
+      },
+      "checks": "The dialog is closed, and Daylight exposure resets the circadian clock is open in the main window."
+    },
+    {
+      "id": "reopen-hides-imported",
+      "title": "Reopening the dialog still hides the nodes already imported",
+      "steps": [
+        {
+          "id": "s1",
+          "why": "Run DG: Import shared nodes from the command palette",
+          "source": "kit",
+          "do": {
+            "command_palette": "DG: Import shared nodes"
+          }
+        },
+        {
+          "id": "s2",
+          "why": "Wait for the dialog",
+          "source": "kit",
+          "do": {
+            "wait_for": ".bp3-dialog:visible"
+          }
+        },
+        {
+          "id": "s3",
+          "why": "Wait for the table",
+          "source": "kit",
+          "do": {
+            "wait_for": ".bp3-dialog tbody tr:has-text(\"Cool bedrooms\")"
+          }
+        },
+        {
+          "id": "s4",
+          "why": "Pause on the table",
+          "source": "kit",
+          "do": {
+            "pause": 2
+          }
+        }
+      ],
+      "proves": "Done When 1: The table only shows nodes available to import. Already imported nodes are hidden.",
+      "caption": "Open import again: the two imported claims stay hidden. A newer version comes in through Refresh instead.",
+      "expect": {
+        "js": "(() => { const rows = Array.from(document.querySelectorAll('.bp3-dialog tbody tr')).map((row) => row.innerText); proof.assert(!rows.some((text) => text.includes('Daylight exposure') || text.includes('Caffeine after noon')), 'An imported claim is still in the table.'); })()"
+      },
+      "checks": "Neither imported claim is in the table."
+    },
+    {
+      "id": "progress-and-result-same-area",
+      "title": "Import progress and the result show in the same place, above the table",
+      "steps": [
+        {
+          "id": "s1",
+          "why": "Start watching for the progress bar",
+          "source": "kit",
+          "do": {
+            "js": "(() => { window.__progressSeen = null; window.__progressWatch && window.__progressWatch.disconnect(); window.__progressWatch = new MutationObserver(() => { const callout = Array.from(document.querySelectorAll('.bp3-dialog .bp3-callout')).find((item) => item.innerText.trim().startsWith('Importing')); if (callout && !window.__progressSeen) window.__progressSeen = { parent: callout.parentElement, index: Array.from(callout.parentElement.children).indexOf(callout), top: Math.round(callout.getBoundingClientRect().top) }; }); window.__progressWatch.observe(document.body, { childList: true, subtree: true }); })()"
+          }
+        },
+        {
+          "id": "s2",
+          "why": "Tick Light therapy lifts winter mood",
+          "source": "kit",
+          "do": {
+            "click": ".bp3-dialog tbody tr:has-text(\"Light therapy lifts winter mood\") label.bp3-checkbox"
+          }
+        },
+        {
+          "id": "s3",
+          "why": "Click Import selected (1)",
+          "source": "kit",
+          "do": {
+            "click": ".bp3-dialog button:has-text(\"Import selected (1)\")"
+          }
+        },
+        {
+          "id": "s4",
+          "why": "Wait for the result",
+          "source": "kit",
+          "do": {
+            "wait_for": ".bp3-dialog .bp3-callout:has-text(\"1 imported\")"
+          }
+        },
+        {
+          "id": "s5",
+          "why": "Pause on the result",
+          "source": "kit",
+          "do": {
+            "pause": 2
+          }
+        }
+      ],
+      "proves": "Done When 14 and 15: Import progress and the final result appear in the same area.",
+      "checks": "A progress bar showed during the import, and the result took its place: same box, same spot above the table.",
+      "caption": "Progress and the result both show above the table, in the same spot.",
+      "expect": {
+        "js": "(() => { const seen = window.__progressSeen; window.__progressWatch && window.__progressWatch.disconnect(); proof.assert(seen, 'No progress callout was shown during the import.'); const result = proof.byText('.bp3-dialog .bp3-callout', '1 imported'); proof.assert(result, 'No result callout.'); proof.assert(result.parentElement === seen.parent, 'The result is in a different container than the progress.'); proof.assert(Array.from(result.parentElement.children).indexOf(result) === seen.index, 'The result is at a different position than the progress.'); proof.assert(Math.abs(Math.round(result.getBoundingClientRect().top) - seen.top) <= 2, 'The result is at a different height than the progress.'); })()"
+      }
+    },
+    {
+      "id": "obsidian-title-in-full",
+      "title": "An imported Obsidian node's link shows its full title, with [[@placeholder]]",
+      "steps": [
+        {
+          "id": "s1",
+          "why": "Pause on the result",
+          "source": "kit",
+          "do": {
+            "pause": 2
+          }
+        }
+      ],
+      "proves": "Done When 12 and 13: For Obsidian-origin nodes, the notification shows the complete imported title, including [[@placeholder]] when present in that title.",
+      "checks": "The result's link reads PKE - Light therapy lifts winter mood - [[@placeholder]], and the same line says no source was published.",
+      "caption": "The result shows the whole title of the evidence the Obsidian vault published, with [[@placeholder]] in place of its missing source.",
+      "expect": {
+        "js": "proof.waitFor(() => { const callout = proof.byText('.bp3-dialog .bp3-callout', '1 imported'); const items = callout ? Array.from(callout.querySelectorAll('li')) : []; return items.some((item) => { const link = item.querySelector('a'); return link && link.innerText.trim() === 'PKE - Light therapy lifts winter mood - [[@placeholder]]' && item.innerText.includes('No source was published with this node.'); }); }, { what: 'the result link showing the full title with [[@placeholder]]' })",
+        "text": "The title in the result matches the ticket's screenshot: nothing is cut off and the [[@placeholder]] is there."
+      }
+    },
+    {
+      "id": "qa-progress-bar-replaces-results-while",
+      "title": "A new import replaces the earlier result with a progress bar, then with the new result",
+      "steps": [
+        {
+          "do": {
+            "js": "(() => { window.__feed = { progress: false, resultWithProgress: false }; window.__feedWatch && window.__feedWatch.disconnect(); window.__feedWatch = new MutationObserver(() => { const callouts = Array.from(document.querySelectorAll('.bp3-dialog .bp3-callout')); if (callouts.some((item) => item.innerText.trim().startsWith('Importing'))) { window.__feed.progress = true; if (callouts.some((item) => item.innerText.includes(' imported,'))) window.__feed.resultWithProgress = true; } }); window.__feedWatch.observe(document.body, { childList: true, subtree: true, characterData: true }); })()"
+          },
+          "why": "Start watching the area above the table"
+        },
+        {
+          "do": {
+            "click": ".bp3-dialog tbody tr:has-text(\"Cool bedrooms\") label.bp3-checkbox"
+          },
+          "why": "Tick Cool bedrooms improve deep sleep"
+        },
+        {
+          "do": {
+            "click": ".bp3-dialog button:has-text(\"Import selected (1)\")"
+          },
+          "why": "Click Import selected (1)"
+        },
+        {
+          "do": {
+            "wait_for": ".bp3-dialog .bp3-callout li a:has-text(\"Cool bedrooms improve deep sleep\")"
+          },
+          "why": "Wait for the new result"
+        },
+        {
+          "do": {
+            "pause": 2
+          },
+          "why": "Pause on the result"
+        }
+      ],
+      "intent": "Import a second batch while the results summary from a previous import is still showing. Watch the area above the table during the import.",
+      "expect": {
+        "js": "(() => { window.__feedWatch && window.__feedWatch.disconnect(); proof.assert(window.__feed.progress, 'No progress callout was shown.'); proof.assert(!window.__feed.resultWithProgress, 'The earlier result stayed on screen during the import.'); const results = Array.from(document.querySelectorAll('.bp3-dialog .bp3-callout')).filter((item) => item.innerText.includes(' imported,')); proof.assert(results.length === 1, 'Expected one result, found ' + results.length); proof.assert(results[0].innerText.includes('Cool bedrooms') && !results[0].innerText.includes('Light therapy'), 'The result is not the new batch.'); })()"
+      },
+      "decision": {
+        "status": "approved",
+        "by": "Claude, for sid",
+        "at": "2026-10-05T07:12:18.909Z"
+      },
+      "surface": "s-import-progress-and-results-feedback",
+      "caption": "Importing a second batch replaces the earlier result with the progress bar, then with the new result.",
+      "checks": "The progress bar showed with the earlier result gone, and afterwards only the new result is left."
+    },
+    {
+      "id": "qa-failed-and-warning-nodes-show-in-the",
+      "title": "The result lists a failed node with its reason, and a node with a warning as a link",
+      "steps": [
+        {
+          "do": {
+            "click": ".bp3-dialog tbody tr:has-text(\"Collision claim\") label.bp3-checkbox"
+          },
+          "why": "Tick Collision claim"
+        },
+        {
+          "do": {
+            "click": ".bp3-dialog tbody tr:has-text(\"Cold showers raise alertness\") label.bp3-checkbox"
+          },
+          "why": "Tick Cold showers raise alertness"
+        },
+        {
+          "do": {
+            "click": ".bp3-dialog button:has-text(\"Import selected (2)\")"
+          },
+          "why": "Click Import selected (2)"
+        },
+        {
+          "do": {
+            "wait_for": ".bp3-dialog .bp3-callout:has-text(\"1 failed\")"
+          },
+          "why": "Wait for the result"
+        },
+        {
+          "do": {
+            "pause": 2
+          },
+          "why": "Pause on the result"
+        }
+      ],
+      "intent": "Import a mix of nodes where one fails and one has no published source (or similar warning). Read the summary title and the list.",
+      "expect": {
+        "js": "(() => { const callout = proof.byText('.bp3-dialog .bp3-callout', '1 failed'); proof.assert(callout, 'No result callout.'); proof.assert(callout.querySelector('.bp3-heading').innerText.trim() === '1 imported, 1 failed, 1 with warnings', 'The title is ' + callout.querySelector('.bp3-heading').innerText.trim()); proof.assert(callout.classList.contains('bp3-intent-warning'), 'The callout is not a warning.'); const items = Array.from(callout.querySelectorAll('li')); const failed = items.find((item) => item.innerText.includes('Collision claim')); proof.assert(failed && !failed.querySelector('a') && failed.innerText.includes('already exists'), 'The failed claim is not listed with its reason: ' + (failed && failed.innerText)); const warned = items.find((item) => item.querySelector('a') && item.querySelector('a').innerText.trim() === 'PKE - Cold showers raise alertness - [[@placeholder]]'); proof.assert(warned && warned.innerText.includes('No source was published with this node.'), 'The warned node is not listed as a link with its warning.'); proof.assert(proof.byText('.bp3-dialog tbody tr', 'Collision claim'), 'The failed claim left the table.'); proof.assert(proof.byText('.bp3-dialog button', 'Import selected (1)'), 'The failed claim is not still selected.'); })()"
+      },
+      "decision": {
+        "status": "approved",
+        "by": "Claude, for sid",
+        "at": "2026-10-05T07:12:18.909Z"
+      },
+      "surface": "s-import-progress-and-results-feedback",
+      "caption": "One claim fails because its page title is taken, one evidence node imports with a warning. The result lists both.",
+      "checks": "The result's title reads 1 imported, 1 failed, 1 with warnings. The failed claim is listed with its reason and no link, the evidence is a link with its warning, and the failed claim stays ticked in the table."
+    },
+    {
+      "id": "qa-relations-still-import-for-related-nodes",
+      "title": "Importing two related nodes also imports the relation between them",
+      "steps": [
+        {
+          "do": {
+            "click": ".bp3-dialog button[aria-label=\"Reload shared nodes\"]"
+          },
+          "why": "Click Reload shared nodes"
+        },
+        {
+          "do": {
+            "wait_for": ".bp3-dialog tbody tr:has-text(\"Rest strengthens memory\")"
+          },
+          "why": "Wait for the row"
+        },
+        {
+          "do": {
+            "click": ".bp3-dialog tbody tr:has-text(\"Rest strengthens memory\") label.bp3-checkbox"
+          },
+          "why": "Tick Rest strengthens memory"
+        },
+        {
+          "do": {
+            "click": ".bp3-dialog tbody tr:has-text(\"Naps consolidate learning\") label.bp3-checkbox"
+          },
+          "why": "Tick the second node"
+        },
+        {
+          "do": {
+            "click": ".bp3-dialog button:has-text(\"Import selected (2)\")"
+          },
+          "why": "Click Import selected (2)"
+        },
+        {
+          "do": {
+            "wait_for": ".bp3-dialog .bp3-callout li a:has-text(\"PKR - Naps consolidate learning\")"
+          },
+          "why": "Wait for the result"
+        },
+        {
+          "do": {
+            "pause": 3
+          },
+          "why": "Wait for the relations import"
+        }
+      ],
+      "intent": "Select two shared nodes that have a relation between them and import them. Open one imported page and look at its relations.",
+      "expect": {
+        "js": "proof.waitFor(() => { const source = proof.uid('PKR - Rest strengthens memory'); const destination = proof.uid('PKR - Naps consolidate learning'); if (!source || !destination) return false; const found = proof.relations.touching([source]).filter((item) => item.sourceUid === source && item.destinationUid === destination); return found.length === 1 && found[0].tentative === 'true' && !proof.toastText().includes('relations were not imported'); }, { what: 'a pending relation from the first imported node to the second', timeout: 20000 })"
+      },
+      "decision": {
+        "status": "approved",
+        "by": "Claude, for sid",
+        "at": "2026-10-05T07:12:18.909Z"
+      },
+      "surface": "s-relation-import-after-node-import",
+      "caption": "Two related nodes are imported. The relation between them comes with them, waiting for review.",
+      "checks": "A relation joins the first imported node to the second, still waiting for review, and no relations error shows."
+    },
+    {
+      "id": "qa-re-import-of-an-up-to-date-node-shows-as",
+      "title": "A node that's already up to date shows as skipped in the result, with a link",
+      "steps": [
+        {
+          "do": {
+            "click": ".bp3-dialog tbody tr:has-text(\"Skip claim\") label.bp3-checkbox"
+          },
+          "why": "Tick Skip claim"
+        },
+        {
+          "do": {
+            "click": ".bp3-dialog tbody tr:has-text(\"Late meals cut deep sleep\") label.bp3-checkbox"
+          },
+          "why": "Tick Late meals cut deep sleep"
+        },
+        {
+          "do": {
+            "js": "(async () => { const row = proof.byText('.bp3-dialog tbody tr', 'Skip claim'); const uri = row.querySelectorAll('td')[1].querySelector('div[title]').getAttribute('title'); const local = 'pk-2296-claim-skip'; const parts = uri.split(':'); const rid = uri.startsWith('http') ? uri + '/' + local : 'orn:' + parts[0] + '.note:' + parts[1] + '/' + local; const uid = await proof.page.ensure('PKC - Skip claim', ['Already imported from another window.']); await window.roamAlphaAPI.data.block.update({ block: { uid, props: { 'discourse-graph': { importedFrom: { sourceNodeRid: rid, sourceModifiedAt: '2030-01-01T00:00:00.000Z' } } } } }); })()"
+          },
+          "why": "Import Skip claim outside the dialog"
+        },
+        {
+          "do": {
+            "click": ".bp3-dialog button:has-text(\"Import selected (2)\")"
+          },
+          "why": "Click Import selected (2)"
+        },
+        {
+          "do": {
+            "wait_for": ".bp3-dialog .bp3-callout:has-text(\"skipped\")"
+          },
+          "why": "Wait for the result"
+        },
+        {
+          "do": {
+            "pause": 2
+          },
+          "why": "Pause on the result"
+        }
+      ],
+      "intent": "Import a node, then import it again if it is still offered. Also import a node whose source is discovered and added automatically.",
+      "expect": {
+        "js": "(() => { const callout = proof.byText('.bp3-dialog .bp3-callout', 'Skipped nodes were already up to date'); proof.assert(callout, 'No result with skipped nodes.'); proof.assert(callout.querySelector('.bp3-heading').innerText.trim() === '2 imported, 1 skipped, 0 failed', 'The title is ' + callout.querySelector('.bp3-heading').innerText.trim()); const links = Array.from(callout.querySelectorAll('li a')).map((link) => link.innerText.trim()); ['PKC - Skip claim', 'PKSRC - Sleep hygiene review', 'PKE - Late meals cut deep sleep - [[PKSRC - Sleep hygiene review]]'].forEach((title) => proof.assert(links.includes(title), 'No link for ' + title + ' in ' + JSON.stringify(links))); })()"
+      },
+      "decision": {
+        "status": "approved",
+        "by": "Claude, for sid",
+        "at": "2026-10-05T07:12:18.909Z"
+      },
+      "surface": "s-skipped-and-source-dependency-imports",
+      "caption": "A claim already imported from another window shows as skipped, and the evidence's source comes in with it.",
+      "checks": "The result's title reads 2 imported, 1 skipped, 0 failed, it says skipped nodes were already up to date, and it links the skipped claim, the source and the evidence."
+    },
+    {
+      "id": "qa-shift-click-opens-sidebar-dialog-height",
+      "title": "Shift-clicking a result opens it in the sidebar, and a plain click opens it in the main window",
+      "steps": [
+        {
+          "do": {
+            "js": "(() => { const link = Array.from(document.querySelectorAll('.bp3-dialog .bp3-callout li a')).find((item) => item.innerText.includes('PKSRC - Sleep hygiene review')); link.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, shiftKey: true })); })()"
+          },
+          "why": "Shift-click Sleep hygiene review in the result"
+        },
+        {
+          "do": {
+            "pause": 2
+          },
+          "why": "Wait for the sidebar"
+        },
+        {
+          "do": {
+            "js": "(() => { const rect = (selector) => document.querySelector(selector).getBoundingClientRect(); const body = document.querySelector('.bp3-dialog-body'); window.__layout = { header: rect('.bp3-dialog-header'), footer: rect('.bp3-dialog-footer'), inner: window.innerHeight, bodyScrolls: body.scrollHeight > body.clientHeight, dialogs: proof.dialogs().length, windows: JSON.stringify(window.roamAlphaAPI.ui.rightSidebar.getWindows()) }; })()"
+          },
+          "why": "Note where the dialog sits and what the sidebar holds"
+        },
+        {
+          "do": {
+            "click": ".bp3-dialog .bp3-callout li a:has-text(\"PKC - Skip claim\")"
+          },
+          "why": "Click Skip claim in the result"
+        },
+        {
+          "do": {
+            "pause": 2
+          },
+          "why": "Pause on the page"
+        }
+      ],
+      "intent": "After an import, shift-click a result link, then click another normally. Then shrink the browser window to a short height and open the dialog with a long node list and results.",
+      "expect": {
+        "js": "proof.waitFor(() => { const layout = window.__layout; const uid = proof.uid('PKSRC - Sleep hygiene review'); return layout && layout.dialogs === 1 && layout.windows.includes(uid) && layout.header.top >= 0 && layout.footer.bottom <= layout.inner && !proof.dialogs().length && Array.from(document.querySelectorAll('.rm-title-display')).some((title) => proof.visible(title) && title.innerText.includes('PKC - Skip claim')); }, { what: 'the source in the sidebar with the dialog still open, then the claim open in the main window with the dialog closed' })"
+      },
+      "decision": {
+        "status": "approved",
+        "by": "Claude, for sid",
+        "at": "2026-10-05T07:12:18.909Z"
+      },
+      "surface": "s-dialog-layout-on-small-windows",
+      "caption": "Shift-clicking a result opens it in the sidebar and keeps the dialog. A plain click opens it in the main window and closes the dialog.",
+      "checks": "After the shift-click the source is in the sidebar and the dialog is still open, inside the window. After the plain click the dialog is closed and the claim is open in the main window. The window isn't shrunk, so a short window isn't covered."
+    },
+    {
+      "id": "qa-relation-import-failure-is-reported",
+      "title": "When relations can't be imported, the nodes stay imported and a message says so",
+      "steps": [
+        {
+          "do": {
+            "command_palette": "DG: Import shared nodes"
+          },
+          "why": "Run DG: Import shared nodes from the command palette"
+        },
+        {
+          "do": {
+            "wait_for": ".bp3-dialog:visible"
+          },
+          "why": "Wait for the dialog"
+        },
+        {
+          "do": {
+            "wait_for": ".bp3-dialog tbody tr:has-text(\"Fasting sharpens focus\")"
+          },
+          "why": "Wait for the row"
+        },
+        {
+          "do": {
+            "click": ".bp3-dialog tbody tr:has-text(\"Fasting sharpens focus\") label.bp3-checkbox"
+          },
+          "why": "Tick Fasting sharpens focus"
+        },
+        {
+          "do": {
+            "click": ".bp3-dialog tbody tr:has-text(\"Sugar dulls attention\") label.bp3-checkbox"
+          },
+          "why": "Tick the second node"
+        },
+        {
+          "do": {
+            "click": ".bp3-dialog button:has-text(\"Import selected (2)\")"
+          },
+          "why": "Click Import selected (2)"
+        },
+        {
+          "do": {
+            "wait_for": ".bp3-dialog .bp3-callout li a:has-text(\"PKR - Sugar dulls attention\")"
+          },
+          "why": "Wait for the result"
+        },
+        {
+          "do": {
+            "wait_for": ".bp3-toast:has-text(\"relations were not imported\")"
+          },
+          "why": "Wait for the relations message"
+        },
+        {
+          "do": {
+            "pause": 1.5
+          },
+          "why": "Pause on the message"
+        }
+      ],
+      "intent": "Make relation import fail (for example go offline or revoke access right after node import starts). Import a node that has relations.",
+      "expect": {
+        "js": "proof.waitFor(() => { const callout = proof.byText('.bp3-dialog .bp3-callout', '2 imported'); const first = proof.uid('PKR - Fasting sharpens focus'); const second = proof.uid('PKR - Sugar dulls attention'); return Boolean(callout) && Boolean(first) && Boolean(second) && proof.toastText().includes('The relations were not imported') && proof.relations.touching([first, second]).length === 0; }, { what: 'both nodes imported, the relations message shown and no relation created' })"
+      },
+      "decision": {
+        "status": "approved",
+        "by": "Claude, for sid",
+        "at": "2026-10-05T07:12:18.909Z"
+      },
+      "surface": "s-relation-import-after-node-import",
+      "caption": "The nodes import, but their relation can't be read. The import says so, and the nodes stay imported.",
+      "checks": "The result still lists both nodes as imported, a message says the relations were not imported, and no relation was made."
+    },
+    {
+      "id": "retry-relations-after-failure",
+      "title": "Retry relations imports the relation once it can be read",
+      "steps": [
+        {
+          "id": "s1",
+          "why": "Wait for Retry relations in the result",
+          "source": "kit",
+          "do": {
+            "wait_for": ".bp3-dialog .bp3-callout button:has-text(\"Retry relations\")"
+          }
+        },
+        {
+          "id": "s2",
+          "why": "Give the relation back its author in the database",
+          "source": "kit",
+          "do": {
+            "js": "proof.rest('/rest/v1/Concept?space_id=eq.66566&source_local_id=eq.rel_pk-2296-3-4', { key: '{{env.SUPABASE_SERVICE_ROLE_KEY}}', method: 'PATCH', body: { author_id: 3 } })"
+          }
+        },
+        {
+          "id": "s3",
+          "why": "Click Retry relations",
+          "source": "kit",
+          "do": {
+            "click": ".bp3-dialog .bp3-callout button:has-text(\"Retry relations\")"
+          }
+        },
+        {
+          "id": "s4",
+          "why": "Pause on the result",
+          "source": "kit",
+          "do": {
+            "pause": 2
+          }
+        }
+      ],
+      "checks": "After Retry relations, a relation joins Fasting sharpens focus to Sugar dulls attention, waiting for review, and Retry relations is gone from the result.",
+      "caption": "Once the relation's author can be read, Retry relations imports it, and the button goes away.",
+      "surface": "s-relation-import-after-node-import",
+      "expect": {
+        "js": "proof.waitFor(() => { const source = proof.uid('PKR - Fasting sharpens focus'); const destination = proof.uid('PKR - Sugar dulls attention'); if (!source || !destination) return false; const found = proof.relations.touching([source]).filter((item) => item.sourceUid === source && item.destinationUid === destination); return found.length === 1 && found[0].tentative === 'true' && !proof.byText('.bp3-dialog button', 'Retry relations'); }, { what: 'the relation imported on retry and Retry relations gone', timeout: 20000 })"
+      }
+    },
+    {
+      "id": "qa-command-palette-shows-the-renamed-import",
+      "title": "Command palette shows the renamed import command",
+      "steps": [],
+      "intent": "With sync enabled, open the command palette and search for 'shared nodes'. Then run the command.",
+      "expect": {
+        "text": "'DG: Import shared nodes' is listed and 'DG: Discover shared nodes' is not. The dialog opens titled 'Import shared nodes'."
+      },
+      "decision": {
+        "status": "rejected",
+        "by": "Claude, for sid",
+        "at": "2026-10-05T07:12:22.116Z",
+        "reason": "Another case covers it: dialog-renamed opens the renamed command and checks the title"
+      },
+      "surface": "s-import-shared-nodes-command"
+    },
+    {
+      "id": "qa-table-columns-and-default-sort",
+      "title": "Table columns and default sort",
+      "steps": [],
+      "intent": "Open the dialog with several shared nodes from different spaces. Look at the column headers and the row order.",
+      "expect": {
+        "text": "Columns are only Source space, Title and Modified (plus the checkbox). There is no Source app, Source ID or Status column. Rows are newest-modified first."
+      },
+      "decision": {
+        "status": "rejected",
+        "by": "Claude, for sid",
+        "at": "2026-10-05T07:12:25.389Z",
+        "reason": "Another case covers it: columns-removed and sort-default-newest-first"
+      }
+    }
+  ],
+  "title": "Simplify the Roam import dialog and import feedback",
+  "claim": "The Roam import dialog is now called Import shared nodes, lists only nodes still to import in a sortable table with three data columns, keeps one fixed size, and shows import progress and result in one place with clickable, complete node titles.",
+  "given": "A Roam graph signed in to the proof database, in the same group as an Obsidian test vault and the dev graph. The vault published claims, evidence (one naming a source in the vault) and sort-test nodes; the dev graph published sort-test nodes and related nodes with a relation between two of them. A page titled like the Collision claim already exists. Nothing from them was imported yet.",
+  "baseline": "dg-baseline@1",
+  "target": {
+    "slot": "3",
+    "pr": 1479,
+    "viewport": {
+      "width": 1280,
+      "height": 720
+    }
+  },
+  "needs": [
+    "supabase",
+    "embed-stub"
+  ],
+  "prepare": [
+    {
+      "id": "shared-claims",
+      "why": "the Obsidian test vault published claims, evidence, a source and sort-test nodes to the eng-2329-demo group",
+      "phase": "outside",
+      "apply": {
+        "publish": {
+          "space": 106039,
+          "author": 106041,
+          "group": "eng-2329-demo",
+          "types": [
+            {
+              "id": "node_pk-2296-claim",
+              "label": "PK Import Claim",
+              "format": "PKC - {content}"
+            },
+            {
+              "id": "node_pk-2296-evidence",
+              "label": "PK Import Evidence",
+              "format": "PKE - {content} - {source}"
+            },
+            {
+              "id": "node_pk-2296-sort",
+              "label": "PK Import Sort",
+              "format": "PKS - {content}"
+            },
+            {
+              "id": "node_pk-2296-source",
+              "label": "PK Import Source",
+              "format": "PKSRC - {content}"
+            }
+          ],
+          "nodes": [
+            {
+              "id": "pk-2296-claim-1",
+              "type": "node_pk-2296-claim",
+              "title": "Daylight exposure resets the circadian clock",
+              "body": "Morning light shifts melatonin onset earlier.\n"
+            },
+            {
+              "id": "pk-2296-claim-2",
+              "type": "node_pk-2296-claim",
+              "title": "Caffeine after noon delays sleep onset",
+              "body": "Half-life is five to six hours.\n"
+            },
+            {
+              "id": "pk-2296-claim-3",
+              "type": "node_pk-2296-claim",
+              "title": "Cool bedrooms improve deep sleep",
+              "body": "Around 18 degrees Celsius works best.\n"
+            },
+            {
+              "id": "pk-2296-evidence-1",
+              "type": "node_pk-2296-evidence",
+              "title": "Light therapy lifts winter mood",
+              "body": "Ten thousand lux for thirty minutes in the morning.\n"
+            },
+            {
+              "id": "pk-2296-claim-collision",
+              "type": "node_pk-2296-claim",
+              "title": "Collision claim",
+              "body": "A claim whose page title is already taken in the graph.\n"
+            },
+            {
+              "id": "pk-2296-claim-skip",
+              "type": "node_pk-2296-claim",
+              "title": "Skip claim",
+              "body": "A claim already imported from another dialog.\n"
+            },
+            {
+              "id": "pk-2296-evidence-warn",
+              "type": "node_pk-2296-evidence",
+              "title": "Cold showers raise alertness",
+              "body": "Evidence published without its source.\n"
+            },
+            {
+              "id": "pk-2296-evidence-source",
+              "type": "node_pk-2296-evidence",
+              "title": "Late meals cut deep sleep",
+              "body": "Evidence that names a source in the vault.\n"
+            },
+            {
+              "id": "pk-2296-source-1",
+              "type": "node_pk-2296-source",
+              "title": "Sleep hygiene review",
+              "body": "The source the evidence above names.\n"
+            },
+            {
+              "id": "pk-2296-sort-9",
+              "type": "node_pk-2296-sort",
+              "title": "Claim 9",
+              "body": "Sort test.\n"
+            },
+            {
+              "id": "pk-2296-sort-2",
+              "type": "node_pk-2296-sort",
+              "title": "claim 2",
+              "body": "Sort test.\n"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "shared-from-dev-graph",
+      "why": "the dev graph (a second source space) published two sort-test nodes and four related nodes to the same group",
+      "phase": "outside",
+      "apply": {
+        "publish": {
+          "space": 66566,
+          "author": 3,
+          "group": "eng-2329-demo",
+          "types": [
+            {
+              "id": "node_pk-2296-sort",
+              "label": "PK Import Sort",
+              "format": "PKS - {content}"
+            },
+            {
+              "id": "node_pk-2296-related",
+              "label": "PK Import Related",
+              "format": "PKR - {content}"
+            }
+          ],
+          "nodes": [
+            {
+              "id": "pk-2296-sort-10",
+              "type": "node_pk-2296-sort",
+              "title": "Claim 10",
+              "body": "Sort test.\n"
+            },
+            {
+              "id": "pk-2296-sort-1",
+              "type": "node_pk-2296-sort",
+              "title": "Claim 1",
+              "body": "Sort test.\n"
+            },
+            {
+              "id": "pk-2296-rel-1",
+              "type": "node_pk-2296-related",
+              "title": "Rest strengthens memory",
+              "body": "Related node.\n"
+            },
+            {
+              "id": "pk-2296-rel-2",
+              "type": "node_pk-2296-related",
+              "title": "Naps consolidate learning",
+              "body": "Related node.\n"
+            },
+            {
+              "id": "pk-2296-rel-3",
+              "type": "node_pk-2296-related",
+              "title": "Fasting sharpens focus",
+              "body": "Related node.\n"
+            },
+            {
+              "id": "pk-2296-rel-4",
+              "type": "node_pk-2296-related",
+              "title": "Sugar dulls attention",
+              "body": "Related node.\n"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "distinct-modified-times",
+      "why": "every published node has its own last-modified time (the four main ones newest: Daylight oldest, then Caffeine, Cool bedrooms, Light therapy), the evidence nodes carry the title their Obsidian vault would have published, and one evidence node names its source",
+      "phase": "outside",
+      "apply": {
+        "sql": "UPDATE \"Concept\" SET last_modified = v.t FROM (VALUES (106039, 'pk-2296-claim-1', '2026-01-01T12:00:00Z'::timestamptz), (106039, 'pk-2296-claim-2', '2026-02-01T12:00:00Z'::timestamptz), (106039, 'pk-2296-claim-3', '2026-03-01T12:00:00Z'::timestamptz), (106039, 'pk-2296-evidence-1', '2026-04-01T12:00:00Z'::timestamptz), (106039, 'pk-2296-claim-collision', '2025-09-01T12:00:00Z'::timestamptz), (106039, 'pk-2296-claim-skip', '2025-08-01T12:00:00Z'::timestamptz), (106039, 'pk-2296-evidence-warn', '2025-07-01T12:00:00Z'::timestamptz), (106039, 'pk-2296-evidence-source', '2025-06-01T12:00:00Z'::timestamptz), (106039, 'pk-2296-source-1', '2025-05-01T12:00:00Z'::timestamptz), (106039, 'pk-2296-sort-9', '2025-04-01T12:00:00Z'::timestamptz), (106039, 'pk-2296-sort-2', '2025-03-01T12:00:00Z'::timestamptz), (66566, 'pk-2296-sort-10', '2025-02-01T12:00:00Z'::timestamptz), (66566, 'pk-2296-sort-1', '2025-01-01T12:00:00Z'::timestamptz), (66566, 'pk-2296-rel-1', '2024-12-01T12:00:00Z'::timestamptz), (66566, 'pk-2296-rel-2', '2024-11-01T12:00:00Z'::timestamptz), (66566, 'pk-2296-rel-3', '2024-10-01T12:00:00Z'::timestamptz), (66566, 'pk-2296-rel-4', '2024-09-01T12:00:00Z'::timestamptz)) AS v(sp, id, t) WHERE \"Concept\".space_id = v.sp AND \"Concept\".source_local_id = v.id;\nUPDATE \"Document\" SET last_modified = v.t FROM (VALUES (106039, 'pk-2296-claim-1', '2026-01-01T12:00:00Z'::timestamptz), (106039, 'pk-2296-claim-2', '2026-02-01T12:00:00Z'::timestamptz), (106039, 'pk-2296-claim-3', '2026-03-01T12:00:00Z'::timestamptz), (106039, 'pk-2296-evidence-1', '2026-04-01T12:00:00Z'::timestamptz), (106039, 'pk-2296-claim-collision', '2025-09-01T12:00:00Z'::timestamptz), (106039, 'pk-2296-claim-skip', '2025-08-01T12:00:00Z'::timestamptz), (106039, 'pk-2296-evidence-warn', '2025-07-01T12:00:00Z'::timestamptz), (106039, 'pk-2296-evidence-source', '2025-06-01T12:00:00Z'::timestamptz), (106039, 'pk-2296-source-1', '2025-05-01T12:00:00Z'::timestamptz), (106039, 'pk-2296-sort-9', '2025-04-01T12:00:00Z'::timestamptz), (106039, 'pk-2296-sort-2', '2025-03-01T12:00:00Z'::timestamptz), (66566, 'pk-2296-sort-10', '2025-02-01T12:00:00Z'::timestamptz), (66566, 'pk-2296-sort-1', '2025-01-01T12:00:00Z'::timestamptz), (66566, 'pk-2296-rel-1', '2024-12-01T12:00:00Z'::timestamptz), (66566, 'pk-2296-rel-2', '2024-11-01T12:00:00Z'::timestamptz), (66566, 'pk-2296-rel-3', '2024-10-01T12:00:00Z'::timestamptz), (66566, 'pk-2296-rel-4', '2024-09-01T12:00:00Z'::timestamptz)) AS v(sp, id, t) WHERE \"Document\".space_id = v.sp AND \"Document\".source_local_id = v.id;\nUPDATE \"Content\" SET last_modified = v.t FROM (VALUES (106039, 'pk-2296-claim-1', '2026-01-01T12:00:00Z'::timestamptz), (106039, 'pk-2296-claim-2', '2026-02-01T12:00:00Z'::timestamptz), (106039, 'pk-2296-claim-3', '2026-03-01T12:00:00Z'::timestamptz), (106039, 'pk-2296-evidence-1', '2026-04-01T12:00:00Z'::timestamptz), (106039, 'pk-2296-claim-collision', '2025-09-01T12:00:00Z'::timestamptz), (106039, 'pk-2296-claim-skip', '2025-08-01T12:00:00Z'::timestamptz), (106039, 'pk-2296-evidence-warn', '2025-07-01T12:00:00Z'::timestamptz), (106039, 'pk-2296-evidence-source', '2025-06-01T12:00:00Z'::timestamptz), (106039, 'pk-2296-source-1', '2025-05-01T12:00:00Z'::timestamptz), (106039, 'pk-2296-sort-9', '2025-04-01T12:00:00Z'::timestamptz), (106039, 'pk-2296-sort-2', '2025-03-01T12:00:00Z'::timestamptz), (66566, 'pk-2296-sort-10', '2025-02-01T12:00:00Z'::timestamptz), (66566, 'pk-2296-sort-1', '2025-01-01T12:00:00Z'::timestamptz), (66566, 'pk-2296-rel-1', '2024-12-01T12:00:00Z'::timestamptz), (66566, 'pk-2296-rel-2', '2024-11-01T12:00:00Z'::timestamptz), (66566, 'pk-2296-rel-3', '2024-10-01T12:00:00Z'::timestamptz), (66566, 'pk-2296-rel-4', '2024-09-01T12:00:00Z'::timestamptz)) AS v(sp, id, t) WHERE \"Content\".space_id = v.sp AND \"Content\".source_local_id = v.id;\nUPDATE \"Content\" SET text = v.t, metadata = jsonb_build_object('filePath', v.t || '.md') FROM (VALUES ('pk-2296-evidence-1', 'PKE - Light therapy lifts winter mood - [[@PK 2296 source]]'), ('pk-2296-evidence-warn', 'PKE - Cold showers raise alertness - [[@PK 2296 source]]'), ('pk-2296-evidence-source', 'PKE - Late meals cut deep sleep - [[PKSRC - Sleep hygiene review]]')) AS v(id, t) WHERE \"Content\".space_id = 106039 AND \"Content\".source_local_id = v.id AND \"Content\".variant = 'direct';\nUPDATE \"Concept\" SET name = v.t || '.md', literal_content = jsonb_set(literal_content, '{label}', to_jsonb(v.t)) FROM (VALUES ('pk-2296-evidence-1', 'PKE - Light therapy lifts winter mood - [[@PK 2296 source]]'), ('pk-2296-evidence-warn', 'PKE - Cold showers raise alertness - [[@PK 2296 source]]'), ('pk-2296-evidence-source', 'PKE - Late meals cut deep sleep - [[PKSRC - Sleep hygiene review]]')) AS v(id, t) WHERE \"Concept\".space_id = 106039 AND \"Concept\".source_local_id = v.id;\nUPDATE \"Concept\" SET reference_content = jsonb_build_object('sourceDocument', (SELECT id FROM \"Concept\" WHERE space_id = 106039 AND source_local_id = 'pk-2296-source-1')) WHERE space_id = 106039 AND source_local_id = 'pk-2296-evidence-source';"
+      }
+    },
+    {
+      "id": "relations-between-related-nodes",
+      "why": "the dev graph published a relation between the first two related nodes, and a relation with no author between the last two, which the import cannot read",
+      "phase": "outside",
+      "apply": {
+        "sql": "BEGIN;\nINSERT INTO \"Concept\" (name, author_id, created, last_modified, space_id, literal_content, is_schema, reference_content, arity, source_local_id, is_relation) VALUES ('PK relates to', 3, now(), '2024-08-01T12:00:00Z', 66566, '{\"label\":\"PK relates to\",\"complement\":\"PK is related to by\",\"roles\":[\"source\",\"destination\"]}'::jsonb, true, jsonb_build_object('source', (SELECT id FROM \"Concept\" WHERE space_id = 66566 AND source_local_id = 'node_pk-2296-related'), 'destination', (SELECT id FROM \"Concept\" WHERE space_id = 66566 AND source_local_id = 'node_pk-2296-related')), 2, 'rel_pk-2296-relates', true) ON CONFLICT (space_id, source_local_id) DO UPDATE SET literal_content = EXCLUDED.literal_content, reference_content = EXCLUDED.reference_content;\nINSERT INTO \"SpaceAccess\" (account_uid, space_id, permissions) VALUES ((SELECT id FROM auth.users WHERE email = 'eng-2329-demo@groups.discoursegraphs.com'), 66566, 'partial') ON CONFLICT (account_uid, space_id) DO NOTHING;\nINSERT INTO \"ResourceAccess\" (account_uid, space_id, source_local_id) VALUES ((SELECT id FROM auth.users WHERE email = 'eng-2329-demo@groups.discoursegraphs.com'), 66566, 'rel_pk-2296-relates') ON CONFLICT DO NOTHING;\nINSERT INTO \"Concept\" (name, author_id, created, last_modified, space_id, schema_id, literal_content, is_schema, reference_content, arity, source_local_id, is_relation) VALUES ('PK relation rel_pk-2296-1-2', 3, now(), '2024-08-01T12:00:00Z', 66566, (SELECT id FROM \"Concept\" WHERE space_id = 66566 AND source_local_id = 'rel_pk-2296-relates'), '{}'::jsonb, false, jsonb_build_object('source', (SELECT id FROM \"Concept\" WHERE space_id = 66566 AND source_local_id = 'pk-2296-rel-1'), 'destination', (SELECT id FROM \"Concept\" WHERE space_id = 66566 AND source_local_id = 'pk-2296-rel-2')), 2, 'rel_pk-2296-1-2', true) ON CONFLICT (space_id, source_local_id) DO UPDATE SET schema_id = EXCLUDED.schema_id, reference_content = EXCLUDED.reference_content, author_id = EXCLUDED.author_id;\nINSERT INTO \"ResourceAccess\" (account_uid, space_id, source_local_id) VALUES ((SELECT id FROM auth.users WHERE email = 'eng-2329-demo@groups.discoursegraphs.com'), 66566, 'rel_pk-2296-1-2') ON CONFLICT DO NOTHING;\nINSERT INTO \"Concept\" (name, author_id, created, last_modified, space_id, schema_id, literal_content, is_schema, reference_content, arity, source_local_id, is_relation) VALUES ('PK relation rel_pk-2296-3-4', NULL, now(), '2024-08-01T12:00:00Z', 66566, (SELECT id FROM \"Concept\" WHERE space_id = 66566 AND source_local_id = 'rel_pk-2296-relates'), '{}'::jsonb, false, jsonb_build_object('source', (SELECT id FROM \"Concept\" WHERE space_id = 66566 AND source_local_id = 'pk-2296-rel-3'), 'destination', (SELECT id FROM \"Concept\" WHERE space_id = 66566 AND source_local_id = 'pk-2296-rel-4')), 2, 'rel_pk-2296-3-4', true) ON CONFLICT (space_id, source_local_id) DO UPDATE SET schema_id = EXCLUDED.schema_id, reference_content = EXCLUDED.reference_content, author_id = EXCLUDED.author_id;\nINSERT INTO \"ResourceAccess\" (account_uid, space_id, source_local_id) VALUES ((SELECT id FROM auth.users WHERE email = 'eng-2329-demo@groups.discoursegraphs.com'), 66566, 'rel_pk-2296-3-4') ON CONFLICT DO NOTHING;\nCOMMIT;"
+      }
+    },
+    {
+      "id": "authors-in-their-spaces",
+      "why": "the dev graph's and the vault's authors are members of the spaces they published from, as a real publish leaves them, so an importing graph can read who wrote a relation",
+      "phase": "outside",
+      "apply": {
+        "sql": "INSERT INTO \"LocalAccess\" (account_id, space_id) VALUES (3, 66566), (106041, 106039) ON CONFLICT DO NOTHING;"
+      }
+    },
+    {
+      "id": "no-earlier-import",
+      "why": "none of the nodes the vault and dev graph published, nor their types, was imported into this graph before",
+      "phase": "before-load",
+      "apply": {
+        "js": "(async () => { const titles = [\"discourse-graph/nodes/PK Import Claim\", \"discourse-graph/nodes/PK Import Evidence\", \"discourse-graph/nodes/PK Import Source\", \"discourse-graph/nodes/PK Import Related\", \"PKC - Daylight exposure resets the circadian clock\", \"PKC - Caffeine after noon delays sleep onset\", \"PKC - Cool bedrooms improve deep sleep\", \"PKC - Skip claim\", \"PKE - Light therapy lifts winter mood - [[@placeholder]]\", \"PKE - Cold showers raise alertness - [[@placeholder]]\", \"PKE - Late meals cut deep sleep - [[PKSRC - Sleep hygiene review]]\", \"PKSRC - Sleep hygiene review\", \"PKR - Rest strengthens memory\", \"PKR - Naps consolidate learning\", \"PKR - Fasting sharpens focus\", \"PKR - Sugar dulls attention\"]; const uids = titles.map((title) => proof.page.uid(title)).filter(Boolean); await proof.relations.removeTouching(uids); await proof.page.remove(titles); })()"
+      },
+      "check": {
+        "js": "![\"discourse-graph/nodes/PK Import Claim\", \"discourse-graph/nodes/PK Import Evidence\", \"discourse-graph/nodes/PK Import Source\", \"discourse-graph/nodes/PK Import Related\", \"PKC - Daylight exposure resets the circadian clock\", \"PKC - Caffeine after noon delays sleep onset\", \"PKC - Cool bedrooms improve deep sleep\", \"PKC - Skip claim\", \"PKE - Light therapy lifts winter mood - [[@placeholder]]\", \"PKE - Cold showers raise alertness - [[@placeholder]]\", \"PKE - Late meals cut deep sleep - [[PKSRC - Sleep hygiene review]]\", \"PKSRC - Sleep hygiene review\", \"PKR - Rest strengthens memory\", \"PKR - Naps consolidate learning\", \"PKR - Fasting sharpens focus\", \"PKR - Sugar dulls attention\"].some((title) => proof.page.exists(title))"
+      }
+    },
+    {
+      "id": "collision-page",
+      "why": "a page already has the title the shared Collision claim would get, so importing it fails",
+      "phase": "before-load",
+      "check": {
+        "js": "proof.page.exists('PKC - Collision claim')"
+      },
+      "apply": {
+        "js": "proof.page.ensure('PKC - Collision claim', ['A page that already has the title of a shared claim.'])"
+      }
+    },
+    {
+      "id": "database-session",
+      "why": "the extension has a proof database session for this graph; the proof database runs without edge functions, so this signs in the way create-space would",
+      "phase": "before-load",
+      "apply": {
+        "js": "proof.supabase.signIn({ serviceKey: '{{env.SUPABASE_SERVICE_ROLE_KEY}}', publishableKey: '{{env.SUPABASE_PUBLISHABLE_KEY}}' })"
+      },
+      "check": {
+        "js": "proof.supabase.signedIn()"
+      },
+      "settleMs": 1000
+    }
+  ],
+  "surface": [
+    {
+      "id": "s-import-shared-nodes-command",
+      "area": "Import shared nodes command",
+      "why": "The command palette entry was renamed from 'DG: Discover shared nodes' to 'DG: Import shared nodes' and the dialog title changed.",
+      "files": [
+        "apps/roam/src/utils/registerCommandPaletteCommands.ts",
+        "apps/roam/src/components/DiscoverSharedNodesDialog.tsx"
+      ]
+    },
+    {
+      "id": "s-relation-import-after-node-import",
+      "area": "Relation import after node import",
+      "why": "importSharedRelations now runs after results are shown, with its own catch that surfaces a failure message, and uses importedRids that were updated in the same handler.",
+      "files": [
+        "apps/roam/src/components/DiscoverSharedNodesDialog.tsx"
+      ]
+    },
+    {
+      "id": "s-shared-node-table-search-sort-and",
+      "area": "Shared node table search, sort and selection",
+      "why": "The table drops the Source app, Source ID and Status columns, filters out imported nodes, adds column sorting, and narrows what search matches.",
+      "files": [
+        "apps/roam/src/components/DiscoverSharedNodesDialog.tsx",
+        "apps/roam/src/utils/sortSharedNodes.ts"
+      ]
+    },
+    {
+      "id": "s-import-progress-and-results-feedback",
+      "area": "Import progress and results feedback",
+      "why": "Progress moved from the button label into a progress bar callout that replaces the results summary while importing; failures and warnings are mixed into one scrollable list with the imported links.",
+      "files": [
+        "apps/roam/src/components/DiscoverSharedNodesDialog.tsx"
+      ]
+    },
+    {
+      "id": "s-imported-node-page-links",
+      "area": "Imported node page links",
+      "why": "Result links call getPageTitleByPageUid and open the page in main window or sidebar (shift-click) using the new pageUid returned per item.",
+      "files": [
+        "apps/roam/src/components/DiscoverSharedNodesDialog.tsx",
+        "apps/roam/src/utils/importSharedNodes.ts"
+      ]
+    },
+    {
+      "id": "s-skipped-and-source-dependency-imports",
+      "area": "Skipped and source-dependency imports",
+      "why": "Skipped (already up-to-date) items and automatically added source nodes now also carry a pageUid and are listed as links in the results.",
+      "files": [
+        "apps/roam/src/utils/importSharedNodes.ts",
+        "apps/roam/src/components/DiscoverSharedNodesDialog.tsx"
+      ]
+    },
+    {
+      "id": "s-dialog-layout-on-small-windows",
+      "area": "Dialog layout on small windows",
+      "why": "The dialog now has a fixed height of min(48rem, 100vh-4rem) with an internally scrolling body.",
+      "files": [
+        "apps/roam/src/components/DiscoverSharedNodesDialog.tsx"
+      ]
+    }
+  ]
+}

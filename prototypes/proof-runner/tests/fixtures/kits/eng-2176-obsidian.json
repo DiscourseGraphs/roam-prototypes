@@ -1,0 +1,425 @@
+{
+  "name": "eng-2176-obsidian",
+  "title": "Escape regex metacharacters in discourse node format expressions (Obsidian)",
+  "target": {
+    "app": "obsidian",
+    "cdp": "http://127.0.0.1:9223",
+    "vault": "/path/to/vault",
+    "pr": 1508,
+    "viewport": {
+      "width": 1280,
+      "height": 720
+    }
+  },
+  "needs": [
+    "supabase",
+    "embed-stub"
+  ],
+  "prepare": [
+    {
+      "id": "database-session",
+      "why": "the vault has a proof database session, so sync writes to the proof database",
+      "phase": "in-session",
+      "check": {
+        "js": "proof.obsidian.signedIn()"
+      },
+      "apply": {
+        "js": "proof.obsidian.signIn({ serviceKey: '{{env.SUPABASE_SERVICE_ROLE_KEY}}', publishableKey: '{{env.SUPABASE_PUBLISHABLE_KEY}}' })"
+      },
+      "settleMs": 1000
+    },
+    {
+      "id": "sync-mode-on",
+      "why": "sync mode is on, so Sync discourse nodes to Supabase runs",
+      "phase": "in-session",
+      "check": {
+        "js": "proof.obsidian.plugin().settings.syncModeEnabled === true"
+      },
+      "apply": {
+        "js": "(async () => { const plugin = proof.obsidian.plugin(); plugin.settings.syncModeEnabled = true; await plugin.saveSettings(); })()"
+      }
+    },
+    {
+      "id": "draft-claim",
+      "why": "a Draft Claim node type whose format has parentheses, and a note in it with a fixed node id",
+      "phase": "in-session",
+      "apply": {
+        "js": "(async () => { await proof.obsidian.closeModals(); const plugin = proof.obsidian.plugin(); const now = Date.now(); if (!proof.obsidian.nodeType('Draft Claim')) { plugin.settings.nodeTypes.push({ id: 'pk-2176-draft-claim', name: 'Draft Claim', format: 'Claim (draft) - {content}', color: '#8B5CF6', created: now, modified: now }); await plugin.saveSettings(); } await proof.obsidian.write('Claim (draft) - Sleep improves memory.md', '---\\nnodeTypeId: pk-2176-draft-claim\\nnodeInstanceId: pk-2176-draft-claim-note\\n---\\nA Draft Claim note.\\n'); })()"
+      }
+    },
+    {
+      "id": "fresh-created-note",
+      "why": "no Draft Claim note from an earlier run's Create discourse node",
+      "phase": "in-session",
+      "apply": {
+        "js": "proof.obsidian.removeFiles(window.app.vault.getMarkdownFiles().filter((file) => file.basename === 'Claim (draft) - Sleep improves memory consolidation'))"
+      }
+    },
+    {
+      "id": "default-claim-note",
+      "why": "a note of the vault's default Claim type",
+      "phase": "in-session",
+      "apply": {
+        "js": "(async () => { const claim = proof.obsidian.nodeType('Claim'); if (!claim) throw new Error('The vault has no Claim type.'); await proof.obsidian.write('CLM - PK 2176 default claim.md', '---\\nnodeTypeId: ' + claim.id + '\\n---\\nA default Claim note.\\n'); })()"
+      }
+    },
+    {
+      "id": "no-content-type",
+      "why": "a node type whose format has a placeholder but no {content}, the way an import can create one, and a note in it",
+      "phase": "in-session",
+      "apply": {
+        "js": "(async () => { const plugin = proof.obsidian.plugin(); const now = Date.now(); if (!proof.obsidian.nodeType('PK No Content')) { plugin.settings.nodeTypes.push({ id: 'pk-2176-no-content', name: 'PK No Content', format: 'NCT - {question}', color: '#0EA5E9', created: now, modified: now }); await plugin.saveSettings(); } await proof.obsidian.write('NCT - why do we sleep.md', '---\\nnodeTypeId: pk-2176-no-content\\n---\\nA note whose type has no {content}.\\n'); })()"
+      }
+    },
+    {
+      "id": "plain-draft-note",
+      "why": "a plain note named in the Draft Claim format, not yet a node, for Bulk identify to find",
+      "phase": "in-session",
+      "apply": {
+        "js": "proof.obsidian.write('Claim (draft) - Coffee helps focus.md', 'A plain note, not a node yet.\\n')"
+      }
+    }
+  ],
+  "cases": [
+    {
+      "id": "content-line-reads-the-content",
+      "title": "The Content line extracts the content from a format with parentheses",
+      "caption": "In Obsidian, the Draft Claim format has parentheses too. The discourse context now reads the content, Sleep improves memory, instead of the word inside the parentheses.",
+      "steps": [
+        {
+          "do": {
+            "js": "proof.obsidian.open('Claim (draft) - Sleep improves memory.md')"
+          },
+          "why": "open the Draft Claim note"
+        },
+        {
+          "do": {
+            "when": {
+              "js": "window.app.workspace.getLeavesOfType('discourse-context-view').length === 0",
+              "do": [
+                {
+                  "command_palette": "Toggle discourse context"
+                }
+              ]
+            }
+          },
+          "why": "show the discourse context, if it isn't open"
+        },
+        {
+          "do": {
+            "wait_for": "[data-type=\"discourse-context-view\"] :text(\"Content:\")"
+          },
+          "why": "wait for the Content line"
+        },
+        {
+          "do": {
+            "pause": 2.5
+          },
+          "why": "hold on the context"
+        }
+      ],
+      "expect": {
+        "js": "proof.waitFor(() => { const view = document.querySelector('[data-type=\"discourse-context-view\"]'); return view && /Content:\\s*Sleep improves memory/.test(view.innerText); }, { what: 'Content: Sleep improves memory in the discourse context' })"
+      },
+      "proves": "Done When 1: `Claim (draft) - {content}` matches its titles and extracts `content` in both apps."
+    },
+    {
+      "id": "obsidian-content-line",
+      "title": "Obsidian: Create discourse node names a Draft Claim note from the format, and its Content line reads the content",
+      "steps": [
+        {
+          "do": {
+            "js": "proof.obsidian.closeModals()"
+          },
+          "why": "start without a dialog"
+        },
+        {
+          "do": {
+            "command_palette": "Create discourse node"
+          },
+          "why": "create a node the way a user would"
+        },
+        {
+          "do": {
+            "wait_for": ".modal select"
+          },
+          "why": "wait for the dialog"
+        },
+        {
+          "do": {
+            "js": "(() => { const select = document.querySelector('.modal select'); const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set; setter.call(select, 'pk-2176-draft-claim'); select.dispatchEvent(new Event('change', { bubbles: true })); })()"
+          },
+          "why": "pick Draft Claim"
+        },
+        {
+          "do": {
+            "type": {
+              "into": ".modal textarea",
+              "text": "Sleep improves memory consolidation",
+              "delay_ms": 60
+            }
+          },
+          "why": "enter the content"
+        },
+        {
+          "do": {
+            "click": ".modal button.mod-cta"
+          },
+          "why": "create the note"
+        },
+        {
+          "do": {
+            "js": "(async () => { const file = await proof.waitFor(() => window.app.vault.getMarkdownFiles().find((f) => f.basename === 'Claim (draft) - Sleep improves memory consolidation'), { what: 'the new Draft Claim note', timeout: 15000 }); await proof.obsidian.open(file.path); })()"
+          },
+          "why": "open the new note"
+        },
+        {
+          "do": {
+            "when": {
+              "js": "window.app.workspace.getLeavesOfType('discourse-context-view').length === 0",
+              "do": [
+                {
+                  "command_palette": "Toggle discourse context"
+                }
+              ]
+            }
+          },
+          "why": "show the discourse context, if it isn't open"
+        },
+        {
+          "do": {
+            "pause": 2
+          },
+          "why": "hold on the context"
+        }
+      ],
+      "proves": "Done When 1: `Claim (draft) - {content}` matches its titles and extracts `content` in both apps.",
+      "expect": {
+        "js": "proof.waitFor(() => { const view = document.querySelector('[data-type=\"discourse-context-view\"]'); const match = view && /Content:\\s*([^\\n]+)/.exec(view.innerText); return match && match[1].trim() === \"Sleep improves memory consolidation\"; }, { what: \"Content: Sleep improves memory consolidation for the new note\" })"
+      },
+      "surface": "s-obsidian-node-creation-and-discourse",
+      "checks": "The new note is `Claim (draft) - Sleep improves memory consolidation`, and its discourse context reads Content: Sleep improves memory consolidation.",
+      "caption": "Creating a Draft Claim from the command names the note from the format with the parentheses, and its discourse context reads just the content."
+    },
+    {
+      "id": "obsidian-content-matches-roam",
+      "title": "Obsidian publishes the same content its Content line shows",
+      "steps": [
+        {
+          "do": {
+            "js": "(async () => { await proof.obsidian.closeModals(); proof.obsidian.clearNotices(); })()"
+          },
+          "why": "start without a dialog or old notices"
+        },
+        {
+          "do": {
+            "command_palette": "Sync discourse nodes to Supabase"
+          },
+          "why": "publish the vault's nodes"
+        },
+        {
+          "do": {
+            "js": "proof.waitFor(() => /synced successfully|Sync failed/.test(proof.obsidian.notices()), { what: 'the sync to finish', timeout: 120000, interval: 500 })"
+          },
+          "why": "wait for the sync"
+        },
+        {
+          "do": {
+            "js": "proof.obsidian.open('Claim (draft) - Sleep improves memory.md')"
+          },
+          "why": "open the Draft Claim note"
+        },
+        {
+          "do": {
+            "when": {
+              "js": "window.app.workspace.getLeavesOfType('discourse-context-view').length === 0",
+              "do": [
+                {
+                  "command_palette": "Toggle discourse context"
+                }
+              ]
+            }
+          },
+          "why": "show the discourse context, if it isn't open"
+        },
+        {
+          "do": {
+            "pause": 2
+          },
+          "why": "hold on the context"
+        }
+      ],
+      "proves": "Done When 2: One shared, unit-tested implementation of builder + extractor (at minimum: scan and builder share one grammar constant per app), and `DiscourseContextView` renders the same content string the converter publishes.",
+      "expect": {
+        "js": "(async () => { proof.assert(!/Sync failed/.test(proof.obsidian.notices()), 'Sync failed: ' + proof.obsidian.notices()); const shown = await proof.waitFor(() => { const view = document.querySelector('[data-type=\"discourse-context-view\"]'); const match = view && /Content:\\s*([^\\n]+)/.exec(view.innerText); return match && match[1].trim(); }, { what: 'the Content line' }); const row = await proof.waitFor(async () => (await proof.rest('/rest/v1/Concept?select=literal_content&is_schema=eq.false&space_id=eq.106039&source_local_id=eq.pk-2176-draft-claim-note', { key: '{{env.SUPABASE_SERVICE_ROLE_KEY}}' }))[0], { what: 'the synced Draft Claim concept', timeout: 30000, interval: 1000 }); proof.assert(row.literal_content.core_title === shown, 'The Content line reads ' + JSON.stringify(shown) + ' but the published core_title is ' + JSON.stringify(row.literal_content.core_title) + '.'); proof.assert(shown === 'Sleep improves memory', 'Both read ' + JSON.stringify(shown) + '.'); })()"
+      },
+      "surface": "s-obsidian-node-creation-and-discourse",
+      "checks": "After Sync discourse nodes to Supabase, the Draft Claim note's published core_title equals its Content line, Sleep improves memory.",
+      "caption": "Sync the vault, and the Draft Claim note publishes exactly what its discourse context shows: Sleep improves memory."
+    },
+    {
+      "id": "obsidian-default-format-unchanged",
+      "title": "Obsidian: a default Claim note's Content line is unchanged",
+      "steps": [
+        {
+          "do": {
+            "js": "proof.obsidian.open('CLM - PK 2176 default claim.md')"
+          },
+          "why": "open the default Claim note"
+        },
+        {
+          "do": {
+            "when": {
+              "js": "window.app.workspace.getLeavesOfType('discourse-context-view').length === 0",
+              "do": [
+                {
+                  "command_palette": "Toggle discourse context"
+                }
+              ]
+            }
+          },
+          "why": "show the discourse context, if it isn't open"
+        },
+        {
+          "do": {
+            "pause": 2
+          },
+          "why": "hold on the context"
+        }
+      ],
+      "proves": "Done When 3: Formats without metacharacters behave identically to today.",
+      "expect": {
+        "js": "proof.waitFor(() => { const view = document.querySelector('[data-type=\"discourse-context-view\"]'); const match = view && /Content:\\s*([^\\n]+)/.exec(view.innerText); return match && match[1].trim() === \"PK 2176 default claim\"; }, { what: \"Content: PK 2176 default claim\" })"
+      },
+      "checks": "The default Claim note's discourse context reads Content: PK 2176 default claim.",
+      "caption": "Ordinary formats read as before: a default Claim note shows just its content."
+    },
+    {
+      "id": "obsidian-format-without-content",
+      "title": "Obsidian: a format without {content} now shows the whole title",
+      "steps": [
+        {
+          "do": {
+            "js": "proof.obsidian.open('NCT - why do we sleep.md')"
+          },
+          "why": "open the note whose type has no {content}"
+        },
+        {
+          "do": {
+            "when": {
+              "js": "window.app.workspace.getLeavesOfType('discourse-context-view').length === 0",
+              "do": [
+                {
+                  "command_palette": "Toggle discourse context"
+                }
+              ]
+            }
+          },
+          "why": "show the discourse context, if it isn't open"
+        },
+        {
+          "do": {
+            "pause": 2.5
+          },
+          "why": "hold on the context"
+        }
+      ],
+      "proves": "The PR's declared behavior change, not tied to a bullet: a format with placeholders but no {content}, which only import can create, now yields the whole title.",
+      "expect": {
+        "js": "proof.waitFor(() => { const view = document.querySelector('[data-type=\"discourse-context-view\"]'); const match = view && /Content:\\s*([^\\n]+)/.exec(view.innerText); return match && match[1].trim() === \"NCT - why do we sleep\"; }, { what: \"Content: NCT - why do we sleep\" })",
+        "text": "Content shows the whole title, NCT - why do we sleep. Before this PR it showed why do we sleep. This is the PR's open scope decision."
+      },
+      "checks": "The note in the PK No Content type (`NCT - {question}`) shows Content: NCT - why do we sleep, the whole title. Before this PR it showed why do we sleep.",
+      "caption": "The one declared change: a format with a placeholder but no content placeholder now shows the whole title."
+    },
+    {
+      "id": "qa-obsidian-import-dialog-finds",
+      "title": "Obsidian: Bulk identify finds a plain note by a pattern with parentheses",
+      "steps": [
+        {
+          "do": {
+            "js": "proof.obsidian.closeModals()"
+          },
+          "why": "start without a dialog"
+        },
+        {
+          "do": {
+            "command_palette": "Bulk identify discourse nodes"
+          },
+          "why": "open Bulk identify the way a user would"
+        },
+        {
+          "do": {
+            "wait_for": ".modal h3:has-text(\"Configure Identification Patterns\")"
+          },
+          "why": "wait for the patterns"
+        },
+        {
+          "do": {
+            "js": "(async () => { const row = await proof.waitFor(() => Array.from(document.querySelectorAll('.modal div.cursor-pointer')).find((div) => div.innerText.trim() === 'Draft Claim'), { what: 'the Draft Claim pattern' }); if (!row.querySelector('input[type=checkbox]').checked) row.click(); })()"
+          },
+          "why": "enable Draft Claim with its format as the pattern"
+        },
+        {
+          "do": {
+            "click": ".modal button:has-text(\"Scan Vault\")"
+          },
+          "why": "scan the vault"
+        },
+        {
+          "do": {
+            "wait_for": ".modal h3:has-text(\"Review candidates\")"
+          },
+          "why": "wait for the candidates"
+        },
+        {
+          "do": {
+            "pause": 2
+          },
+          "why": "hold on the candidates"
+        }
+      ],
+      "expect": {
+        "js": "proof.waitFor(() => { const modal = document.querySelector('.modal'); return modal && modal.innerText.includes('Claim (draft) - Coffee helps focus'); }, { what: 'the plain Draft Claim note among the candidates' })"
+      },
+      "decision": {
+        "status": "approved",
+        "by": "sid597",
+        "at": "2026-10-05T02:40:15.963Z"
+      },
+      "surface": "s-obsidian-node-creation-and-discourse",
+      "checks": "With Draft Claim's pattern `Claim (draft) - {content}` enabled, Scan Vault lists the plain note `Claim (draft) - Coffee helps focus` as a candidate."
+    },
+    {
+      "id": "qa-obsidian-create-a-parenthesised-node",
+      "title": "Obsidian: create a parenthesised node from the command",
+      "steps": [],
+      "intent": "In Obsidian, add a node type with format `Claim (draft) - {content}`. Select text and use Create discourse node, or run the command, then open the new note and the Discourse Context pane.",
+      "expect": {
+        "text": "The note is created with title `Claim (draft) - <text>`, is recognised as that type, and the context pane shows the node without errors."
+      },
+      "decision": {
+        "status": "rejected",
+        "by": "sid597",
+        "at": "2026-10-05T02:40:26.286Z",
+        "reason": "obsidian-content-line already creates the note with Create discourse node and checks its name and Content line"
+      },
+      "surface": "s-obsidian-node-creation-and-discourse"
+    }
+  ],
+  "claim": "In Obsidian, a node format with parentheses matches its own notes and yields its content, the discourse context shows the same content the converter publishes, and ordinary formats behave as before.",
+  "given": "Sid-Obsidian-test runs the ENG-2176 build, signed in to the proof database with sync mode on. It has a Draft Claim type (`Claim (draft) - {content}`) and a note in it, a default Claim note, a type whose format has no {content} and a note in it, and a plain note named in the Draft Claim format.",
+  "surface": [
+    {
+      "id": "s-obsidian-node-creation-and-discourse",
+      "area": "Obsidian node creation and Discourse Context view",
+      "why": "createNode, the context pane, and QueryEngine import now use the shared builder and extractor instead of the old Obsidian copies.",
+      "files": [
+        "apps/obsidian/src/utils/createNode.ts",
+        "apps/obsidian/src/components/DiscourseContextView.tsx",
+        "apps/obsidian/src/services/QueryEngine.ts",
+        "apps/obsidian/src/utils/conceptConversion.ts"
+      ]
+    }
+  ]
+}

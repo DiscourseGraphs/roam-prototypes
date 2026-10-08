@@ -1,0 +1,1175 @@
+import type { MachineState, PlanCase } from "../core/machine";
+import { CaptionBar, type BarAction } from "./bar";
+import type { CheckAction, CheckItem } from "./checklist";
+import type { RunSummary } from "./outcome";
+import { roam } from "./roam";
+import { Stage } from "./stage";
+import {
+  PACES,
+  PAUSES,
+  bulletVerdict,
+  doneWhen,
+  duration,
+  isPauseSetting,
+  isPointerSetting,
+  needOf,
+  paceLabel,
+  plainText,
+  purposeLine,
+  type CaseHistory,
+  type DoneWhen,
+  type PauseSetting,
+  type PointerSetting,
+  type RunFacts,
+  type StepKind,
+} from "./words";
+
+// The proof runner's surfaces, from the tester's side of the screen. On the
+// page, inside the {{proof}} block, a run card says what the PR does and what
+// running it asks of you, and after a run shows the cases with their
+// verdicts. During a run, Roam is the stage: a caption bar on the window's
+// bottom edge narrates, a ring marks where each step acts, a frame says who
+// has the screen, and the bar grows in place when the run needs you. The
+// card's buttons and text sit in a shadow root, so kit selectors never match
+// them; the case blocks are the page's own, rendered by Roam into the light
+// DOM and slotted in, so editing a step in the card edits the page.
+
+// Roam renders a block, live and editable, into any element, and takes it
+// down again. Tests pass a stand-in.
+export type BlockRenderer = {
+  render(uid: string, el: HTMLElement): Promise<unknown> | void;
+  unmount(el: HTMLElement): void;
+};
+
+// Rendered open whatever the page says, so the case running now shows its
+// steps even when its block is collapsed on the page.
+const roamBlocks: BlockRenderer = {
+  render: (uid, el) => roam().ui.components.renderBlock({ uid, el, "open?": true }),
+  unmount: (el) => roam().ui.components.unmountNode({ el }),
+};
+
+// A case of the run, for the list on the card: what it checks and asks of you,
+// its steps, and the page block that holds it (to open it for editing).
+export type KitCase = { plan: PlanCase; uid: string | null };
+
+// What the page says about the kit, for the run card before Run.
+export type KitSummary = {
+  claim: string | null;
+  pr: number | null;
+  ticket: string | null;
+  // The cases a run plays, and how many steps they have in all.
+  cases: number;
+  steps: number;
+  // Cases a person decides by eye, and cases done by hand.
+  judge: number;
+  byHand: number;
+  doneWhen: DoneWhen[];
+  // Cases tied to no Done When bullet.
+  other: number;
+  // Rejected cases, with why.
+  notTested: Array<{ title: string; reason: string | null }>;
+  proposed: number;
+  // Every case a run plays, in order.
+  list: KitCase[];
+};
+
+// What a run carries beside the machine's state.
+export type RunInfo = {
+  // When the run pauses for the person.
+  pause: PauseSetting;
+  // Every case, a resume, or only the cases that didn't pass last time.
+  scope: "all" | "resume" | "failed";
+  // How many cases didn't pass, for "Run the ones that didn't pass".
+  rerun: number;
+  // Whether each case passed in a recorded run, by case id.
+  history: Record<string, CaseHistory>;
+  kinds: Record<string, StepKind[]>;
+  startedAt: number;
+  endedAt: number | null;
+  facts: RunFacts;
+};
+
+export type PanelView = {
+  title: string;
+  kitName: string | null;
+  // What the kit needs before Run, each met or with the button that meets it.
+  checklist: CheckItem[];
+  // Why Run is off: the first need not met; null to run.
+  blocked: string | null;
+  // Kit or page problems that stop a run, e.g. a block the parser can't read.
+  error: string | null;
+  // Things to know before running: skipped fixtures, needs this tab can't meet.
+  warnings: string[];
+  machine: MachineState | null;
+  // The run's blocks: each case's, by case id, and the step running now.
+  blocks: { cases: Record<string, string>; step: string | null };
+  // Cases already judged in an earlier, unfinished run of this kit.
+  resumable: { caseIndex: number; results: Record<string, string> } | null;
+  // The last finished run, from the page's run log: its line, that line read
+  // back, and whether it ran on the build this tab has loaded (null: can't say).
+  lastRun: string | null;
+  last: { summary: RunSummary; thisBuild: boolean | null } | null;
+  kit: KitSummary | null;
+  run: RunInfo | null;
+  // An agent called the runner's tools lately.
+  agent: boolean;
+};
+
+export type PanelAction =
+  // leave: the cases the person left out of this run, and why.
+  | { kind: "run"; leave?: string[]; why?: string }
+  | { kind: CheckAction }
+  | { kind: "resume" }
+  | { kind: "reset" }
+  | { kind: "restart" }
+  | { kind: "done-by-hand" }
+  | { kind: "edit-step" }
+  | { kind: "edit-case"; caseId: string }
+  | { kind: "add-case"; title: string; intent: string; passes: string }
+  | { kind: "rerun" }
+  | { kind: "open-kit" }
+  | { kind: "setting"; key: "pause"; value: PauseSetting }
+  | { kind: "setting"; key: "pace"; value: number }
+  | { kind: "setting"; key: "pointer"; value: PointerSetting }
+  | { kind: "command"; cmd: string; args?: Record<string, unknown> };
+
+const OWN_ACTIONS = new Set(["resume", "reset", "rerun", "done-by-hand", "connect", "disconnect", "load", "reload", "check-database", "ask-agent"]);
+
+const CSS = `
+  :host { all: initial; display: block; }
+  * { box-sizing: border-box; }
+  .card { max-width: 640px; margin: 6px 0; border-radius: 12px; overflow: hidden; border: 1px solid #d9d6e4; background: #fbfbfd;
+    font: 13px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; color: #1f1d29; }
+  .head { background: #17151f; color: #efedf7; padding: 14px 16px 13px; }
+  .eyebrow { font-size: 10.5px; letter-spacing: .09em; text-transform: uppercase; color: #a9a5bd; font-weight: 800; }
+  .title { font-size: 17px; font-weight: 750; line-height: 1.3; margin-top: 4px; }
+  .claim { color: #c7c3d8; margin-top: 5px; }
+  .claim:empty { display: none; }
+  .facts { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+  .fact { background: #26233a; border-radius: 6px; padding: 2px 8px; font-size: 12.5px; }
+  .fact.ok { background: rgba(69, 196, 126, .15); color: #9fe7bd; }
+  .fact.you { background: rgba(255, 181, 71, .16); color: #ffcf85; }
+  .fact.bad { background: rgba(255, 101, 91, .16); color: #ffa49d; }
+  .fact.grey { background: #2b2840; color: #c7c3d8; }
+  .body { padding: 12px 16px 14px; display: grid; gap: 10px; }
+  .checks { display: grid; gap: 4px; }
+  .checks:empty { display: none; }
+  .check { display: flex; gap: 7px; align-items: baseline; }
+  .check .mark { flex: none; width: 1.1em; text-align: center; font-weight: 800; }
+  .check .what { flex: 1; min-width: 0; }
+  .check .label { font-weight: 650; }
+  .check .detail { color: #4c4a5c; overflow-wrap: anywhere; }
+  .check ul { margin: 3px 0 2px; padding-left: 18px; color: #4c4a5c; }
+  .check .acts { margin-top: 4px; }
+  .check.ok .mark { color: #1c7a45; }
+  .check.working .mark { color: #5541d2; }
+  .check.waiting .mark, .check.optional .mark { color: #8b889c; }
+  .check.needs-you { background: #fff3dc; border-radius: 7px; padding: 6px 8px; }
+  .check.needs-you .mark { color: #975600; }
+  .check.blocked { background: #fdecea; border-radius: 7px; padding: 6px 8px; }
+  .check.blocked .mark { color: #b9342b; }
+  .ready { color: #1c7a45; }
+  .ready b { font-weight: 800; }
+  .ready span { color: #4c4a5c; }
+  .warn { color: #7a4a00; background: #fff3dc; border-radius: 6px; padding: 5px 8px; font-size: 12.5px; }
+  .err { color: #b9342b; white-space: pre-wrap; }
+  .err:empty { display: none; }
+  .lbl { font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; color: #6b6880; font-weight: 800; }
+  .choices { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
+  .choice { text-align: left; border: 1px solid #d9d6e4; background: #fff; border-radius: 8px; padding: 7px 9px; font: 12px/1.4 system-ui, -apple-system, sans-serif;
+    color: #4c4a5c; cursor: pointer; }
+  .choice b { display: block; color: #1f1d29; font-size: 13px; margin-bottom: 1px; }
+  .choice.on { border-color: #5541d2; background: #f1eeff; box-shadow: 0 0 0 1px #5541d2; }
+  .paces { margin-top: 8px; }
+  button.pick { font-weight: 500; padding: 3px 9px; }
+  button.pick.on { background: #5541d2; border-color: #5541d2; color: #fff; }
+  .meta.held { margin-top: 8px; }
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .meta { color: #6b6880; font-size: 12px; }
+  button { font: 650 12.5px/1.2 system-ui, -apple-system, "Segoe UI", sans-serif; color: #1f1d29; background: #fff; border: 1px solid #cfccdc;
+    border-radius: 7px; padding: 5px 11px; cursor: pointer; }
+  button:hover { background: #f2f1f7; }
+  button:focus-visible, .choice:focus-visible { outline: 2px solid #5541d2; outline-offset: 1px; }
+  button:disabled { opacity: .55; cursor: not-allowed; }
+  button.primary { background: #5541d2; border-color: #5541d2; color: #fff; font-size: 13.5px; padding: 7px 16px; }
+  button.primary:hover { background: #4836c0; }
+  button.primary:disabled { background: #a9a2dd; border-color: #a9a2dd; }
+  button.link { background: none; border: 0; padding: 0; color: #5541d2; text-decoration: underline; text-underline-offset: 3px; font-weight: 500; }
+  details { border-top: 1px solid #e6e4ee; padding-top: 7px; }
+  summary { cursor: pointer; color: #1f1d29; }
+  details ul { margin: 6px 0 0; padding-left: 18px; color: #4c4a5c; }
+  details li { margin: 2px 0; }
+  .status { background: #f1eeff; border-radius: 8px; padding: 7px 10px; color: #2d2370; }
+  .status.done { background: #e9f6ee; color: #14532d; }
+  .status.fail { background: #fdecea; color: #7f1d1d; }
+  .plan[hidden] { display: none; }
+  .setup { color: #4c4a5c; font-size: 12.5px; }
+  .setup:empty { display: none; }
+  .cases { display: grid; gap: 2px; }
+  .cases-hd { gap: 10px; }
+  .cases-hd .meta { flex: 1; }
+  .case { display: grid; grid-template-columns: 20px 20px minmax(0, 1fr) auto; gap: 2px 8px; align-items: baseline; padding: 7px 2px; border-top: 1px solid #e6e4ee; }
+  .case .ix { color: #6b6880; text-align: right; font-variant-numeric: tabular-nums; }
+  .case .tt { font-weight: 650; overflow-wrap: anywhere; }
+  .case .why { color: #4c4a5c; overflow-wrap: anywhere; }
+  .case .why b { color: #1f1d29; font-weight: 650; }
+  .case .tg { color: #6b6880; font-size: 12px; white-space: nowrap; }
+  .case .acts { grid-column: 3 / 5; display: flex; gap: 12px; align-items: baseline; flex-wrap: wrap; }
+  .case details { border: 0; padding: 0; margin: 0; }
+  .case summary { color: #6b6880; font-size: 12px; }
+  .case details ul { margin: 3px 0 0; font-size: 12.5px; }
+  .case.off .tt, .case.off .why { color: #8b889c; }
+  .case.off .tt { text-decoration: line-through; text-decoration-color: rgba(139, 136, 156, .6); }
+  button.tick { width: 18px; height: 18px; padding: 0; display: inline-grid; place-items: center; border: 1.5px solid #8b889c; border-radius: 4px;
+    background: #fff; color: transparent; font-size: 12px; line-height: 1; align-self: start; margin-top: 1px; }
+  button.tick[aria-checked="true"] { background: #5541d2; border-color: #5541d2; color: #fff; }
+  .add { display: grid; gap: 6px; border-top: 1px solid #e6e4ee; padding-top: 8px; }
+  .add input { font: 13px system-ui, -apple-system, "Segoe UI", sans-serif; color: #1f1d29; background: #fff; border: 1px solid #cfccdc; border-radius: 6px; padding: 6px 9px; width: 100%; }
+  .add input:focus { outline: 2px solid #5541d2; outline-offset: 0; }
+  button.small { font-weight: 600; padding: 3px 9px; }
+`;
+
+// The case blocks live in the light DOM, where the shadow root's styles
+// don't reach; this sheet goes in with them. Only the case running now shows
+// its steps; the others show their case:: line, verdict and note. The open
+// case hides its attribute lines (id::, proves::, decision:: and the rest).
+const BLOCKS_CSS = `
+  .proof-blocks .proof-case { display: flex; gap: 4px; align-items: flex-start; margin: 0 0 2px; }
+  .proof-blocks .proof-case-icon { flex: none; width: 1.1em; padding-top: 5px; text-align: center; color: #8b889c; }
+  .proof-blocks .proof-case.current .proof-case-icon { color: #5541d2; }
+  .proof-blocks .proof-case.pass .proof-case-icon { color: #1c7a45; }
+  .proof-blocks .proof-case.fail .proof-case-icon { color: #b9342b; }
+  .proof-blocks .proof-case-body { flex: 1; min-width: 0; }
+  .proof-blocks .proof-case:not(.current) .rm-block-children { display: none; }
+  .proof-blocks .proof-case.current .rm-block-children > .roam-block-container:has(> .rm-block-main .rm-block__input > span:first-child > .rm-attr-ref:first-child) { display: none; }
+  .proof-blocks .proof-case.later { opacity: .6; }
+  .proof-blocks .proof-case-note { margin: 0 0 4px 18px; font-size: 12px; color: #6b6880; white-space: pre-wrap; }
+  .proof-blocks .proof-case.fail .proof-case-note { color: #b9342b; }
+  .proof-blocks .proof-case-note:empty { display: none; }
+`;
+
+// Roam lays out in the space above the runner: its body ends where the bar
+// (and any open sheet) begins, and Blueprint dialogs center in that space
+// instead of sliding under the bar. The bar keeps --proof-runner-h current.
+const ROOM_ID = "proof-runner-room";
+const ROOM_CSS = `.roam-body { height: calc(100vh - var(--proof-runner-h, 0px)) !important; }
+.bp3-overlay-scroll-container { bottom: var(--proof-runner-h, 0px) !important; }`;
+
+// Mouse events the case blocks keep to themselves once Roam has handled them,
+// so a click on a step edits the step, not the {{proof}} block around the
+// card. Keys go on: Roam's shortcuts work while editing a step.
+const BLOCK_MOUSE_EVENTS = ["mousedown", "mouseup", "click", "pointerdown"];
+
+const PAUSE_KEY = "proof-runner:pause";
+const PACE_KEY = "proof-runner:pace";
+const POINTER_KEY = "proof-runner:pointer";
+// What an earlier runner kept: a way to run and a tick for pausing after each case.
+const OLD_CHOICE_KEY = "proof-runner:run-choice";
+const OLD_PAUSE_BETWEEN_KEY = "proof-runner:pause-between";
+
+// How a run plays: when it pauses for the person, and its pace. Picked on the
+// card or in the bar, at any time, and kept in this browser.
+export type RunSettings = { pause: PauseSetting; pace: number };
+
+const remember = (key: string, value: string): void => {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    // Kept for this tab only.
+  }
+};
+
+const readPace = (): number => {
+  try {
+    const saved = Number(localStorage.getItem(PACE_KEY));
+    if (PACES.includes(saved)) return saved;
+  } catch {
+    // No storage here: the default.
+  }
+  return 1;
+};
+
+const readPause = (): PauseSetting => {
+  try {
+    const saved = localStorage.getItem(PAUSE_KEY);
+    if (isPauseSetting(saved)) return saved;
+    // Carried over from the three ways to run.
+    const old = localStorage.getItem(OLD_CHOICE_KEY);
+    if (old === "step") return "step";
+    if (old === "result") return "needed";
+    if (localStorage.getItem(OLD_PAUSE_BETWEEN_KEY) === "1") return "case";
+  } catch {
+    // No storage here: the default.
+  }
+  return "failure";
+};
+
+const readPointer = (): PointerSetting => {
+  try {
+    const saved = localStorage.getItem(POINTER_KEY);
+    if (isPointerSetting(saved)) return saved;
+  } catch {
+    // No storage here: the default.
+  }
+  return "cursor";
+};
+
+// "2026-10-07 21:40" as "Oct 7".
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const shortDate = (stamp: string | null): string => {
+  const match = stamp ? /^(\d{4})-(\d{2})-(\d{2})/.exec(stamp) : null;
+  return match ? `${MONTHS[Number(match[2]) - 1]} ${Number(match[3])}` : "";
+};
+
+const ICONS: Record<string, string> = { pass: "✓", fail: "✗", skip: "–" };
+const MARKS: Record<CheckItem["state"], string> = { ok: "✓", working: "…", waiting: "○", "needs-you": "▶", blocked: "✗", optional: "○" };
+
+// A step takes about this long at 1×, before the run has timed any.
+const STEP_MS = 2200;
+
+const el = (tag: string, text?: string, className?: string): HTMLElement => {
+  const node = document.createElement(tag);
+  if (text !== undefined) node.textContent = text;
+  if (className) node.className = className;
+  return node;
+};
+
+const button = (label: string, action: string, extra: { className?: string; title?: string; args?: unknown } = {}): HTMLButtonElement => {
+  const node = document.createElement("button");
+  node.type = "button";
+  node.textContent = label;
+  node.dataset.action = action;
+  if (extra.className) node.className = extra.className;
+  if (extra.title) node.title = extra.title;
+  if (extra.args !== undefined) node.dataset.args = JSON.stringify(extra.args);
+  return node;
+};
+
+// What a case checks, or asks of you, in the words the card lists it with.
+const caseLines = (plan: PlanCase): Array<{ label: string; text: string }> => {
+  if (needOf(plan) === "by-hand") {
+    return [{ label: "You do this by hand:", text: plainText(plan.intent ?? "") }, ...(plan.checks ? [{ label: "Passes if", text: plainText(plan.checks) }] : [])];
+  }
+  const purpose = purposeLine(plan, false);
+  return purpose.text || purpose.label ? [purpose] : [];
+};
+
+// A press on the runner's buttons leaves focus where the run put it: Roam
+// stops editing a block that loses focus, and takes its menus with it.
+const keepFocus = (event: Event): void => {
+  if (event.type === "mousedown" && (event.target as Element | null)?.closest?.("button")) event.preventDefault();
+};
+
+type Parts = {
+  root: ShadowRoot;
+  card: HTMLElement;
+  plan: HTMLElement;
+  setup: HTMLElement;
+  // Light DOM, slotted into plan: the case blocks Roam renders.
+  blocks: HTMLElement;
+  cases: Map<string, CaseMount>;
+  // Which cases' blocks are rendered, and the step last scrolled to.
+  rendered: string;
+  scrolledTo: string;
+  err: HTMLElement;
+};
+
+type CaseMount = { wrapper: HTMLElement; icon: HTMLElement; note: HTMLElement; block: HTMLElement; uid: string | null };
+
+const isLive = (state: MachineState | null | undefined): boolean => Boolean(state && state.phase !== "done" && state.phase !== "stopped");
+
+export class ProofPanel {
+  private view: PanelView | null = null;
+  private readonly mounts = new Map<HTMLElement, Parts>();
+  private flash = "";
+  private flashTimer = 0;
+  private pause: PauseSetting = readPause();
+  private pace = readPace();
+  private pointer: PointerSetting = readPointer();
+  private readonly bar: CaptionBar;
+  private readonly stage: Stage;
+  private lastAsk = "";
+  private lastFailure = "";
+  // Cases the person left out of the next run, on the card; and the add-case form.
+  private readonly left = new Set<string>();
+  private addOpen = false;
+  private addFocused = false;
+  private readonly draft = { title: "", intent: "", passes: "" };
+  // Why the cases left out were left out: one line for the lot.
+  private leaveWhy = "";
+  // How long steps take here, from the run so far.
+  private stepTimes: number[] = [];
+  private lastStep: { key: string; at: number } | null = null;
+
+  constructor(
+    private readonly onAction: (action: PanelAction) => Promise<string | null> | string | null,
+    private readonly renderer: BlockRenderer = roamBlocks,
+  ) {
+    this.bar = new CaptionBar((action) => this.fromBar(action));
+    this.stage = new Stage({
+      held: () => {
+        void Promise.resolve(this.onAction({ kind: "command", cmd: "pause", args: { why: "page" } }));
+      },
+      toggle: () => {
+        const state = this.view?.machine;
+        if (!state || !isLive(state)) return;
+        void Promise.resolve(this.onAction({ kind: "command", cmd: state.paused ? "resume" : "pause" }));
+      },
+      next: () => {
+        if (isLive(this.view?.machine)) void Promise.resolve(this.onAction({ kind: "command", cmd: "next" }));
+      },
+      ours: (event) => {
+        const path = event.composedPath();
+        if (path.includes(this.bar.host)) return true;
+        for (const [host, parts] of this.mounts) {
+          if (path.includes(parts.blocks)) return false;
+          if (path.includes(host)) return true;
+        }
+        return false;
+      },
+    });
+  }
+
+  runSettings(): RunSettings {
+    return { pause: this.pause, pace: this.pace };
+  }
+
+  // How each step's target is shown; the run gives a cursor longer to get there.
+  get pointerSetting(): PointerSetting {
+    return this.pointer;
+  }
+
+  // Puts a run card in host. Roam re-renders blocks, so the same panel may be
+  // mounted again; every mount shows the same state.
+  attach(host: HTMLElement): void {
+    if (this.mounts.has(host)) return;
+    const root = host.shadowRoot ?? host.attachShadow({ mode: "open" });
+    root.replaceChildren();
+    host.replaceChildren();
+    const style = document.createElement("style");
+    style.textContent = CSS;
+    const card = el("div", undefined, "card");
+    const parts: Parts = {
+      root,
+      card,
+      plan: el("div", undefined, "plan"),
+      setup: el("div", undefined, "setup"),
+      blocks: el("div", undefined, "proof-blocks"),
+      cases: new Map(),
+      rendered: "",
+      scrolledTo: "",
+      err: el("div", "", "err"),
+    };
+    parts.err.setAttribute("role", "status");
+    const slot = document.createElement("slot");
+    slot.name = "blocks";
+    parts.plan.append(parts.setup, slot);
+    parts.plan.hidden = true;
+    const sheet = document.createElement("style");
+    sheet.textContent = BLOCKS_CSS;
+    parts.blocks.slot = "blocks";
+    parts.blocks.append(sheet);
+    host.append(parts.blocks);
+    root.append(style, card);
+    // Roam handles mouse and key events on blocks; keep ours to ourselves so a
+    // click on Run doesn't also open the block for editing. The case blocks'
+    // events pass through here too (they're slotted in), and go on to Roam.
+    for (const type of ["mousedown", "mouseup", "click", "keydown", "keyup", "keypress", "pointerdown"]) {
+      card.addEventListener(type, (event) => {
+        if (event.target instanceof Node && parts.blocks.contains(event.target)) return;
+        keepFocus(event);
+        event.stopPropagation();
+      });
+    }
+    for (const type of BLOCK_MOUSE_EVENTS) {
+      parts.blocks.addEventListener(type, (event) => event.stopPropagation());
+    }
+    card.addEventListener("click", (event) => {
+      const target = (event.target as Element | null)?.closest?.("button") as HTMLButtonElement | null;
+      if (target) void this.press(target);
+    });
+    this.mounts.set(host, parts);
+    this.paint(parts);
+  }
+
+  detachGone(): void {
+    for (const [host, parts] of [...this.mounts]) {
+      if (host.isConnected) continue;
+      this.unmountCases(parts);
+      this.mounts.delete(host);
+    }
+  }
+
+  // Takes down every block Roam rendered for this panel, the bar and the stage.
+  dispose(): void {
+    for (const parts of this.mounts.values()) this.unmountCases(parts);
+    this.mounts.clear();
+    this.bar.dispose();
+    this.stage.dispose();
+    document.getElementById(ROOM_ID)?.remove();
+  }
+
+  get attached(): number {
+    this.detachGone();
+    return this.mounts.size;
+  }
+
+  update(view: PanelView): void {
+    this.view = view;
+    this.detachGone();
+    this.timeSteps(view.machine);
+    for (const parts of this.mounts.values()) this.paint(parts);
+    this.syncRun(view);
+  }
+
+  // The step a run is about to act on, from the executor: the ring goes on
+  // it, and the bar steps aside when it's underneath.
+  target(element: Element | null, verb = "", leadMs = 0): void {
+    this.stage.ring(element, verb, leadMs);
+    this.bar.setDodge(Boolean(element && this.bar.covers(element.getBoundingClientRect())));
+  }
+
+  showError(message: string): void {
+    this.flash = message;
+    clearTimeout(this.flashTimer);
+    this.flashTimer = window.setTimeout(() => {
+      this.flash = "";
+      this.repaint();
+    }, 7000);
+    this.repaint();
+    if (this.bar.showing) this.bar.showError(message);
+  }
+
+  private repaint(): void {
+    for (const parts of this.mounts.values()) this.paint(parts);
+  }
+
+  // Keeps a moving average of how long a step takes, for the forecast.
+  private timeSteps(state: MachineState | null): void {
+    if (!state || !isLive(state) || state.paused || state.pending) {
+      this.lastStep = null;
+      return;
+    }
+    const key = `${state.caseIndex}/${state.stepIndex}`;
+    const now = Date.now();
+    if (this.lastStep && this.lastStep.key !== key) {
+      const took = now - this.lastStep.at;
+      if (took > 0 && took < 30_000) this.stepTimes = [...this.stepTimes.slice(-19), took];
+    }
+    if (!this.lastStep || this.lastStep.key !== key) this.lastStep = { key, at: now };
+  }
+
+  private msPerStep(state: MachineState): number {
+    if (this.stepTimes.length >= 3) return this.stepTimes.reduce((sum, value) => sum + value, 0) / this.stepTimes.length;
+    return STEP_MS / Math.max(0.25, state.speed);
+  }
+
+  // The bar, the frame, the ring, held input and the tab title follow the run.
+  private syncRun(view: PanelView): void {
+    const state = view.machine;
+    const run = view.run;
+    if (!state || !run) {
+      this.bar.update(null);
+      this.stage.setLive(false);
+      this.stage.setDriver("none");
+      this.stage.ring(null);
+      this.stage.setTitle(null);
+      document.getElementById(ROOM_ID)?.remove();
+      return;
+    }
+    const live = isLive(state);
+    this.bar.update({
+      title: view.title,
+      state,
+      kinds: run.kinds,
+      msPerStep: this.msPerStep(state),
+      facts: run.facts,
+      notTested: view.kit?.notTested.length ?? 0,
+      stepUid: view.blocks.step,
+      pause: run.pause,
+      pointer: this.pointer,
+      scope: run.scope,
+      rerun: run.rerun,
+      agent: view.agent,
+      startedAt: run.startedAt,
+      endedAt: run.endedAt,
+      history: run.history,
+    });
+    const driving = live && !state.paused && !state.pending && state.phase !== "waiting-next";
+    const failure = state.pending?.kind === "failure" || state.pending?.kind === "check-failed";
+    this.stage.setPointer(this.pointer);
+    this.stage.setLive(live);
+    this.stage.setHolding(driving);
+    this.stage.setDriver(!live ? "none" : failure && !this.bar.doingIt ? "held" : driving ? "run" : "you");
+    // Whether the person uses the page while a failure waits, for Try again's record.
+    const failing = live && failure && state.pending ? `${state.pending.kind}:${state.pending.caseId}:${state.stepIndex}` : "";
+    if (failing !== this.lastFailure) this.stage.resetTouched();
+    this.lastFailure = failing;
+    if (!live || (!state.executing && state.phase !== "dwell")) {
+      this.stage.ring(null);
+      this.bar.setDodge(false);
+    }
+    // The tab says where the run is, and whether it needs you.
+    const failed = state.plan.filter((item) => state.results[item.id] === "fail").length;
+    if (live) {
+      const where = state.caseIndex < 0 ? "setup" : `${state.caseIndex + 1}/${state.caseCount}`;
+      this.stage.setTitle(driving ? `▶ ${where}` : state.paused ? `❚❚ Paused ${where}` : "● Your turn");
+    } else if (this.bar.showing) {
+      this.stage.setTitle(state.phase === "stopped" ? "❚❚ Stopped" : failed ? `✗ ${failed} failed` : "✓ Passed");
+    } else {
+      this.stage.setTitle(null);
+    }
+    // A chime when the run starts waiting on a person who looked away.
+    const ask = live && state.pending ? `${state.pending.kind}:${state.pending.caseId}` : "";
+    if (ask && ask !== this.lastAsk) this.stage.chime();
+    this.lastAsk = ask;
+    if (live && !document.getElementById(ROOM_ID)) {
+      const style = document.createElement("style");
+      style.id = ROOM_ID;
+      style.textContent = ROOM_CSS;
+      document.head.append(style);
+    } else if (!live && !this.bar.showing) {
+      document.getElementById(ROOM_ID)?.remove();
+    }
+  }
+
+  private async fromBar(action: BarAction): Promise<string | null> {
+    if (action.kind === "closed") {
+      if (this.view) this.syncRun(this.view);
+      return null;
+    }
+    if (action.kind === "run" || action.kind === "rerun") {
+      this.stage.prime();
+      return this.onAction(action.kind === "run" ? this.runRequest() : { kind: "rerun" });
+    }
+    if (action.kind === "ask-agent") return this.onAction({ kind: "ask-agent" });
+    // A setting changed in the bar during the run: kept for later runs too.
+    if (action.kind === "setting") return this.setting(action);
+    // Who has the screen changed in the bar alone.
+    if (action.kind === "turn") {
+      if (this.view) this.syncRun(this.view);
+      return null;
+    }
+    // Try again records whether the person used the page first.
+    if (action.kind === "command" && action.cmd === "retry" && this.stage.touched) {
+      return this.onAction({ ...action, args: { ...(action.args ?? {}), touched: true } });
+    }
+    const result = await this.onAction(action);
+    if (this.view) this.syncRun(this.view);
+    return result;
+  }
+
+  // A setting picked on the card, or in the bar during a run: kept in this
+  // browser, and handed to the run going now.
+  private async setting(action: Extract<PanelAction, { kind: "setting" }>): Promise<string | null> {
+    // The pointer is the stage's alone: the run itself doesn't change.
+    if (action.key === "pointer") {
+      this.pointer = action.value;
+      remember(POINTER_KEY, action.value);
+      this.stage.setPointer(action.value);
+      if (this.view) this.syncRun(this.view);
+      return null;
+    }
+    if (action.key === "pause") {
+      this.pause = action.value;
+      remember(PAUSE_KEY, action.value);
+    } else {
+      this.pace = action.value;
+      remember(PACE_KEY, String(action.value));
+    }
+    this.repaint();
+    return this.onAction(action);
+  }
+
+  // The cases the person left out that this kit still has.
+  private leaveList(): string[] {
+    const ids = new Set((this.view?.kit?.list ?? []).map((item) => item.plan.id));
+    return [...this.left].filter((id) => ids.has(id));
+  }
+
+  // Run, less the cases left out, with the reason given for them.
+  private runRequest(): PanelAction {
+    const leave = this.leaveList();
+    return leave.length ? { kind: "run", leave, why: this.leaveWhy.trim() } : { kind: "run", leave };
+  }
+
+  private async press(target: HTMLButtonElement): Promise<void> {
+    const action = target.dataset.action ?? "";
+    const args = target.dataset.args ? (JSON.parse(target.dataset.args) as Record<string, unknown>) : {};
+    if (action === "pick-case") {
+      const id = String(args.id ?? "");
+      if (this.left.has(id)) this.left.delete(id);
+      else this.left.add(id);
+      this.repaint();
+      return;
+    }
+    if (action === "pick-all" || action === "pick-none") {
+      this.left.clear();
+      if (action === "pick-none") for (const item of this.view?.kit?.list ?? []) this.left.add(item.plan.id);
+      this.repaint();
+      return;
+    }
+    if (action === "add-open" || action === "add-cancel") {
+      this.addOpen = action === "add-open";
+      this.repaint();
+      return;
+    }
+    if (action === "add-case") {
+      const title = this.draft.title.trim();
+      if (!title) return this.showError("Say what the case should check.");
+      const error = await this.onAction({ kind: "add-case", title, intent: this.draft.intent.trim(), passes: this.draft.passes.trim() });
+      if (error) return this.showError(error);
+      Object.assign(this.draft, { title: "", intent: "", passes: "" });
+      this.addOpen = false;
+      this.repaint();
+      return;
+    }
+    if (action === "edit-case") {
+      const error = await this.onAction({ kind: "edit-case", caseId: String(args.caseId ?? "") });
+      if (error) this.showError(error);
+      return;
+    }
+    if (action === "set-pause" && isPauseSetting(args.value)) {
+      const error = await this.setting({ kind: "setting", key: "pause", value: args.value });
+      if (error) this.showError(error);
+      return;
+    }
+    if (action === "set-pace") {
+      const error = await this.setting({ kind: "setting", key: "pace", value: Number(args.value) });
+      if (error) this.showError(error);
+      return;
+    }
+    if (action === "show-result") {
+      this.bar.openResult();
+      if (this.view) this.syncRun(this.view);
+      return;
+    }
+    if (action === "run" || action === "resume" || action === "rerun") this.stage.prime();
+    const request: PanelAction | null =
+      action === "run" ? this.runRequest() : OWN_ACTIONS.has(action) ? ({ kind: action } as PanelAction) : { kind: "command", cmd: action, args };
+    const error = await this.onAction(request);
+    if (error) this.showError(error);
+  }
+
+  private paint(parts: Parts): void {
+    const view = this.view;
+    if (!view) return;
+    const state = view.machine;
+    const card = parts.card;
+    // A repaint keeps the keyboard where the person had it in the add-case form.
+    const typing = parts.root.activeElement as HTMLInputElement | null;
+    const field = typing?.dataset?.field ?? null;
+    const caret = field ? typing?.selectionStart ?? null : null;
+    card.replaceChildren();
+    card.append(this.paintHead(view));
+    const body = el("div", undefined, "body");
+    const live = Boolean(state && isLive(state));
+    if (state && live) {
+      // One line while the run goes: the bar at the bottom carries the rest.
+      const where = state.caseIndex < 0 ? "Setting up the graph" : `Case ${state.caseIndex + 1} of ${state.caseCount} is running`;
+      body.append(el("div", `${where}. The controls are in the bar at the bottom of the window.`, "status"));
+    } else {
+      body.append(this.paintChecklist(view));
+      for (const text of view.warnings) body.append(el("div", text, "warn"));
+      if (view.kit && !view.last) body.append(el("div", "Nobody has run this kit in Roam yet, so a failure may be the kit's own. When one happens, the run asks you.", "warn"));
+      if (state) body.append(this.paintEnded(state));
+      const list = this.paintList(view);
+      if (list) body.append(list);
+      body.append(this.paintStart(view));
+      const folds = this.paintFolds(view);
+      if (folds) body.append(folds);
+    }
+    parts.plan.hidden = !state || live;
+    body.append(parts.plan);
+    parts.err.textContent = [view.error, this.flash].filter(Boolean).join("\n");
+    body.append(parts.err);
+    card.append(body);
+    this.paintPlan(parts, view);
+    const again = field ? (parts.root.querySelector(`[data-field="${field}"]`) as HTMLInputElement | null) : null;
+    if (again) {
+      again.focus({ preventScroll: true });
+      if (caret !== null) again.setSelectionRange(caret, caret);
+    }
+  }
+
+  private paintHead(view: PanelView): HTMLElement {
+    const head = el("div", undefined, "head");
+    const kit = view.kit;
+    const eyebrow = ["Proof", kit?.pr ? `PR #${kit.pr}` : null, kit?.ticket].filter(Boolean).join(" · ");
+    head.append(el("div", eyebrow, "eyebrow"), el("div", plainText(view.title), "title"), el("div", plainText(kit?.claim ?? ""), "claim"));
+    if (kit) {
+      const facts = el("div", undefined, "facts");
+      const last = view.last?.summary ?? null;
+      // What this run plays: the cases that are ticked.
+      const left = new Set(this.leaveList());
+      const played = kit.list.filter((item) => !left.has(item.plan.id));
+      const mine = kit.list.length
+        ? {
+            cases: played.length,
+            steps: played.reduce((sum, item) => sum + item.plan.steps.length, 0),
+            judge: played.filter((item) => needOf(item.plan) === "judge").length,
+            byHand: played.filter((item) => needOf(item.plan) === "by-hand").length,
+          }
+        : kit;
+      // The last run's length when the page has one; otherwise a guess from the step count.
+      const time =
+        last && last.minutes !== null && !left.size
+          ? `${last.minutes ? `${last.minutes} min` : "under a minute"} last time`
+          : `${duration(mine.steps * STEP_MS + mine.cases * 1500)}, a guess`;
+      facts.append(el("span", `${left.size ? `${mine.cases} of ${kit.cases}` : mine.cases} case${kit.cases === 1 ? "" : "s"}`, "fact"), el("span", time, "fact"));
+      const asks = [mine.judge ? `${mine.judge} call${mine.judge === 1 ? "" : "s"} by eye` : "", mine.byHand ? `${mine.byHand} by hand` : ""].filter(Boolean);
+      facts.append(
+        asks.length
+          ? el("span", `Needs you ${mine.judge + mine.byHand} time${mine.judge + mine.byHand === 1 ? "" : "s"}: ${asks.join(", ")}`, "fact you")
+          : el("span", "Won't need you unless something fails", "fact ok"),
+      );
+      facts.append(this.lastRunFact(view));
+      head.append(facts);
+    }
+    return head;
+  }
+
+  // Whether the kit has run in Roam, and how its last run went.
+  private lastRunFact(view: PanelView): HTMLElement {
+    const last = view.last;
+    if (!last) return el("span", "Not run in Roam yet", "fact you");
+    const run = last.summary;
+    const where = last.thisBuild === true ? " on this build" : last.thisBuild === false ? " on an older build" : "";
+    const when = shortDate(run.when);
+    const tail = `${where}${when ? `, ${when}` : ""}`;
+    if (run.stopped) return el("span", `Last run: stopped, ${run.passed} of ${run.total} passed${tail}`, "fact grey");
+    if (run.failed) return el("span", `Last run: ${run.failed} failed${tail}`, "fact bad");
+    if (run.left) return el("span", `Last run: ${run.passed} of ${run.total} passed, ${run.left} left out${tail}`, "fact you");
+    if (run.skipped) return el("span", `Last run: ${run.passed} of ${run.total} passed, ${run.skipped} couldn't be tested${tail}`, "fact you");
+    return el("span", `Last run: ${run.passed} of ${run.total} passed${tail}`, last.thisBuild === false ? "fact grey" : "fact ok");
+  }
+
+  // Each need with its mark and, when it isn't met, the button that meets
+  // it. Once every need is met they fold into one line.
+  private paintChecklist(view: PanelView): HTMLElement {
+    const box = el("div", undefined, "checks");
+    const items = view.checklist;
+    if (items.length && items.every((item) => item.state === "ok")) {
+      const ready = el("div", undefined, "ready");
+      ready.append(el("b", "✓ Ready"), el("span", ` · ${items.filter((item) => item.id !== "runner").map((item) => item.detail).join(" · ") || items[0].detail}`));
+      box.append(ready);
+      const extras = items.filter((item) => item.secondary);
+      if (extras.length) {
+        const row = el("div", undefined, "row");
+        for (const item of extras) if (item.secondary) row.append(button(item.secondary.label, item.secondary.kind, { title: `${item.label}: ${item.secondary.label}` }));
+        box.append(row);
+      }
+      return box;
+    }
+    for (const item of items) {
+      const row = el("div", undefined, `check ${item.state}`);
+      row.dataset.check = item.id;
+      const what = el("div", undefined, "what");
+      what.append(el("span", `${item.label}: `, "label"), el("span", item.detail, "detail"));
+      if (item.list?.length) {
+        const list = el("ul");
+        for (const line of item.list) list.append(el("li", line));
+        what.append(list);
+      }
+      const acts = [item.action, item.secondary].filter((act): act is NonNullable<typeof act> => Boolean(act));
+      if (acts.length) {
+        const row2 = el("div", undefined, "row acts");
+        for (const act of acts) row2.append(button(act.label, act.kind, { className: act === item.action ? "primary" : "" }));
+        what.append(row2);
+      }
+      row.append(el("span", MARKS[item.state], "mark"), what);
+      box.append(row);
+    }
+    return box;
+  }
+
+  private paintEnded(state: MachineState): HTMLElement {
+    const failed = state.plan.filter((item) => state.results[item.id] === "fail").length;
+    const passed = state.plan.filter((item) => state.results[item.id] === "pass").length;
+    const stopped = state.phase === "stopped";
+    const line = el("div", undefined, `status ${stopped ? "" : failed ? "fail" : "done"}`);
+    const words = stopped
+      ? `Stopped after ${passed} passed${failed ? `, ${failed} failed` : ""}.`
+      : `${failed ? "✗" : "✓"} ${passed} of ${state.plan.length} passed${failed ? `, ${failed} failed` : ""}.`;
+    line.append(document.createTextNode(`${words} `), button("See the result", "show-result", { className: "link" }));
+    return line;
+  }
+
+  // Every case the run plays, before it starts: what each checks and asks of
+  // you, with a tick to leave it out of this run, and a way to add one.
+  private paintList(view: PanelView): HTMLElement | null {
+    const kit = view.kit;
+    if (!kit?.list.length) return null;
+    const left = new Set(this.leaveList());
+    const plays = kit.list.length - left.size;
+    const box = el("div", undefined, "cases");
+    const head = el("div", undefined, "row cases-hd");
+    head.append(
+      el("span", "Cases", "lbl"),
+      el("span", `${left.size ? `${plays} of ${kit.list.length}` : `all ${plays}`} will run`, "meta"),
+      button("All", "pick-all", { className: "link" }),
+      button("None", "pick-none", { className: "link" }),
+    );
+    box.append(head);
+    kit.list.forEach(({ plan, uid }, index) => {
+      const off = left.has(plan.id);
+      const row = el("div", undefined, `case${off ? " off" : ""}`);
+      row.dataset.case = plan.id;
+      const tick = button("✓", "pick-case", { className: "tick", args: { id: plan.id }, title: off ? "Left out of this run. Tick to run it." : "Runs. Untick to leave it out." });
+      tick.setAttribute("role", "checkbox");
+      tick.setAttribute("aria-checked", String(!off));
+      tick.setAttribute("aria-label", `Run case ${index + 1}: ${plainText(plan.title)}`);
+      const what = el("div", undefined, "what");
+      what.append(el("div", plainText(plan.title), "tt"));
+      for (const line of caseLines(plan)) {
+        const why = el("div", undefined, "why");
+        if (line.label) why.append(el("b", `${line.label} `));
+        why.append(document.createTextNode(line.text));
+        what.append(why);
+      }
+      if (plan.steps.length) {
+        const steps = el("details");
+        steps.append(el("summary", `${plan.steps.length} step${plan.steps.length === 1 ? "" : "s"}`));
+        const list = el("ul");
+        for (const step of plan.steps) list.append(el("li", plainText(step.why)));
+        steps.append(list);
+        what.append(steps);
+      }
+      const need = needOf(plan);
+      const covers = kit.doneWhen.filter((bullet) => bullet.caseIds.includes(plan.id)).map((bullet) => bullet.number);
+      const tag = [covers.length ? `Done When ${covers.join(", ")}` : "", need === "judge" ? "you'll judge" : need === "by-hand" ? "by hand" : ""].filter(Boolean).join(" · ");
+      row.append(tick, el("span", String(index + 1), "ix"), what, el("span", tag, "tg"));
+      if (uid) {
+        const acts = el("div", undefined, "acts");
+        acts.append(button("Edit", "edit-case", { className: "link", args: { caseId: plan.id }, title: "Opens this case's block in the right sidebar. Changes apply from the next Run." }));
+        row.append(acts);
+      }
+      box.append(row);
+    });
+    if (left.size) {
+      const why = el("div", undefined, "add");
+      const field = document.createElement("input");
+      field.type = "text";
+      field.placeholder = "Why leave these out? One line";
+      field.value = this.leaveWhy;
+      field.dataset.field = "leaveWhy";
+      field.setAttribute("aria-label", "Why leave these cases out");
+      // Run waits on this line, so the card repaints as it's typed; the keyboard stays in the field.
+      field.addEventListener("input", () => {
+        this.leaveWhy = field.value;
+        this.repaint();
+      });
+      why.append(field, el("div", "Cases can build on earlier ones, so leaving one out can make a later one fail. The result says what was left out, and why.", "meta"));
+      box.append(why);
+    }
+    if (this.addOpen) {
+      const form = el("div", undefined, "add");
+      form.append(el("div", "Add a case", "lbl"), el("div", "It runs by hand, after the others. It's saved on the kit page as a proposal for the kit's author, so the kit itself doesn't change.", "meta"));
+      const make = (name: "title" | "intent" | "passes", placeholder: string): HTMLInputElement => {
+        const field = document.createElement("input");
+        field.type = "text";
+        field.placeholder = placeholder;
+        field.value = this.draft[name];
+        field.dataset.field = name;
+        field.setAttribute("aria-label", placeholder);
+        field.addEventListener("input", () => {
+          this.draft[name] = field.value;
+        });
+        field.addEventListener("keydown", (event) => {
+          if (event.key !== "Enter") return;
+          event.preventDefault();
+          (form.querySelector('button[data-action="add-case"]') as HTMLButtonElement | null)?.click();
+        });
+        return field;
+      };
+      form.append(make("title", "What should work? (the case's title)"), make("intent", "What to do (optional)"), make("passes", "Passes if (optional)"));
+      const row = el("div", undefined, "row");
+      row.append(button("Add case", "add-case", { className: "primary small" }), button("Cancel", "add-cancel"));
+      form.append(row);
+      box.append(form);
+      // The form opens with the keyboard in it.
+      if (!this.addFocused) {
+        this.addFocused = true;
+        queueMicrotask(() => (form.querySelector('[data-field="title"]') as HTMLInputElement | null)?.focus({ preventScroll: true }));
+      }
+    } else {
+      this.addFocused = false;
+      box.append(button("＋ Add a case", "add-open", { className: "link" }));
+    }
+    return box;
+  }
+
+  private paintStart(view: PanelView): HTMLElement {
+    const box = el("div", undefined, "start");
+    const state = view.machine;
+    box.append(el("div", "When should the run pause?", "lbl"));
+    const choices = el("div", undefined, "choices");
+    for (const option of PAUSES) {
+      const on = this.pause === option.value;
+      const node = button("", "set-pause", { className: `choice${on ? " on" : ""}`, args: { value: option.value } });
+      node.setAttribute("aria-pressed", String(on));
+      node.append(el("b", `${on ? "◉" : "○"} ${option.label}`), document.createTextNode(option.hint));
+      choices.append(node);
+    }
+    box.append(choices);
+    const paces = el("div", undefined, "row paces");
+    paces.append(el("span", "Pace", "lbl"));
+    for (const pace of PACES) {
+      const pick = button(paceLabel(pace), "set-pace", { className: `pick${this.pace === pace ? " on" : ""}`, args: { value: pace } });
+      pick.setAttribute("aria-pressed", String(this.pace === pace));
+      paces.append(pick);
+    }
+    paces.append(el("span", "Both can change during the run, in the bar.", "meta"));
+    box.append(paces);
+    const row = el("div", undefined, "row");
+    row.style.marginTop = "10px";
+    const count = view.kit?.cases ?? 0;
+    const plays = count - this.leaveList().length;
+    const some = plays < count;
+    const run = button(
+      state ? `Run again${some ? ` (${plays} of ${count})` : ""}` : plays ? `▶ Run ${some ? `${plays} of ${count}` : plays} case${count === 1 ? "" : "s"}` : "▶ Run",
+      "run",
+      { className: "primary", title: view.blocked ?? (some ? "Run the cases that are ticked" : "Run every case on this page") },
+    );
+    const unsaid = some && !this.leaveWhy.trim();
+    run.disabled = Boolean(view.error) || Boolean(view.blocked) || (Boolean(view.kit) && plays === 0) || unsaid;
+    row.append(run);
+    if (view.resumable && !state) row.append(button(`Resume from case ${view.resumable.caseIndex + 1}`, "resume"));
+    const rerun = view.run?.rerun ?? 0;
+    if (state && rerun) row.append(button(`Run the ${rerun === 1 ? "one" : rerun} that didn't pass`, "rerun"));
+    if (state || view.resumable) row.append(button("Reset", "reset", { title: "Forget this tab's run of the kit" }));
+    if (view.blocked) row.append(el("span", `Waiting on ${view.blocked.split(":")[0]}`, "meta"));
+    else if (view.kit && plays === 0) row.append(el("span", "Every case is left out. Tick at least one.", "meta"));
+    else if (unsaid) row.append(el("span", "Say why you left cases out, then Run.", "meta"));
+    box.append(row);
+    // Said before the first click is held, so it doesn't read as Roam freezing.
+    box.append(el("div", "While it runs, a click on the page pauses the run instead of landing. Scrolling still works, and Ctrl+Alt+Space pauses too.", "meta held"));
+    return box;
+  }
+
+  private paintFolds(view: PanelView): HTMLElement | null {
+    const kit = view.kit;
+    const box = el("div");
+    const fold = (summary: string, lines: string[]): void => {
+      const details = el("details");
+      details.append(el("summary", summary));
+      const list = el("ul");
+      for (const line of lines) list.append(el("li", line));
+      details.append(list);
+      box.append(details);
+    };
+    if (kit) {
+      const results = view.machine?.results ?? {};
+      if (kit.doneWhen.length || kit.other) {
+        const lines = kit.doneWhen.map((bullet) => {
+          const verdict = view.machine ? bulletVerdict(bullet, results) : null;
+          return `${verdict ? `${ICONS[verdict]} ` : ""}Done When ${bullet.number}: ${plainText(bullet.text) || "(the kit doesn't say)"} · ${bullet.caseIds.length} case${bullet.caseIds.length === 1 ? "" : "s"}`;
+        });
+        if (kit.other) lines.push(`${kit.other} more case${kit.other === 1 ? "" : "s"} for what the change could break next to it.`);
+        fold(`What it checks: ${kit.doneWhen.length ? `${kit.doneWhen.length} Done When bullet${kit.doneWhen.length === 1 ? "" : "s"}, ` : ""}${kit.other} more case${kit.other === 1 ? "" : "s"}`, lines);
+      }
+      if (kit.notTested.length) {
+        fold(
+          `Not tested, and why (${kit.notTested.length})`,
+          kit.notTested.map((item) => plainText(`${item.title}${item.reason ? `: ${item.reason}` : ""}`)),
+        );
+      }
+      if (kit.proposed) box.append(el("div", `${kit.proposed} proposed case${kit.proposed === 1 ? " waits" : "s wait"} for a decision and won't run.`, "meta"));
+    }
+    return box.childElementCount ? box : null;
+  }
+
+  // Every case of the run as its own block, with its verdict beside it; the
+  // case running now shows its steps, and the runner's marks tint the step.
+  private paintPlan(parts: Parts, view: PanelView): void {
+    const state = view.machine;
+    parts.plan.hidden = !state || isLive(state);
+    parts.setup.replaceChildren();
+    if (state && state.caseIndex < 0 && isLive(state)) {
+      parts.setup.textContent = `Setup, step ${state.stepIndex + 1} of ${state.stepCount}: ${state.stepWhy ?? "preparing the data and settings the cases need"}`;
+    }
+    const plan = state?.plan ?? [];
+    const rendered = plan.map((item) => `${item.id}=${view.blocks.cases[item.id] ?? ""}`).join(" ");
+    if (rendered !== parts.rendered) {
+      this.renderCases(parts, view);
+      parts.rendered = rendered;
+    }
+    plan.forEach((item, index) => {
+      const mount = parts.cases.get(item.id);
+      if (!mount || !state) return;
+      const current = index === state.caseIndex && isLive(state);
+      const later = !item.verdict && index > state.caseIndex;
+      mount.wrapper.className = `proof-case${current ? " current" : later ? " later" : ""}${item.verdict ? ` ${item.verdict}` : ""}`;
+      mount.icon.textContent = item.verdict ? (ICONS[item.verdict] ?? "•") : current ? "▶" : "○";
+      mount.note.textContent = item.verdict && item.note ? item.note : "";
+    });
+    this.scrollToNow(parts, view);
+  }
+
+  private renderCases(parts: Parts, view: PanelView): void {
+    this.unmountCases(parts);
+    const plan = view.machine?.plan ?? [];
+    for (const item of plan) {
+      const uid = view.blocks.cases[item.id] ?? null;
+      const mount: CaseMount = {
+        wrapper: el("div", undefined, "proof-case"),
+        icon: el("span", "○", "proof-case-icon"),
+        note: el("div", "", "proof-case-note"),
+        block: el("div", uid ? undefined : `case:: ${item.title}`, "proof-case-block"),
+        uid,
+      };
+      mount.wrapper.dataset.case = item.id;
+      const body = el("div", undefined, "proof-case-body");
+      body.append(mount.block, mount.note);
+      mount.wrapper.append(mount.icon, body);
+      parts.blocks.append(mount.wrapper);
+      parts.cases.set(item.id, mount);
+      if (uid) {
+        void Promise.resolve()
+          .then(() => (parts.cases.get(item.id) === mount ? this.renderer.render(uid, mount.block) : undefined))
+          .catch((error: unknown) => {
+            mount.block.textContent = `case:: ${item.title} (Roam didn't render its block: ${error instanceof Error ? error.message : String(error)})`;
+          });
+      }
+    }
+    parts.scrolledTo = "";
+  }
+
+  private unmountCases(parts: Parts): void {
+    for (const mount of parts.cases.values()) {
+      if (mount.uid) {
+        try {
+          this.renderer.unmount(mount.block);
+        } catch {
+          // Already gone with its host.
+        }
+      }
+      mount.wrapper.remove();
+    }
+    parts.cases.clear();
+    parts.rendered = "";
+  }
+
+  // Brings the step running now into view once each time it changes, and
+  // never while someone is editing a block in the card.
+  private scrollToNow(parts: Parts, view: PanelView): void {
+    const state = view.machine;
+    if (!state || !isLive(state) || state.caseIndex < 0 || !state.caseId) return;
+    // Never while the run drives: scrolling the page could move what a step is about to click.
+    if (!state.pending && !state.paused) return;
+    const key = `${state.caseId}/${view.blocks.step ?? ""}/${state.phase === "step-failed"}`;
+    if (key === parts.scrolledTo) return;
+    const active = document.activeElement;
+    if (active && parts.blocks.contains(active) && active.matches("textarea, input")) return;
+    const step = view.blocks.step ? parts.blocks.querySelector(`[id$="-${view.blocks.step}"]`) : null;
+    if (step) {
+      (step.closest(".roam-block-container") ?? step).scrollIntoView?.({ block: "nearest" });
+      parts.scrolledTo = key;
+      return;
+    }
+    // Roam renders blocks a moment later: show the case until the step is there.
+    if (parts.scrolledTo === `${key} case`) return;
+    parts.cases.get(state.caseId)?.wrapper.scrollIntoView?.({ block: "nearest" });
+    parts.scrolledTo = view.blocks.step ? `${key} case` : key;
+  }
+}

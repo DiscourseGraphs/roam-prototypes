@@ -1,0 +1,12 @@
+{
+  "page.open": {
+    "why": "open a page by its title",
+    "params": { "title": { "type": "string" } },
+    "steps": [
+      {
+        "do": { "js": "proof.page.open({{json with.title}})" },
+        "why": "open the page and wait for Roam to show it"
+      }
+    ]
+  }
+}

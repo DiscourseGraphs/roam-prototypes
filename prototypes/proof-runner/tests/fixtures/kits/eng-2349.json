@@ -1,0 +1,167 @@
+{
+  "name": "eng-2349",
+  "title": "Fix overlapping controls in Roam's tentative relation rows",
+  "baseline": "dg-baseline@1",
+  "target": {
+    "slot": "3",
+    "pr": 1509,
+    "viewport": {
+      "width": 1024,
+      "height": 720
+    }
+  },
+  "needs": [
+    "supabase",
+    "embed-stub"
+  ],
+  "prepare": [
+    {
+      "id": "database-session",
+      "why": "the extension has a proof database session for this graph; the proof database runs without edge functions, so this signs in the way create-space would",
+      "phase": "before-load",
+      "check": {
+        "js": "proof.supabase.signedIn()"
+      },
+      "apply": {
+        "js": "proof.supabase.signIn({ serviceKey: '{{env.SUPABASE_SERVICE_ROLE_KEY}}', publishableKey: '{{env.SUPABASE_PUBLISHABLE_KEY}}' })"
+      },
+      "settleMs": 1000
+    },
+    {
+      "id": "stored-relations-on",
+      "why": "Stored Relations is on, so the popover shows Add relation and pending rows",
+      "phase": "in-session",
+      "apply": {
+        "steps": [
+          {
+            "use": "settings.stored-relations",
+            "with": {
+              "on": true
+            },
+            "why": "turn Stored Relations on"
+          }
+        ]
+      }
+    },
+    {
+      "id": "context-overlay-on",
+      "why": "the Discourse context overlay is on, so page refs to nodes get the popover button",
+      "phase": "in-session",
+      "apply": {
+        "steps": [
+          {
+            "use": "overlay.context-on",
+            "why": "turn the overlay on"
+          }
+        ]
+      }
+    },
+    {
+      "id": "pending-review-claim",
+      "why": "a claim with two imported relations pending review, one with a long title, and none accepted",
+      "phase": "in-session",
+      "apply": {
+        "js": "(async () => { const claim = '[[CLM]] - PK pending review claim'; const claimUid = await proof.page.ensure(claim, ['A claim with imported relations waiting for review and none accepted.']); const longUid = await proof.page.ensure('[[EVD]] - Structured onboarding notes cut the time a new contributor needs before a first merged change from three weeks to under two - [[@PK baseline source]]', ['Evidence with a long title.']); const shortUid = await proof.page.ensure('[[EVD]] - Pairing sessions shorten onboarding - [[@PK baseline source]]', ['Evidence with a short title.']); await proof.relations.removeTouching([claimUid]); const schemaUid = proof.relations.schemaId('Supports') || 'Supports-1'; await proof.relations.createTentative({ sourceUid: longUid, destinationUid: claimUid, schemaUid }); await proof.relations.createTentative({ sourceUid: shortUid, destinationUid: claimUid, schemaUid }); await proof.page.recreate('PK pending review scratch', ['Waiting for review: [[' + claim + ']]']); })()"
+      }
+    }
+  ],
+  "cases": [
+    {
+      "id": "add-relation-above-pending",
+      "title": "Add relation sits above the pending review list",
+      "caption": "On a claim with no accepted relations, the context popover now stacks Add relation above the pending review list, so the button no longer covers the rows, even with a long title in a narrow window.",
+      "steps": [
+        {
+          "use": "page.open",
+          "with": {
+            "title": "PK pending review scratch"
+          },
+          "why": "open a page that references the claim"
+        },
+        {
+          "do": {
+            "wait_for": ".roam-article button.roamjs-discourse-context-overlay"
+          },
+          "why": "wait for the overlay button next to the reference"
+        },
+        {
+          "do": {
+            "click": ".roam-article button.roamjs-discourse-context-overlay >> nth=0"
+          },
+          "why": "open the claim's context popover"
+        },
+        {
+          "do": {
+            "wait_for": ".roamjs-discourse-context-popover .roamjs-discourse-tentative-relations"
+          },
+          "why": "wait for the pending review list"
+        },
+        {
+          "do": {
+            "pause": 2
+          },
+          "why": "hold on the layout"
+        }
+      ],
+      "expect": {
+        "js": "(() => { const pop = document.querySelector('.roamjs-discourse-context-popover'); proof.assert(pop, 'The context popover is not open.'); const add = proof.byText('button', 'Add relation', pop); const pending = pop.querySelector('.roamjs-discourse-tentative-relations'); proof.assert(add, 'The popover has no Add relation button.'); proof.assert(pending, 'The popover has no pending review list.'); proof.assert(!proof.overlaps(add, pending), 'Add relation overlaps the pending review list.'); proof.assert(proof.rect(add).bottom <= proof.rect(pending).top + 1, 'Add relation is not above the pending review list.'); })()"
+      }
+    },
+    {
+      "id": "remove-targets-its-row",
+      "title": "Remove on the Pairing sessions row removes that relation",
+      "caption": "Each row's buttons act on their own relation: removing the Pairing sessions row leaves the other relation pending.",
+      "steps": [
+        {
+          "do": {
+            "click": ".roamjs-discourse-tentative-relations div.flex:has-text(\"Pairing sessions\") button[title=\"Remove relation\"]"
+          },
+          "why": "remove the short-title relation"
+        },
+        {
+          "do": {
+            "wait_for": ".bp3-toast:has-text(\"Relation removed\")"
+          },
+          "why": "wait for the confirmation"
+        },
+        {
+          "do": {
+            "pause": 1.5
+          },
+          "why": "hold on the result"
+        }
+      ],
+      "expect": {
+        "js": "(() => { const claimUid = proof.uid('[[CLM]] - PK pending review claim'); const left = proof.relations.touching([claimUid]); proof.assert(left.length === 1, 'Expected one relation left on the claim, found ' + left.length + '.'); proof.assert(left[0].tentative === 'true', 'The remaining relation is no longer pending.'); proof.assert(left[0].sourceUid === proof.uid('[[EVD]] - Structured onboarding notes cut the time a new contributor needs before a first merged change from three weeks to under two - [[@PK baseline source]]'), 'Remove took the wrong row.'); })()"
+      }
+    },
+    {
+      "id": "accept-targets-its-row",
+      "title": "Accept on the remaining row accepts that relation",
+      "caption": "Accept works on its row too. The relation leaves the pending list and becomes a normal relation.",
+      "steps": [
+        {
+          "do": {
+            "click": ".roamjs-discourse-tentative-relations button[title=\"Accept relation\"] >> nth=0"
+          },
+          "why": "accept the long-title relation"
+        },
+        {
+          "do": {
+            "wait_for": ".bp3-toast:has-text(\"Relation accepted\")"
+          },
+          "why": "wait for the confirmation"
+        },
+        {
+          "do": {
+            "pause": 1.5
+          },
+          "why": "hold on the result"
+        }
+      ],
+      "expect": {
+        "js": "(() => { const claimUid = proof.uid('[[CLM]] - PK pending review claim'); const left = proof.relations.touching([claimUid]); proof.assert(left.length === 1, 'Expected one relation on the claim, found ' + left.length + '.'); proof.assert(left[0].tentative === undefined, 'The relation is still pending after Accept.'); })()"
+      }
+    }
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "name": "proof-runner",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Runs a pull request's proof kit from a Roam page: loads the PR's Discourse Graph build and plays the kit's cases in a panel in the right sidebar.",
+  "type": "module",
+  "scripts": {
+    "dev": "roam-prototype dev",
+    "build": "roam-prototype build",
+    "test": "vitest run --passWithNoTests",
+    "helper": "node --experimental-strip-types --no-warnings=ExperimentalWarning helper/cli.ts"
+  },
+  "dependencies": {
+    "roamjs-components": "catalog:",
+    "use-sync-external-store": "catalog:"
+  },
+  "devDependencies": {
+    "@discoursegraphs/extension-base": "workspace:*",
+    "jsdom": "catalog:",
+    "vitest": "catalog:"
+  }
+}

@@ -1,0 +1,53 @@
+{
+  "settings.open-home": {
+    "why": "open Personal Settings on the Home tab",
+    "steps": [
+      {
+        "do": {
+          "command_palette": "DG: Open - Discourse settings"
+        },
+        "why": "open the settings"
+      },
+      {
+        "do": {
+          "wait_for": ".bp3-dialog:visible"
+        },
+        "why": "wait for the settings dialog"
+      },
+      {
+        "do": {
+          "click": ".bp3-dialog:visible .bp3-tab:has-text(\"Home\") >> nth=0"
+        },
+        "why": "go to Personal Settings > Home"
+      }
+    ]
+  },
+  "settings.stored-relations": {
+    "why": "turn Stored Relations on or off in Personal Settings > Home",
+    "params": {
+      "on": {
+        "type": "boolean"
+      }
+    },
+    "steps": [
+      {
+        "use": "settings.open-home"
+      },
+      {
+        "do": {
+          "js": "proof.setSwitch('Enable stored relations', {{json with.on}}, { confirm: ['Reactivate without Migration', 'Deactivate', 'Activate and Migrate'] })"
+        },
+        "why": "flip Enable stored relations, taking Reactivate without Migration when offered"
+      },
+      {
+        "do": {
+          "pause": 1.5
+        },
+        "why": "hold on the switch in its new state"
+      },
+      {
+        "use": "dialog.close-all"
+      }
+    ]
+  }
+}

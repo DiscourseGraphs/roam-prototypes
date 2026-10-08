@@ -1,0 +1,47 @@
+{
+  "discover.open": {
+    "why": "open DG: Discover shared nodes",
+    "steps": [
+      {
+        "do": {
+          "command_palette": "DG: Discover shared nodes"
+        },
+        "why": "open import the way a user would"
+      },
+      {
+        "do": {
+          "wait_for": ".bp3-dialog:visible"
+        },
+        "why": "wait for the import dialog"
+      }
+    ]
+  },
+  "share.current-node": {
+    "why": "open a discourse node page and run DG: Share current node",
+    "params": {
+      "title": {
+        "type": "string"
+      }
+    },
+    "steps": [
+      {
+        "use": "page.open",
+        "with": {
+          "title": "{{with.title}}"
+        }
+      },
+      {
+        "do": {
+          "command_palette": "DG: Share current node"
+        },
+        "why": "share it the way a user would"
+      },
+      {
+        "do": {
+          "wait_for": ".bp3-dialog:visible"
+        },
+        "why": "wait for the share dialog"
+      }
+    ]
+  }
+}

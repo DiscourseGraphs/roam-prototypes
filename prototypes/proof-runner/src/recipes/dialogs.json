@@ -1,0 +1,78 @@
+{
+  "dialog.close-all": {
+    "why": "close every open dialog",
+    "steps": [
+      {
+        "do": {
+          "js": "(() => { const button = Array.from(document.querySelectorAll('.bp3-dialog button')).find((button) => proof.visible(button) && button.innerText.trim() === 'Cancel'); if (button) button.click(); })()"
+        },
+        "why": "click Cancel on a dialog that has no close button and ignores Escape, like Share Data, if one is still there"
+      },
+      {
+        "do": {
+          "when": {
+            "js": "proof.dialogs().length > 0",
+            "do": [
+              {
+                "press": "Escape"
+              },
+              {
+                "pause": 0.6
+              }
+            ]
+          }
+        },
+        "why": "press Escape for a dialog with no close button (Blueprint ignores synthetic key events)"
+      },
+      {
+        "do": {
+          "when": {
+            "js": "proof.dialogs().length > 0",
+            "do": [
+              {
+                "press": "Escape"
+              },
+              {
+                "pause": 0.6
+              }
+            ]
+          }
+        },
+        "why": "press Escape again for a dialog stacked under the first"
+      },
+      {
+        "do": {
+          "js": "proof.closeDialogs()"
+        },
+        "why": "close the open dialogs"
+      }
+    ]
+  },
+  "dialog.expect-callout": {
+    "why": "fail unless a callout with this title shows",
+    "params": {
+      "title": {
+        "type": "string"
+      }
+    },
+    "steps": [
+      {
+        "do": {
+          "js": "proof.waitFor(() => proof.callout({{json with.title}}), { what: 'the callout ' + {{json with.title}} })"
+        },
+        "why": "look for the callout"
+      }
+    ]
+  },
+  "ui.quiet": {
+    "why": "close menus and dialogs, dismiss toasts and empty the right sidebar",
+    "steps": [
+      {
+        "do": {
+          "js": "(async () => { await proof.closeMenus(); if (!(await proof.closeDialogs())) throw new Error('A dialog would not close: ' + proof.dialogText().slice(0, 120)); await proof.closeMenus(); proof.toasts.clear(); await proof.sidebar.clearRight(); })()"
+        },
+        "why": "clear the screen"
+      }
+    ]
+  }
+}

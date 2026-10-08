@@ -1,0 +1,263 @@
+{
+  "name": "eng-2350",
+  "title": "Import shared node type templates into Roam",
+  "claim": "Importing a node whose type this graph doesn't have creates that node type with the template its source published.",
+  "given": "test-3-graph has neither type. The Obsidian test vault shared PK Hypothesis, whose template has YAML frontmatter, and one node. The dev graph shared PK Prediction with a template, and one node.",
+  "baseline": "dg-baseline@1",
+  "target": {
+    "slot": "3",
+    "pr": 1505,
+    "viewport": {
+      "width": 1280,
+      "height": 720
+    }
+  },
+  "needs": [
+    "supabase",
+    "embed-stub"
+  ],
+  "prepare": [
+    {
+      "id": "obsidian-hypothesis",
+      "why": "the Obsidian test vault published a PK Hypothesis node type whose template has frontmatter, and one node, to the eng-2329-demo group",
+      "phase": "outside",
+      "apply": {
+        "publish": {
+          "space": 106039,
+          "author": 106041,
+          "group": "eng-2329-demo",
+          "types": [
+            {
+              "id": "node_pk-2350-hypothesis",
+              "label": "PK Hypothesis",
+              "format": "HYP - {content}",
+              "template": "---\ntags: hypothesis\n---\n## Prediction\n- What should happen if this is true\n## How to test it\n- The smallest experiment that could fail\n"
+            }
+          ],
+          "nodes": [
+            {
+              "id": "pk-2350-obsidian-hypothesis",
+              "type": "node_pk-2350-hypothesis",
+              "title": "Sleep spindles predict recall",
+              "body": "Spindle density in the first hour of sleep predicts next-day recall.\n"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "roam-prediction",
+      "why": "the dev graph published a PK Prediction node type with a template, and one node, to the same group",
+      "phase": "outside",
+      "apply": {
+        "publish": {
+          "space": 66566,
+          "author": 3,
+          "group": "eng-2329-demo",
+          "types": [
+            {
+              "id": "pk-2350-prediction",
+              "label": "PK Prediction",
+              "format": "[[PRD]] - {content}",
+              "template": "- Expected result\n- How we will know"
+            }
+          ],
+          "nodes": [
+            {
+              "id": "pk-2350-roam-prediction",
+              "type": "pk-2350-prediction",
+              "title": "Recall improves after a nap",
+              "body": "- Measured the next morning."
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "no-earlier-import",
+      "why": "neither node type nor node was imported into this graph before",
+      "phase": "before-load",
+      "check": {
+        "js": "![\"discourse-graph/nodes/PK Hypothesis\", \"discourse-graph/nodes/PK Prediction\", \"HYP - Sleep spindles predict recall\", \"[[PRD]] - Recall improves after a nap\"].some((title) => proof.page.exists(title))"
+      },
+      "apply": {
+        "js": "proof.page.remove([\"discourse-graph/nodes/PK Hypothesis\", \"discourse-graph/nodes/PK Prediction\", \"HYP - Sleep spindles predict recall\", \"[[PRD]] - Recall improves after a nap\"])"
+      }
+    },
+    {
+      "id": "database-session",
+      "why": "the extension has a proof database session for this graph; the proof database runs without edge functions, so this signs in the way create-space would",
+      "phase": "before-load",
+      "check": {
+        "js": "proof.supabase.signedIn()"
+      },
+      "apply": {
+        "js": "proof.supabase.signIn({ serviceKey: '{{env.SUPABASE_SERVICE_ROLE_KEY}}', publishableKey: '{{env.SUPABASE_PUBLISHABLE_KEY}}' })"
+      },
+      "settleMs": 1000
+    }
+  ],
+  "cases": [
+    {
+      "id": "obsidian-type-brings-its-template",
+      "title": "Importing an Obsidian node creates its node type with the template",
+      "proves": "Done When 2: A new Obsidian-origin node type imports with its template visible in settings.",
+      "checks": "PK Hypothesis exists, its Template has the Prediction and How to test it sections, and no frontmatter came across",
+      "caption": "This graph has no Hypothesis type. Importing a hypothesis shared from Obsidian creates the type and brings its template along, without the Obsidian frontmatter.",
+      "steps": [
+        {
+          "use": "discover.open",
+          "why": "open import the way a user would"
+        },
+        {
+          "do": {
+            "wait_for": ".bp3-dialog tbody tr:has-text(\"Sleep spindles predict recall\")"
+          },
+          "why": "wait for the shared node's row"
+        },
+        {
+          "do": {
+            "click": ".bp3-dialog tbody tr:has-text(\"Sleep spindles predict recall\") label.bp3-checkbox"
+          },
+          "why": "select it"
+        },
+        {
+          "do": {
+            "click": ".bp3-dialog button:has-text(\"Import selected (1)\")"
+          },
+          "why": "import the selection"
+        },
+        {
+          "do": {
+            "wait_for": ".bp3-dialog .bp3-callout:has-text(\"imported\")"
+          },
+          "why": "wait for the import result"
+        },
+        {
+          "do": {
+            "pause": 1.5
+          },
+          "why": "hold on the result"
+        }
+      ],
+      "expect": {
+        "js": "proof.waitFor(() => { const lines = proof.nodeType.template('PK Hypothesis'); return lines && lines.some((line) => line.includes('Prediction')) && lines.some((line) => line.includes('smallest experiment')) && !lines.some((line) => /tags:|---/.test(line)); }, { what: \"PK Hypothesis's template, without its frontmatter\", timeout: 15000 })"
+      }
+    },
+    {
+      "id": "template-is-on-the-type",
+      "title": "The new node type's template holds the shared template",
+      "proves": "Case 1's result, shown on screen",
+      "checks": "the node type's page shows the template text",
+      "caption": "The new node type carries the template, so new hypotheses in this graph start from it.",
+      "steps": [
+        {
+          "use": "dialog.close-all",
+          "why": "close the import dialog"
+        },
+        {
+          "use": "page.open",
+          "with": {
+            "title": "discourse-graph/nodes/PK Hypothesis"
+          },
+          "why": "open the node type's settings page"
+        },
+        {
+          "do": {
+            "pause": 2.5
+          },
+          "why": "hold on the template"
+        }
+      ],
+      "expect": {
+        "js": "proof.waitFor(() => proof.byText('.roam-article', 'smallest experiment'), { what: 'the template on the node type page' })"
+      }
+    },
+    {
+      "id": "roam-type-brings-its-template",
+      "title": "Importing a Roam node creates its node type with the template",
+      "proves": "Done When 1: A new Roam-origin node type imports with its template visible in settings.",
+      "checks": "PK Prediction exists with Expected result and How we will know in its Template",
+      "caption": "It works for node types shared from Roam too. The Prediction type arrives with its template.",
+      "steps": [
+        {
+          "use": "discover.open",
+          "why": "open import again"
+        },
+        {
+          "do": {
+            "wait_for": ".bp3-dialog tbody tr:has-text(\"Recall improves after a nap\")"
+          },
+          "why": "wait for the shared node's row"
+        },
+        {
+          "do": {
+            "click": ".bp3-dialog tbody tr:has-text(\"Recall improves after a nap\") label.bp3-checkbox"
+          },
+          "why": "select it"
+        },
+        {
+          "do": {
+            "click": ".bp3-dialog button:has-text(\"Import selected (1)\")"
+          },
+          "why": "import the selection"
+        },
+        {
+          "do": {
+            "wait_for": ".bp3-dialog .bp3-callout:has-text(\"imported\")"
+          },
+          "why": "wait for the import result"
+        },
+        {
+          "do": {
+            "pause": 1.5
+          },
+          "why": "hold on the result"
+        }
+      ],
+      "expect": {
+        "js": "proof.waitFor(() => { const lines = proof.nodeType.template('PK Prediction'); return lines && lines.includes('Expected result') && lines.includes('How we will know'); }, { what: \"PK Prediction's template\", timeout: 15000 })"
+      }
+    },
+    {
+      "id": "refresh-writes-nothing",
+      "title": "Refreshing imported nodes leaves the templates alone",
+      "proves": "Done When 3: importing or refreshing again writes nothing",
+      "checks": "both templates have the same number of blocks as before, and there's one PK Hypothesis type",
+      "caption": "Refreshing every imported node finds the types already in place, so their templates aren't written twice.",
+      "steps": [
+        {
+          "use": "dialog.close-all",
+          "why": "close the import dialog"
+        },
+        {
+          "do": {
+            "js": "(() => { window.__pk2350 = { hypothesis: proof.nodeType.template('PK Hypothesis').length, prediction: proof.nodeType.template('PK Prediction').length }; proof.toasts.clear(); })()"
+          },
+          "why": "count the template blocks before the refresh"
+        },
+        {
+          "do": {
+            "command_palette": "DG: Refresh all imported nodes"
+          },
+          "why": "refresh every imported node"
+        },
+        {
+          "do": {
+            "js": "proof.waitFor(() => { const text = proof.toastText(); return text && !text.includes('Refreshing imported nodes'); }, { what: 'the refresh to finish', timeout: 30000 })"
+          },
+          "why": "wait for the refresh to finish"
+        },
+        {
+          "do": {
+            "pause": 1.5
+          },
+          "why": "hold on the result"
+        }
+      ],
+      "expect": {
+        "js": "(() => { const before = window.__pk2350; proof.assert(before, 'No count from before the refresh.'); proof.assert(proof.nodeType.template('PK Hypothesis').length === before.hypothesis, 'The refresh changed the PK Hypothesis template.'); proof.assert(proof.nodeType.template('PK Prediction').length === before.prediction, 'The refresh changed the PK Prediction template.'); proof.assert(proof.nodeTypes().filter((node) => node.text === 'PK Hypothesis').length === 1, 'There is more than one PK Hypothesis node type.'); })()"
+      }
+    }
+  ]
+}

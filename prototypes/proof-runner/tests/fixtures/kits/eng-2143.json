@@ -1,0 +1,1704 @@
+{
+  "name": "eng-2143",
+  "cases": [
+    {
+      "id": "pull-evidence-with-source",
+      "title": "Obsidian evidence and its source import as a referenced node",
+      "steps": [
+        {
+          "id": "s1",
+          "why": "start without a dialog",
+          "source": "kit",
+          "use": "dialog.close-all"
+        },
+        {
+          "id": "s2",
+          "why": "open import the way a user would",
+          "source": "kit",
+          "use": "discover.open"
+        },
+        {
+          "id": "s3",
+          "why": "wait for the shared node's row",
+          "source": "kit",
+          "do": {
+            "wait_for": ".bp3-dialog tbody tr:has-text(\"PK 2143 Obsidian evidence with source\")"
+          }
+        },
+        {
+          "id": "s4",
+          "why": "wait for the shared node's row",
+          "source": "kit",
+          "do": {
+            "wait_for": ".bp3-dialog tbody tr:has-text(\"PK 2143 Obsidian source\")"
+          }
+        },
+        {
+          "id": "s5",
+          "why": "select PK 2143 Obsidian evidence with source",
+          "source": "kit",
+          "do": {
+            "click": ".bp3-dialog tbody tr:has-text(\"PK 2143 Obsidian evidence with source\") label.bp3-checkbox"
+          }
+        },
+        {
+          "id": "s6",
+          "why": "select PK 2143 Obsidian source",
+          "source": "kit",
+          "do": {
+            "click": ".bp3-dialog tbody tr:has-text(\"PK 2143 Obsidian source\") label.bp3-checkbox"
+          }
+        },
+        {
+          "id": "s7",
+          "why": "import the selection",
+          "source": "kit",
+          "do": {
+            "click": ".bp3-dialog button:has-text(\"Import selected (2)\")"
+          }
+        },
+        {
+          "id": "s8",
+          "why": "wait for the import result",
+          "source": "kit",
+          "do": {
+            "wait_for": ".bp3-dialog .bp3-callout:has-text(\"imported\")"
+          }
+        },
+        {
+          "id": "s9",
+          "why": "hold on the result",
+          "source": "kit",
+          "do": {
+            "pause": 2
+          }
+        }
+      ],
+      "proves": "Done When 2: An Obsidian source relation survives push to the database source value and pull into a Roam referenced node.",
+      "checks": "Both nodes import with no failure and no warning, the Source page is `@PK 2143 Obsidian source`, and the Evidence page is titled with a reference to it: `[[EVD]] - PK 2143 Obsidian evidence with source - [[@PK 2143 Obsidian source]]`.",
+      "caption": "The Obsidian vault shared an Evidence note and the Source it cites. Imported into Roam, the evidence page names the imported source page.",
+      "expect": {
+        "js": "(async () => { await proof.waitFor(() => proof.page.exists(\"[[EVD]] - PK 2143 Obsidian evidence with source - [[@PK 2143 Obsidian source]]\") && proof.page.exists(\"@PK 2143 Obsidian source\"), { what: 'the imported Evidence page naming its Source, and the Source page', timeout: 30000 }); const callout = proof.byText('.bp3-dialog .bp3-callout', 'imported'); proof.assert(callout, 'No import result on screen.'); const result = callout.innerText; proof.assert(/2 imported, 0 skipped, 0 failed/.test(result) && !/warning/i.test(result), 'The import result reads ' + JSON.stringify(result.slice(0, 200)) + '.'); })()"
+      }
+    },
+    {
+      "id": "pull-evidence-without-source",
+      "title": "Obsidian evidence without a source imports and gets no Source node",
+      "steps": [
+        {
+          "id": "s1",
+          "why": "start without a dialog",
+          "source": "kit",
+          "use": "dialog.close-all"
+        },
+        {
+          "id": "s2",
+          "why": "open import the way a user would",
+          "source": "kit",
+          "use": "discover.open"
+        },
+        {
+          "id": "s3",
+          "why": "wait for the shared node's row",
+          "source": "kit",
+          "do": {
+            "wait_for": ".bp3-dialog tbody tr:has-text(\"PK 2143 Obsidian evidence without source\")"
+          }
+        },
+        {
+          "id": "s4",
+          "why": "select PK 2143 Obsidian evidence without source",
+          "source": "kit",
+          "do": {
+            "click": ".bp3-dialog tbody tr:has-text(\"PK 2143 Obsidian evidence without source\") label.bp3-checkbox"
+          }
+        },
+        {
+          "id": "s5",
+          "why": "import the selection",
+          "source": "kit",
+          "do": {
+            "click": ".bp3-dialog button:has-text(\"Import selected (1)\")"
+          }
+        },
+        {
+          "id": "s6",
+          "why": "wait for the import result",
+          "source": "kit",
+          "do": {
+            "wait_for": ".bp3-dialog .bp3-callout:has-text(\"imported\")"
+          }
+        },
+        {
+          "id": "s7",
+          "why": "hold on the result",
+          "source": "kit",
+          "do": {
+            "pause": 2
+          }
+        }
+      ],
+      "proves": "Done When 3: A current node without a source completes both flows without a placeholder.",
+      "checks": "The import is not blocked and warns that no source was published; the page is `[[EVD]] - PK 2143 Obsidian evidence without source - [[@placeholder]]`, and no Source page was imported.",
+      "caption": "An Evidence note with no source relation still imports. Roam's Evidence title needs a source part, so it reads [[@placeholder]], and no Source page is made for it.",
+      "expect": {
+        "js": "(async () => { await proof.waitFor(() => proof.page.exists(\"[[EVD]] - PK 2143 Obsidian evidence without source - [[@placeholder]]\"), { what: 'the imported Evidence page with the placeholder source', timeout: 30000 }); const callout = proof.byText('.bp3-dialog .bp3-callout', 'imported'); proof.assert(callout, 'No import result on screen.'); const result = callout.innerText; proof.assert(/1 imported, 0 skipped, 0 failed/.test(result), 'The import result reads ' + JSON.stringify(result.slice(0, 200)) + '.'); proof.assert(result.includes('No source was published with this node.'), 'No warning about the missing source: ' + JSON.stringify(result.slice(0, 300))); proof.assert(!proof.page.exists(\"@PK 2143 Obsidian hidden source\"), 'A Source page was created for an Evidence note without a source.'); })()"
+      }
+    },
+    {
+      "id": "pull-evidence-unavailable-source",
+      "title": "Evidence whose source is unavailable imports with a warning and the placeholder",
+      "steps": [
+        {
+          "id": "s1",
+          "why": "start without a dialog",
+          "source": "kit",
+          "use": "dialog.close-all"
+        },
+        {
+          "id": "s2",
+          "why": "open import the way a user would",
+          "source": "kit",
+          "use": "discover.open"
+        },
+        {
+          "id": "s3",
+          "why": "wait for the shared node's row",
+          "source": "kit",
+          "do": {
+            "wait_for": ".bp3-dialog tbody tr:has-text(\"PK 2143 Obsidian evidence with hidden source\")"
+          }
+        },
+        {
+          "id": "s4",
+          "why": "select PK 2143 Obsidian evidence with hidden source",
+          "source": "kit",
+          "do": {
+            "click": ".bp3-dialog tbody tr:has-text(\"PK 2143 Obsidian evidence with hidden source\") label.bp3-checkbox"
+          }
+        },
+        {
+          "id": "s5",
+          "why": "import the selection",
+          "source": "kit",
+          "do": {
+            "click": ".bp3-dialog button:has-text(\"Import selected (1)\")"
+          }
+        },
+        {
+          "id": "s6",
+          "why": "wait for the import result",
+          "source": "kit",
+          "do": {
+            "wait_for": ".bp3-dialog .bp3-callout:has-text(\"imported\")"
+          }
+        },
+        {
+          "id": "s7",
+          "why": "hold on the result",
+          "source": "kit",
+          "do": {
+            "pause": 2
+          }
+        }
+      ],
+      "proves": "Done When 6: The Roam missing-source result keeps the incoming title unchanged and emits a warning (decided 2026-09-02, see ENG-2142).",
+      "checks": "The import counts one imported and one with a warning, none failed; the warning is listed under the node; the page is `[[EVD]] - PK 2143 Obsidian evidence with hidden source - [[@placeholder]]` and the hidden Source was not imported.",
+      "caption": "This Evidence note cites a Source the group cannot see. The import still succeeds: it warns, and the title carries [[@placeholder]] where the source would be.",
+      "expect": {
+        "js": "(async () => { await proof.waitFor(() => proof.page.exists(\"[[EVD]] - PK 2143 Obsidian evidence with hidden source - [[@placeholder]]\"), { what: 'the imported Evidence page with the placeholder source', timeout: 30000 }); const callout = proof.byText('.bp3-dialog .bp3-callout', 'imported'); proof.assert(callout, 'No import result on screen.'); const result = callout.innerText; proof.assert(/1 imported, 0 skipped, 0 failed, 1 with warnings/.test(result), 'The import result reads ' + JSON.stringify(result.slice(0, 200)) + '.'); proof.assert(/PK 2143 Obsidian evidence with hidden source:?\\s*No source was published with this node\\./.test(result.replace(/\\s+/g, ' ')), 'The warning is not listed under the node: ' + JSON.stringify(result.slice(0, 300))); proof.assert(!proof.page.exists(\"@PK 2143 Obsidian hidden source\"), 'The hidden Source was imported.'); })()"
+      }
+    },
+    {
+      "id": "unavailable-source-is-non-blocking",
+      "title": "An unavailable source never fails the import",
+      "steps": [
+        {
+          "id": "s1",
+          "why": "look at the result",
+          "source": "kit",
+          "do": {
+            "pause": 1.5
+          }
+        }
+      ],
+      "proves": "Done When 5: A missing or unavailable Source node remains non-blocking, emits the expected warning, and creates no placeholder.",
+      "checks": "The import result has no failed node; the placeholder-titled page exists once; no page was made for the unavailable Source or for a placeholder Source.",
+      "caption": "The unavailable source was a warning, not a failure: the node came in, nothing was left half-imported, and no placeholder Source page exists.",
+      "expect": {
+        "js": "(() => { const callout = proof.byText('.bp3-dialog .bp3-callout', 'imported'); proof.assert(callout, 'No import result on screen.'); const result = callout.innerText; proof.assert(/ 0 failed/.test(result), 'A node failed: ' + JSON.stringify(result.slice(0, 200))); const pages = window.roamAlphaAPI.q('[:find [?t ...] :where [?p :node/title ?t] [(clojure.string/includes? ?t \"PK 2143 Obsidian evidence with hidden source\")]]'); proof.assert(pages.length === 1 && pages[0] === \"[[EVD]] - PK 2143 Obsidian evidence with hidden source - [[@placeholder]]\", 'The pages for the evidence are ' + JSON.stringify(pages) + '.'); proof.assert(!proof.page.exists(\"@PK 2143 Obsidian hidden source\"), 'A page was made for the unavailable Source.'); })()"
+      }
+    },
+    {
+      "id": "source-arrives-then-refresh",
+      "title": "Importing the source later and refreshing fills in the reference, then the title stays put",
+      "steps": [
+        {
+          "id": "s1",
+          "why": "the vault shares the second source with the group now",
+          "source": "kit",
+          "do": {
+            "js": "(async () => { const key = '{{env.SUPABASE_SERVICE_ROLE_KEY}}'; const [row] = await proof.rest('/rest/v1/ResourceAccess?select=account_uid&space_id=eq.106039&source_local_id=eq.pk-2143-o2r-src&limit=1', { key }); if (!row) throw new Error('The published source has no group access row.'); await proof.rest('/rest/v1/ResourceAccess', { key, method: 'POST', prefer: 'resolution=ignore-duplicates', body: { account_uid: row.account_uid, space_id: 106039, source_local_id: 'pk-2143-o2r-hid-src' } }); })()"
+          }
+        },
+        {
+          "id": "s2",
+          "why": "start without a dialog",
+          "source": "kit",
+          "use": "dialog.close-all"
+        },
+        {
+          "id": "s3",
+          "why": "open import the way a user would",
+          "source": "kit",
+          "use": "discover.open"
+        },
+        {
+          "id": "s4",
+          "why": "wait for the shared node's row",
+          "source": "kit",
+          "do": {
+            "wait_for": ".bp3-dialog tbody tr:has-text(\"PK 2143 Obsidian hidden source\")"
+          }
+        },
+        {
+          "id": "s5",
+          "why": "select PK 2143 Obsidian hidden source",
+          "source": "kit",
+          "do": {
+            "click": ".bp3-dialog tbody tr:has-text(\"PK 2143 Obsidian hidden source\") label.bp3-checkbox"
+          }
+        },
+        {
+          "id": "s6",
+          "why": "import the selection",
+          "source": "kit",
+          "do": {
+            "click": ".bp3-dialog button:has-text(\"Import selected (1)\")"
+          }
+        },
+        {
+          "id": "s7",
+          "why": "wait for the import result",
+          "source": "kit",
+          "do": {
+            "wait_for": ".bp3-dialog .bp3-callout:has-text(\"imported\")"
+          }
+        },
+        {
+          "id": "s8",
+          "why": "hold on the result",
+          "source": "kit",
+          "do": {
+            "pause": 2
+          }
+        },
+        {
+          "id": "s9",
+          "why": "close the import dialog",
+          "source": "kit",
+          "use": "dialog.close-all"
+        },
+        {
+          "id": "s10",
+          "why": "open the evidence page that carries the placeholder",
+          "source": "kit",
+          "do": {
+            "js": "window.roamAlphaAPI.ui.mainWindow.openPage({ page: { title: \"[[EVD]] - PK 2143 Obsidian evidence with hidden source - [[@placeholder]]\" } })"
+          }
+        },
+        {
+          "id": "s11",
+          "why": "wait for the Refresh button next to the page title",
+          "source": "kit",
+          "do": {
+            "wait_for": ".discourse-graph-title-additions button:has-text(\"Refresh\")"
+          }
+        },
+        {
+          "id": "s12",
+          "why": "refresh the imported evidence",
+          "source": "kit",
+          "do": {
+            "click": ".discourse-graph-title-additions button:has-text(\"Refresh\")"
+          }
+        },
+        {
+          "id": "s13",
+          "why": "wait for the refresh result",
+          "source": "kit",
+          "do": {
+            "js": "proof.waitFor(() => /Refreshed/.test(proof.toastText()), { what: 'the refresh result', timeout: 20000 })"
+          }
+        },
+        {
+          "id": "s14",
+          "why": "hold on the renamed page",
+          "source": "kit",
+          "do": {
+            "pause": 1.5
+          }
+        },
+        {
+          "id": "s15",
+          "why": "open the page under its new title",
+          "source": "kit",
+          "do": {
+            "js": "(async () => { proof.toasts.clear(); window.roamAlphaAPI.ui.mainWindow.openPage({ page: { title: \"[[EVD]] - PK 2143 Obsidian evidence with hidden source - [[@PK 2143 Obsidian hidden source]]\" } }); })()"
+          }
+        },
+        {
+          "id": "s16",
+          "why": "wait for the Refresh button again",
+          "source": "kit",
+          "do": {
+            "wait_for": ".discourse-graph-title-additions button:has-text(\"Refresh\")"
+          }
+        },
+        {
+          "id": "s17",
+          "why": "refresh a second time",
+          "source": "kit",
+          "do": {
+            "click": ".discourse-graph-title-additions button:has-text(\"Refresh\")"
+          }
+        },
+        {
+          "id": "s18",
+          "why": "wait for the second refresh result",
+          "source": "kit",
+          "do": {
+            "js": "proof.waitFor(() => /Refreshed/.test(proof.toastText()), { what: 'the second refresh result', timeout: 20000 })"
+          }
+        },
+        {
+          "id": "s19",
+          "why": "hold on the page",
+          "source": "kit",
+          "do": {
+            "pause": 1.5
+          }
+        }
+      ],
+      "proves": "Done When 6: The Roam missing-source result keeps the incoming title unchanged and emits a warning (decided 2026-09-02, see ENG-2142).",
+      "checks": "After the source is imported and the evidence refreshed, the page title references `@PK 2143 Obsidian hidden source` and the placeholder title is gone; a second refresh leaves one page with that same title.",
+      "caption": "The group now shares the hidden source. Import it, press Refresh on the evidence page: the placeholder becomes a reference to the real source. A second Refresh changes nothing.",
+      "expect": {
+        "js": "(() => { proof.assert(proof.page.exists(\"[[EVD]] - PK 2143 Obsidian evidence with hidden source - [[@PK 2143 Obsidian hidden source]]\"), 'The evidence page is not titled with the real source.'); proof.assert(!proof.page.exists(\"[[EVD]] - PK 2143 Obsidian evidence with hidden source - [[@placeholder]]\"), 'The placeholder title is still there.'); const pages = window.roamAlphaAPI.q('[:find [?t ...] :where [?p :node/title ?t] [(clojure.string/includes? ?t \"PK 2143 Obsidian evidence with hidden source\")]]'); proof.assert(pages.length === 1 && pages[0] === \"[[EVD]] - PK 2143 Obsidian evidence with hidden source - [[@PK 2143 Obsidian hidden source]]\", 'The pages for the evidence are ' + JSON.stringify(pages) + '.'); })()"
+      }
+    },
+    {
+      "id": "qa-single-page-refresh-button-warns-on",
+      "title": "Single-page refresh button warns on missing source",
+      "steps": [
+        {
+          "use": "dialog.close-all",
+          "why": "start without a dialog"
+        },
+        {
+          "do": {
+            "js": "proof.toasts.clear()"
+          },
+          "why": "clear old toasts"
+        },
+        {
+          "do": {
+            "js": "window.roamAlphaAPI.ui.mainWindow.openPage({ page: { title: \"[[EVD]] - PK 2143 Obsidian evidence without source - [[@placeholder]]\" } })"
+          },
+          "why": "open the imported Evidence page that has the placeholder"
+        },
+        {
+          "do": {
+            "wait_for": ".discourse-graph-title-additions button:has-text(\"Refresh\")"
+          },
+          "why": "wait for the Refresh button next to the title"
+        },
+        {
+          "do": {
+            "click": ".discourse-graph-title-additions button:has-text(\"Refresh\")"
+          },
+          "why": "refresh it"
+        },
+        {
+          "do": {
+            "js": "proof.waitFor(() => { const t = Array.from(document.querySelectorAll('.bp3-toast')).find((e) => /Refreshed/.test(e.innerText)); if (!t) return false; window.__pk2143Warn = { warning: t.classList.contains('bp3-intent-warning'), success: t.classList.contains('bp3-intent-success'), text: t.innerText }; return true; }, { what: 'the toast', timeout: 60000 })"
+          },
+          "why": "read the toast"
+        },
+        {
+          "do": {
+            "pause": 1.5
+          },
+          "why": "hold on the warning toast"
+        },
+        {
+          "do": {
+            "js": "(async () => { proof.toasts.clear(); window.roamAlphaAPI.ui.mainWindow.openPage({ page: { title: \"[[EVD]] - PK 2143 Obsidian evidence with hidden source - [[@PK 2143 Obsidian hidden source]]\" } }); })()"
+          },
+          "why": "open the Evidence page whose Source was imported and filled in"
+        },
+        {
+          "do": {
+            "wait_for": ".discourse-graph-title-additions button:has-text(\"Refresh\")"
+          },
+          "why": "wait for the Refresh button"
+        },
+        {
+          "do": {
+            "click": ".discourse-graph-title-additions button:has-text(\"Refresh\")"
+          },
+          "why": "refresh it"
+        },
+        {
+          "do": {
+            "js": "proof.waitFor(() => { const t = Array.from(document.querySelectorAll('.bp3-toast')).find((e) => /Refreshed/.test(e.innerText)); if (!t) return false; window.__pk2143Green = { warning: t.classList.contains('bp3-intent-warning'), success: t.classList.contains('bp3-intent-success'), text: t.innerText }; return true; }, { what: 'the toast', timeout: 60000 })"
+          },
+          "why": "read the toast"
+        },
+        {
+          "do": {
+            "pause": 1.5
+          },
+          "why": "hold on the success toast"
+        }
+      ],
+      "expect": {
+        "js": "(() => { const w = window.__pk2143Warn; const g = window.__pk2143Green; proof.assert(w && w.warning, 'The refresh of the placeholder page did not show a warning toast: ' + JSON.stringify(w)); proof.assert(w.text.includes('No source was published with this node.'), 'The warning toast does not say why: ' + w.text); proof.assert(g && g.success && !g.warning, 'The refresh after the Source arrived was not a success toast: ' + JSON.stringify(g)); proof.assert(!g.text.includes('No source was published'), 'The success toast still carries a source warning: ' + g.text); })()"
+      },
+      "decision": {
+        "status": "approved",
+        "by": "Claude, for sid",
+        "at": "2026-10-05T07:20:34.397Z"
+      },
+      "surface": "s-refresh-imported-node-button-and-refresh",
+      "checks": "Refreshing the placeholder page shows an orange toast with the refresh message and the source warning; refreshing the page whose Source has arrived shows a green toast with no warning."
+    },
+    {
+      "id": "refresh-all-twice-no-churn",
+      "title": "Refreshing all imported nodes twice changes no page and adds none",
+      "steps": [
+        {
+          "id": "s1",
+          "why": "start without a dialog",
+          "source": "kit",
+          "use": "dialog.close-all"
+        },
+        {
+          "id": "s2",
+          "why": "note the imported pages and their titles",
+          "source": "kit",
+          "do": {
+            "js": "window.__pk2143Before = JSON.stringify(window.roamAlphaAPI.q('[:find [?t ...] :where [?p :node/title ?t] [(clojure.string/includes? ?t \"PK 2143 Obsidian\")]]').sort())"
+          }
+        },
+        {
+          "id": "s3",
+          "why": "clear old toasts",
+          "source": "kit",
+          "do": {
+            "js": "proof.toasts.clear()"
+          }
+        },
+        {
+          "id": "s4",
+          "why": "refresh every imported node",
+          "source": "kit",
+          "do": {
+            "command_palette": "DG: Refresh all imported nodes"
+          }
+        },
+        {
+          "id": "s5",
+          "why": "wait for the summary",
+          "source": "kit",
+          "do": {
+            "js": "proof.waitFor(() => /\\d+ refreshed, \\d+ skipped, \\d+ failed/.test(proof.toastText()), { what: 'the refresh summary', timeout: 60000 })"
+          }
+        },
+        {
+          "id": "s6",
+          "why": "clear the toast",
+          "source": "kit",
+          "do": {
+            "js": "proof.toasts.clear()"
+          }
+        },
+        {
+          "id": "s7",
+          "why": "refresh every imported node again",
+          "source": "kit",
+          "do": {
+            "command_palette": "DG: Refresh all imported nodes"
+          }
+        },
+        {
+          "id": "s8",
+          "why": "wait for the summary",
+          "source": "kit",
+          "do": {
+            "js": "proof.waitFor(() => /\\d+ refreshed, \\d+ skipped, \\d+ failed/.test(proof.toastText()), { what: 'the second refresh summary', timeout: 60000 })"
+          }
+        },
+        {
+          "id": "s9",
+          "why": "hold on the result",
+          "source": "kit",
+          "do": {
+            "pause": 1.5
+          }
+        }
+      ],
+      "proves": "Done When 7: Repeated push and pull operations create no duplicate nodes or relations and do not churn unchanged titles.",
+      "checks": "The imported pages and their titles are identical before and after two refreshes, and neither refresh reports a failure.",
+      "caption": "Run Refresh all imported nodes twice. The set of imported pages and their titles is the same afterwards.",
+      "expect": {
+        "js": "(() => { const after = JSON.stringify(window.roamAlphaAPI.q('[:find [?t ...] :where [?p :node/title ?t] [(clojure.string/includes? ?t \"PK 2143 Obsidian\")]]').sort()); proof.assert(after === window.__pk2143Before, 'The imported pages changed: ' + window.__pk2143Before + ' became ' + after); proof.assert(/ 0 failed/.test(proof.toastText()), 'A refresh failed: ' + proof.toastText()); })()"
+      }
+    },
+    {
+      "id": "qa-refresh-all-shows-warnings-in-one-toast",
+      "title": "Refresh all shows warnings in one toast",
+      "steps": [
+        {
+          "use": "dialog.close-all",
+          "why": "start without a dialog"
+        },
+        {
+          "do": {
+            "js": "(async () => { const key = '{{env.SUPABASE_SERVICE_ROLE_KEY}}'; const now = new Date().toISOString(); for (const table of ['Concept', 'Document', 'Content']) { await proof.rest('/rest/v1/' + table + '?space_id=eq.106039&source_local_id=eq.pk-2143-o2r-evd-bare', { key, method: 'PATCH', prefer: 'return=minimal', body: { last_modified: now } }); } })()"
+          },
+          "why": "the vault saves the sourceless Evidence again, so it has changed since it was imported"
+        },
+        {
+          "do": {
+            "js": "proof.toasts.clear()"
+          },
+          "why": "clear old toasts"
+        },
+        {
+          "do": {
+            "command_palette": "DG: Refresh all imported nodes"
+          },
+          "why": "refresh every imported node"
+        },
+        {
+          "do": {
+            "js": "proof.waitFor(() => { const t = Array.from(document.querySelectorAll('.bp3-toast')).find((e) => /\\d+ refreshed, \\d+ skipped, \\d+ failed/.test(e.innerText)); if (!t) return false; window.__pk2143RefreshAll = { warning: t.classList.contains('bp3-intent-warning'), success: t.classList.contains('bp3-intent-success'), text: t.innerText }; return true; }, { what: 'the toast', timeout: 60000 })"
+          },
+          "why": "read the summary toast"
+        },
+        {
+          "do": {
+            "pause": 1.5
+          },
+          "why": "hold on the toast"
+        }
+      ],
+      "expect": {
+        "js": "(() => { const t = window.__pk2143RefreshAll; proof.assert(t && t.warning, 'The summary toast is not a warning: ' + JSON.stringify(t)); const match = /(\\d+) refreshed, \\d+ skipped, (\\d+) failed/.exec(t.text); proof.assert(match && Number(match[1]) >= 1 && match[2] === '0', 'The counts read ' + t.text); proof.assert(t.text.includes('No source was published with this node.'), 'The toast does not carry the source warning: ' + t.text); })()"
+      },
+      "decision": {
+        "status": "approved",
+        "by": "Claude, for sid",
+        "at": "2026-10-05T07:20:34.397Z"
+      },
+      "surface": "s-refresh-imported-node-button-and-refresh",
+      "checks": "With one Evidence changed in the vault and still without a source, Refresh all imported nodes shows one orange toast: the counts (one or more refreshed, none failed) followed by the source warning."
+    },
+    {
+      "id": "qa-import-evidence-and-source-in-one-batch",
+      "title": "Import Evidence and Source in one batch, Evidence first",
+      "steps": [
+        {
+          "use": "dialog.close-all",
+          "why": "start without a dialog"
+        },
+        {
+          "use": "discover.open",
+          "why": "open import the way a user would"
+        },
+        {
+          "do": {
+            "wait_for": ".bp3-dialog tbody tr:has-text(\"PK 2143 Obsidian batch evidence\")"
+          },
+          "why": "wait for the Evidence row"
+        },
+        {
+          "do": {
+            "click": ".bp3-dialog tbody tr:has-text(\"PK 2143 Obsidian batch evidence\") label.bp3-checkbox"
+          },
+          "why": "select the Evidence first"
+        },
+        {
+          "do": {
+            "click": ".bp3-dialog tbody tr:has-text(\"PK 2143 Obsidian batch source\") label.bp3-checkbox"
+          },
+          "why": "then its Source"
+        },
+        {
+          "do": {
+            "click": ".bp3-dialog button:has-text(\"Import selected (2)\")"
+          },
+          "why": "import both"
+        },
+        {
+          "do": {
+            "wait_for": ".bp3-dialog .bp3-callout:has-text(\"imported\")"
+          },
+          "why": "wait for the import result"
+        },
+        {
+          "do": {
+            "pause": 2
+          },
+          "why": "hold on the result"
+        }
+      ],
+      "expect": {
+        "js": "(async () => { await proof.waitFor(() => proof.page.exists(\"[[EVD]] - PK 2143 Obsidian batch evidence - [[@PK 2143 Obsidian batch source]]\") && proof.page.exists(\"@PK 2143 Obsidian batch source\"), { what: 'the Evidence page naming the real Source, and the Source page', timeout: 30000 }); const callout = proof.byText('.bp3-dialog .bp3-callout', 'imported'); proof.assert(callout, 'No import result on screen.'); const result = callout.innerText; proof.assert(/2 imported, 0 skipped, 0 failed/.test(result) && !/warning/i.test(result), 'The import result reads ' + JSON.stringify(result.slice(0, 200)) + '.'); })()"
+      },
+      "decision": {
+        "status": "approved",
+        "by": "Claude, for sid",
+        "at": "2026-10-05T07:20:34.397Z"
+      },
+      "surface": "s-import-ordering-in-a-batch",
+      "checks": "Selected Evidence first, both import with no warning, and the Evidence page is titled with a reference to its real Source, not [[@placeholder]]."
+    },
+    {
+      "id": "qa-placeholder-title-collision-keeps",
+      "title": "Placeholder title collision keeps incoming title",
+      "steps": [
+        {
+          "use": "dialog.close-all",
+          "why": "start without a dialog"
+        },
+        {
+          "do": {
+            "js": "proof.page.ensure(\"[[EVD]] - PK 2143 Obsidian evidence with colliding title - [[@placeholder]]\", ['A page that was not imported.'])"
+          },
+          "why": "a page of the user's already has the placeholder title"
+        },
+        {
+          "use": "dialog.close-all",
+          "why": "start without a dialog"
+        },
+        {
+          "use": "discover.open",
+          "why": "open import the way a user would"
+        },
+        {
+          "do": {
+            "wait_for": ".bp3-dialog tbody tr:has-text(\"PK 2143 Obsidian evidence with colliding title\")"
+          },
+          "why": "wait for the shared node's row"
+        },
+        {
+          "do": {
+            "click": ".bp3-dialog tbody tr:has-text(\"PK 2143 Obsidian evidence with colliding title\") label.bp3-checkbox"
+          },
+          "why": "select PK 2143 Obsidian evidence with colliding title"
+        },
+        {
+          "do": {
+            "click": ".bp3-dialog button:has-text(\"Import selected (1)\")"
+          },
+          "why": "import the selection"
+        },
+        {
+          "do": {
+            "wait_for": ".bp3-dialog .bp3-callout:has-text(\"imported\")"
+          },
+          "why": "wait for the import result"
+        },
+        {
+          "do": {
+            "pause": 2
+          },
+          "why": "hold on the result"
+        }
+      ],
+      "expect": {
+        "js": "(async () => { await proof.waitFor(() => proof.page.exists(\"EVD - PK 2143 Obsidian evidence with colliding title\"), { what: 'the imported page under the incoming title', timeout: 30000 }); const callout = proof.byText('.bp3-dialog .bp3-callout', 'imported'); proof.assert(callout, 'No import result on screen.'); const result = callout.innerText; proof.assert(/1 imported, 0 skipped, 0 failed, 1 with warnings/.test(result), 'The import result reads ' + JSON.stringify(result.slice(0, 200)) + '.'); const text = result.replace(/\\s+/g, ' '); proof.assert(text.includes('already belongs to another page') && text.includes('kept the incoming title'), 'No collision warning: ' + JSON.stringify(text.slice(0, 400))); proof.assert(proof.page.exists(\"[[EVD]] - PK 2143 Obsidian evidence with colliding title - [[@placeholder]]\"), 'The user\\'s page is gone.'); const kept = window.roamAlphaAPI.pull('[:block/props]', [':block/uid', proof.uid(\"[[EVD]] - PK 2143 Obsidian evidence with colliding title - [[@placeholder]]\")]); proof.assert(!JSON.stringify(kept).includes('importedFrom'), 'The user\\'s page was overwritten by the import.'); })()"
+      },
+      "decision": {
+        "status": "approved",
+        "by": "Claude, for sid",
+        "at": "2026-10-05T07:20:34.397Z"
+      },
+      "checks": "The import does not fail or overwrite: it keeps the incoming title `EVD - PK 2143 Obsidian evidence with colliding title`, warns that the placeholder title already belongs to another page, and the user's page is untouched."
+    },
+    {
+      "id": "qa-non-evidence-node-import-keeps-normal",
+      "title": "Non-Evidence node import keeps normal title",
+      "steps": [
+        {
+          "use": "dialog.close-all",
+          "why": "start without a dialog"
+        },
+        {
+          "use": "discover.open",
+          "why": "open import the way a user would"
+        },
+        {
+          "do": {
+            "wait_for": ".bp3-dialog tbody tr:has-text(\"PK 2143 Obsidian claim\")"
+          },
+          "why": "wait for the shared node's row"
+        },
+        {
+          "do": {
+            "click": ".bp3-dialog tbody tr:has-text(\"PK 2143 Obsidian claim\") label.bp3-checkbox"
+          },
+          "why": "select PK 2143 Obsidian claim"
+        },
+        {
+          "do": {
+            "click": ".bp3-dialog button:has-text(\"Import selected (1)\")"
+          },
+          "why": "import the selection"
+        },
+        {
+          "do": {
+            "wait_for": ".bp3-dialog .bp3-callout:has-text(\"imported\")"
+          },
+          "why": "wait for the import result"
+        },
+        {
+          "do": {
+            "pause": 2
+          },
+          "why": "hold on the result"
+        },
+        {
+          "do": {
+            "js": "proof.toasts.clear()"
+          },
+          "why": "clear old toasts"
+        },
+        {
+          "use": "dialog.close-all",
+          "why": "close the import dialog"
+        },
+        {
+          "do": {
+            "js": "window.roamAlphaAPI.ui.mainWindow.openPage({ page: { title: \"[[CLM]] - PK 2143 Obsidian claim\" } })"
+          },
+          "why": "open the imported Claim page"
+        },
+        {
+          "do": {
+            "wait_for": ".discourse-graph-title-additions button:has-text(\"Refresh\")"
+          },
+          "why": "wait for the Refresh button"
+        },
+        {
+          "do": {
+            "click": ".discourse-graph-title-additions button:has-text(\"Refresh\")"
+          },
+          "why": "refresh it"
+        },
+        {
+          "do": {
+            "js": "proof.waitFor(() => { const t = Array.from(document.querySelectorAll('.bp3-toast')).find((e) => /Refreshed/.test(e.innerText)); if (!t) return false; window.__pk2143Claim = { warning: t.classList.contains('bp3-intent-warning'), success: t.classList.contains('bp3-intent-success'), text: t.innerText }; return true; }, { what: 'the toast', timeout: 60000 })"
+          },
+          "why": "read the toast"
+        },
+        {
+          "do": {
+            "pause": 1.5
+          },
+          "why": "hold on the toast"
+        }
+      ],
+      "expect": {
+        "js": "(() => { proof.assert(proof.page.exists(\"[[CLM]] - PK 2143 Obsidian claim\"), 'The Claim page is not titled with its decorated core title.'); const t = window.__pk2143Claim; proof.assert(t && t.success && !t.warning, 'The refresh was not a success toast: ' + JSON.stringify(t)); proof.assert(!/source|placeholder/i.test(t.text.replace(/PK 2143 Obsidian claim/g, '')), 'The toast mentions a source: ' + t.text); proof.assert(!proof.page.exists(\"[[CLM]] - PK 2143 Obsidian claim - [[@placeholder]]\"), 'The title was changed by the refresh.'); })()"
+      },
+      "decision": {
+        "status": "approved",
+        "by": "Claude, for sid",
+        "at": "2026-10-05T07:20:34.397Z"
+      },
+      "surface": "s-imported-page-titles-for-non-source-node",
+      "checks": "A Claim has no {source} in its format: it imports as `[[CLM]] - PK 2143 Obsidian claim` with no warning, and refreshing it gives a plain success toast."
+    },
+    {
+      "id": "qa-import-shared-relations-still-links",
+      "title": "Import shared relations still links imported nodes",
+      "steps": [
+        {
+          "use": "dialog.close-all",
+          "why": "start without a dialog"
+        },
+        {
+          "use": "discover.open",
+          "why": "open import the way a user would"
+        },
+        {
+          "do": {
+            "wait_for": ".bp3-dialog tbody tr:has-text(\"PK 2143 Linked evidence\")"
+          },
+          "why": "wait for the shared node's row"
+        },
+        {
+          "do": {
+            "wait_for": ".bp3-dialog tbody tr:has-text(\"PK 2143 Linked claim\")"
+          },
+          "why": "wait for the shared node's row"
+        },
+        {
+          "do": {
+            "click": ".bp3-dialog tbody tr:has-text(\"PK 2143 Linked evidence\") label.bp3-checkbox"
+          },
+          "why": "select PK 2143 Linked evidence"
+        },
+        {
+          "do": {
+            "click": ".bp3-dialog tbody tr:has-text(\"PK 2143 Linked claim\") label.bp3-checkbox"
+          },
+          "why": "select PK 2143 Linked claim"
+        },
+        {
+          "do": {
+            "click": ".bp3-dialog button:has-text(\"Import selected (2)\")"
+          },
+          "why": "import the selection"
+        },
+        {
+          "do": {
+            "wait_for": ".bp3-dialog .bp3-callout:has-text(\"imported\")"
+          },
+          "why": "wait for the import result"
+        },
+        {
+          "do": {
+            "pause": 2
+          },
+          "why": "hold on the result"
+        },
+        {
+          "do": {
+            "pause": 3
+          },
+          "why": "give the relations import time"
+        }
+      ],
+      "expect": {
+        "js": "proof.waitFor(() => { const source = proof.uid(\"[[EVD]] - PK 2143 Linked evidence - [[@placeholder]]\"); const destination = proof.uid(\"[[CLM]] - PK 2143 Linked claim\"); if (!source || !destination) return false; const found = proof.relations.touching([source]).filter((item) => item.sourceUid === source && item.destinationUid === destination); const supports = proof.relations.schemaId('Supports'); return found.length === 1 && found[0].tentative === 'true' && found[0].hasSchema === supports && !/multiple matches|relations were not/i.test(proof.toastText()); }, { what: 'one pending Supports relation from the linked evidence to the linked claim, with no error', timeout: 30000 })"
+      },
+      "decision": {
+        "status": "approved",
+        "by": "Claude, for sid",
+        "at": "2026-10-05T07:20:34.397Z"
+      },
+      "surface": "s-import-shared-relations",
+      "checks": "Importing the two nodes creates exactly one pending relation between their pages, using the graph's own Supports relation type, with no multiple-matches error."
+    },
+    {
+      "id": "push-evidence-with-source",
+      "title": "Sharing a Source, then the Evidence that cites it, stores the source value",
+      "steps": [
+        {
+          "id": "s1",
+          "why": "start from a quiet screen",
+          "source": "kit",
+          "use": "ui.quiet"
+        },
+        {
+          "id": "s2",
+          "why": "share the Source page",
+          "source": "kit",
+          "use": "share.current-node",
+          "with": {
+            "title": "@PK 2143 Roam source"
+          }
+        },
+        {
+          "id": "s3",
+          "why": "pick the eng-2329-demo group",
+          "source": "kit",
+          "do": {
+            "js": "proof.setSwitch('eng-2329-demo', true)"
+          }
+        },
+        {
+          "id": "s4",
+          "why": "publish it",
+          "source": "kit",
+          "do": {
+            "click": ".bp3-dialog:visible .bp3-dialog-footer button:has-text(\"Publish\")"
+          }
+        },
+        {
+          "id": "s5",
+          "why": "wait for the publish result",
+          "source": "kit",
+          "do": {
+            "wait_for": ".bp3-toast"
+          }
+        },
+        {
+          "id": "s6",
+          "why": "hold on the result",
+          "source": "kit",
+          "do": {
+            "pause": 1.5
+          }
+        },
+        {
+          "id": "s7",
+          "why": "start from a quiet screen",
+          "source": "kit",
+          "use": "ui.quiet"
+        },
+        {
+          "id": "s8",
+          "why": "share the Evidence page",
+          "source": "kit",
+          "use": "share.current-node",
+          "with": {
+            "title": "[[EVD]] - PK 2143 Roam evidence - [[@PK 2143 Roam source]]"
+          }
+        },
+        {
+          "id": "s9",
+          "why": "pick the eng-2329-demo group",
+          "source": "kit",
+          "do": {
+            "js": "proof.setSwitch('eng-2329-demo', true)"
+          }
+        },
+        {
+          "id": "s10",
+          "why": "publish it",
+          "source": "kit",
+          "do": {
+            "click": ".bp3-dialog:visible .bp3-dialog-footer button:has-text(\"Publish\")"
+          }
+        },
+        {
+          "id": "s11",
+          "why": "wait for the publish result",
+          "source": "kit",
+          "do": {
+            "wait_for": ".bp3-toast"
+          }
+        },
+        {
+          "id": "s12",
+          "why": "hold on the result",
+          "source": "kit",
+          "do": {
+            "pause": 1.5
+          }
+        }
+      ],
+      "proves": "Done When 1: A Roam referenced node survives push to the database source value and pull into an Obsidian relation.",
+      "checks": "The published Evidence concept's sourceDocument is the published Source concept, and its core title is just the content.",
+      "caption": "Share the Roam Source, then the Evidence page that names it. The database now holds the Evidence with a sourceDocument pointing at the Source.",
+      "expect": {
+        "js": "(async () => { const srcUid = proof.uid(\"@PK 2143 Roam source\"); const uid = proof.uid(\"[[EVD]] - PK 2143 Roam evidence - [[@PK 2143 Roam source]]\"); proof.assert(srcUid && uid, 'A page is missing.'); const src = (await proof.waitFor(async () => (await proof.rest('/rest/v1/Concept?select=id&is_schema=eq.false&space_id=eq.120237&source_local_id=eq.' + encodeURIComponent(srcUid), { key: '{{env.SUPABASE_SERVICE_ROLE_KEY}}' }))[0], { what: 'the published concept', timeout: 20000, interval: 500 })); const row = (await proof.waitFor(async () => (await proof.rest('/rest/v1/Concept?select=literal_content,reference_content&is_schema=eq.false&space_id=eq.120237&source_local_id=eq.' + encodeURIComponent(uid), { key: '{{env.SUPABASE_SERVICE_ROLE_KEY}}' }))[0], { what: 'the published concept', timeout: 20000, interval: 500 })); proof.assert(row.reference_content && row.reference_content.sourceDocument === src.id, 'The sourceDocument is ' + JSON.stringify(row.reference_content) + ', not the Source concept ' + src.id + '.'); proof.assert(row.literal_content.core_title === 'PK 2143 Roam evidence', 'The core title is ' + JSON.stringify(row.literal_content.core_title) + '.'); })()"
+      }
+    },
+    {
+      "id": "push-evidence-again-no-duplicates",
+      "title": "Sharing the Evidence again keeps one node and the same source value",
+      "steps": [
+        {
+          "id": "s1",
+          "why": "start from a quiet screen",
+          "source": "kit",
+          "use": "ui.quiet"
+        },
+        {
+          "id": "s2",
+          "why": "share the Evidence page again",
+          "source": "kit",
+          "use": "share.current-node",
+          "with": {
+            "title": "[[EVD]] - PK 2143 Roam evidence - [[@PK 2143 Roam source]]"
+          }
+        },
+        {
+          "id": "s3",
+          "why": "pick the eng-2329-demo group",
+          "source": "kit",
+          "do": {
+            "js": "proof.setSwitch('eng-2329-demo', true)"
+          }
+        },
+        {
+          "id": "s4",
+          "why": "publish it",
+          "source": "kit",
+          "do": {
+            "click": ".bp3-dialog:visible .bp3-dialog-footer button:has-text(\"Publish\")"
+          }
+        },
+        {
+          "id": "s5",
+          "why": "wait for the publish result",
+          "source": "kit",
+          "do": {
+            "wait_for": ".bp3-toast"
+          }
+        },
+        {
+          "id": "s6",
+          "why": "hold on the result",
+          "source": "kit",
+          "do": {
+            "pause": 1.5
+          }
+        }
+      ],
+      "proves": "Done When 7: Repeated push and pull operations create no duplicate nodes or relations and do not churn unchanged titles.",
+      "checks": "Exactly the two published concepts exist for the Source and Evidence pages, the Evidence still points at the Source, and its stored title is unchanged.",
+      "caption": "Share the evidence a second time. Still one Evidence node and one Source node in the database, with the same source value and title.",
+      "expect": {
+        "js": "(async () => { const srcUid = proof.uid(\"@PK 2143 Roam source\"); const uid = proof.uid(\"[[EVD]] - PK 2143 Roam evidence - [[@PK 2143 Roam source]]\"); const key = '{{env.SUPABASE_SERVICE_ROLE_KEY}}'; const rows = await proof.rest('/rest/v1/Concept?select=id,source_local_id,reference_content&is_schema=eq.false&space_id=eq.120237&source_local_id=in.(' + srcUid + ',' + uid + ')', { key }); proof.assert(rows.length === 2, 'Expected two concepts, found ' + rows.length + '.'); const src = rows.find((r) => r.source_local_id === srcUid); const evd = rows.find((r) => r.source_local_id === uid); proof.assert(evd.reference_content && evd.reference_content.sourceDocument === src.id, 'The sourceDocument changed to ' + JSON.stringify(evd.reference_content) + '.'); const direct = await proof.rest('/rest/v1/Content?select=text&space_id=eq.120237&variant=eq.direct&source_local_id=eq.' + encodeURIComponent(uid), { key }); proof.assert(direct.length === 1 && direct[0].text.includes('PK 2143 Roam evidence'), 'The stored title is ' + JSON.stringify(direct) + '.'); })()"
+      }
+    },
+    {
+      "id": "push-placeholder-evidence",
+      "title": "Sharing Evidence whose source is [[@placeholder]] stores no source and no placeholder node",
+      "steps": [
+        {
+          "id": "s1",
+          "why": "start from a quiet screen",
+          "source": "kit",
+          "use": "ui.quiet"
+        },
+        {
+          "id": "s2",
+          "why": "share the Evidence page with the placeholder",
+          "source": "kit",
+          "use": "share.current-node",
+          "with": {
+            "title": "[[EVD]] - PK 2143 Roam bare evidence - [[@placeholder]]"
+          }
+        },
+        {
+          "id": "s3",
+          "why": "pick the eng-2329-demo group",
+          "source": "kit",
+          "do": {
+            "js": "proof.setSwitch('eng-2329-demo', true)"
+          }
+        },
+        {
+          "id": "s4",
+          "why": "publish it",
+          "source": "kit",
+          "do": {
+            "click": ".bp3-dialog:visible .bp3-dialog-footer button:has-text(\"Publish\")"
+          }
+        },
+        {
+          "id": "s5",
+          "why": "wait for the publish result",
+          "source": "kit",
+          "do": {
+            "wait_for": ".bp3-toast"
+          }
+        },
+        {
+          "id": "s6",
+          "why": "hold on the result",
+          "source": "kit",
+          "do": {
+            "pause": 1.5
+          }
+        }
+      ],
+      "proves": "Done When 3: A current node without a source completes both flows without a placeholder.",
+      "checks": "The published Evidence concept has no sourceDocument, no concept named @placeholder exists, and no missing-source warning was shown.",
+      "caption": "Share the Evidence page whose source slot holds [[@placeholder]]. It publishes with no source value, and no placeholder Source node reaches the database.",
+      "expect": {
+        "js": "(async () => { const uid = proof.uid(\"[[EVD]] - PK 2143 Roam bare evidence - [[@placeholder]]\"); proof.assert(uid, 'The page is missing.'); const row = (await proof.waitFor(async () => (await proof.rest('/rest/v1/Concept?select=reference_content&is_schema=eq.false&space_id=eq.120237&source_local_id=eq.' + encodeURIComponent(uid), { key: '{{env.SUPABASE_SERVICE_ROLE_KEY}}' }))[0], { what: 'the published concept', timeout: 20000, interval: 500 })); proof.assert(!row.reference_content || row.reference_content.sourceDocument === undefined, 'A source value was stored: ' + JSON.stringify(row.reference_content) + '.'); const key = '{{env.SUPABASE_SERVICE_ROLE_KEY}}'; const named = await proof.rest('/rest/v1/Concept?select=id&space_id=eq.120237&name=eq.' + encodeURIComponent('@placeholder'), { key }); proof.assert(named.length === 0, 'A concept named @placeholder was published.'); const pageUid = proof.uid('@placeholder'); if (pageUid) { const byUid = await proof.rest('/rest/v1/Concept?select=id&space_id=eq.120237&source_local_id=eq.' + encodeURIComponent(pageUid), { key }); proof.assert(byUid.length === 0, 'The @placeholder page was published as a node.'); } proof.assert(!/not in this space yet/.test(proof.toastText()), 'The publish warned about a missing source: ' + proof.toastText()); })()"
+      }
+    },
+    {
+      "id": "push-unpublished-source-warns",
+      "title": "Sharing Evidence whose Source was never published warns and leaves the source out",
+      "steps": [
+        {
+          "id": "s1",
+          "why": "start from a quiet screen",
+          "source": "kit",
+          "use": "ui.quiet"
+        },
+        {
+          "id": "s2",
+          "why": "share the Evidence page that cites an unpublished Source",
+          "source": "kit",
+          "use": "share.current-node",
+          "with": {
+            "title": "[[EVD]] - PK 2143 Roam orphan evidence - [[@PK 2143 Roam unpublished source]]"
+          }
+        },
+        {
+          "id": "s3",
+          "why": "pick the eng-2329-demo group",
+          "source": "kit",
+          "do": {
+            "js": "proof.setSwitch('eng-2329-demo', true)"
+          }
+        },
+        {
+          "id": "s4",
+          "why": "publish it",
+          "source": "kit",
+          "do": {
+            "click": ".bp3-dialog:visible .bp3-dialog-footer button:has-text(\"Publish\")"
+          }
+        },
+        {
+          "id": "s5",
+          "why": "wait for the publish result",
+          "source": "kit",
+          "do": {
+            "wait_for": ".bp3-toast"
+          }
+        },
+        {
+          "id": "s6",
+          "why": "hold on the result",
+          "source": "kit",
+          "do": {
+            "pause": 1.5
+          }
+        }
+      ],
+      "proves": "Done When 5: A missing or unavailable Source node remains non-blocking, emits the expected warning, and creates no placeholder.",
+      "checks": "A warning names the unpublished Source, the Evidence still publishes, and the database holds no source value and no concept for the Source.",
+      "caption": "This Evidence cites a Source that was never shared. Publishing warns that the source is not in the space, and publishes the evidence without a source value.",
+      "expect": {
+        "js": "(async () => { proof.assert(/not in this space yet/.test(proof.toastText()) && proof.toastText().includes('PK 2143 Roam unpublished source'), 'No warning about the unpublished source: ' + JSON.stringify(proof.toastText())); const uid = proof.uid(\"[[EVD]] - PK 2143 Roam orphan evidence - [[@PK 2143 Roam unpublished source]]\"); const row = (await proof.waitFor(async () => (await proof.rest('/rest/v1/Concept?select=reference_content&is_schema=eq.false&space_id=eq.120237&source_local_id=eq.' + encodeURIComponent(uid), { key: '{{env.SUPABASE_SERVICE_ROLE_KEY}}' }))[0], { what: 'the published concept', timeout: 20000, interval: 500 })); proof.assert(!row.reference_content || row.reference_content.sourceDocument === undefined, 'A source value was stored: ' + JSON.stringify(row.reference_content) + '.'); const srcUid = proof.uid(\"@PK 2143 Roam unpublished source\"); const found = await proof.rest('/rest/v1/Concept?select=id&space_id=eq.120237&source_local_id=eq.' + encodeURIComponent(srcUid), { key: '{{env.SUPABASE_SERVICE_ROLE_KEY}}' }); proof.assert(found.length === 0, 'The unpublished Source reached the database.'); })()"
+      }
+    },
+    {
+      "id": "qa-publish-source-and-evidence-together-in",
+      "title": "Publishing the Evidence before its Source, then the Source, then the Evidence again, ends with the source value",
+      "steps": [
+        {
+          "use": "ui.quiet",
+          "why": "start from a quiet screen"
+        },
+        {
+          "use": "share.current-node",
+          "with": {
+            "title": "[[EVD]] - PK 2143 Roam ordered evidence - [[@PK 2143 Roam ordered source]]"
+          },
+          "why": "share the Evidence before its Source"
+        },
+        {
+          "do": {
+            "js": "proof.setSwitch('eng-2329-demo', true)"
+          },
+          "why": "pick the eng-2329-demo group"
+        },
+        {
+          "do": {
+            "click": ".bp3-dialog:visible .bp3-dialog-footer button:has-text(\"Publish\")"
+          },
+          "why": "publish it"
+        },
+        {
+          "do": {
+            "wait_for": ".bp3-toast"
+          },
+          "why": "wait for the publish result"
+        },
+        {
+          "do": {
+            "pause": 1.5
+          },
+          "why": "hold on the result"
+        },
+        {
+          "use": "ui.quiet",
+          "why": "start from a quiet screen"
+        },
+        {
+          "use": "share.current-node",
+          "with": {
+            "title": "@PK 2143 Roam ordered source"
+          },
+          "why": "share the Source"
+        },
+        {
+          "do": {
+            "js": "proof.setSwitch('eng-2329-demo', true)"
+          },
+          "why": "pick the eng-2329-demo group"
+        },
+        {
+          "do": {
+            "click": ".bp3-dialog:visible .bp3-dialog-footer button:has-text(\"Publish\")"
+          },
+          "why": "publish it"
+        },
+        {
+          "do": {
+            "wait_for": ".bp3-toast"
+          },
+          "why": "wait for the publish result"
+        },
+        {
+          "do": {
+            "pause": 1.5
+          },
+          "why": "hold on the result"
+        },
+        {
+          "use": "ui.quiet",
+          "why": "start from a quiet screen"
+        },
+        {
+          "use": "share.current-node",
+          "with": {
+            "title": "[[EVD]] - PK 2143 Roam ordered evidence - [[@PK 2143 Roam ordered source]]"
+          },
+          "why": "share the Evidence again"
+        },
+        {
+          "do": {
+            "js": "proof.setSwitch('eng-2329-demo', true)"
+          },
+          "why": "pick the eng-2329-demo group"
+        },
+        {
+          "do": {
+            "click": ".bp3-dialog:visible .bp3-dialog-footer button:has-text(\"Publish\")"
+          },
+          "why": "publish it"
+        },
+        {
+          "do": {
+            "wait_for": ".bp3-toast"
+          },
+          "why": "wait for the publish result"
+        },
+        {
+          "do": {
+            "pause": 1.5
+          },
+          "why": "hold on the result"
+        }
+      ],
+      "expect": {
+        "js": "(async () => { const key = '{{env.SUPABASE_SERVICE_ROLE_KEY}}'; const srcUid = proof.uid(\"@PK 2143 Roam ordered source\"); const uid = proof.uid(\"[[EVD]] - PK 2143 Roam ordered evidence - [[@PK 2143 Roam ordered source]]\"); proof.assert(srcUid && uid, 'A page is missing.'); const src = (await proof.waitFor(async () => (await proof.rest('/rest/v1/Concept?select=id&is_schema=eq.false&space_id=eq.120237&source_local_id=eq.' + encodeURIComponent(srcUid), { key: '{{env.SUPABASE_SERVICE_ROLE_KEY}}' }))[0], { what: 'the published concept', timeout: 20000, interval: 500 })); const row = (await proof.waitFor(async () => (await proof.rest('/rest/v1/Concept?select=reference_content&is_schema=eq.false&space_id=eq.120237&source_local_id=eq.' + encodeURIComponent(uid), { key: '{{env.SUPABASE_SERVICE_ROLE_KEY}}' }))[0], { what: 'the published concept', timeout: 20000, interval: 500 })); proof.assert(row.reference_content && row.reference_content.sourceDocument === src.id, 'The sourceDocument is ' + JSON.stringify(row.reference_content) + ', not the Source concept ' + src.id + '.'); proof.assert(!/not in this space yet/.test(proof.toastText()), 'The last publish still warned about a missing source: ' + proof.toastText()); })()"
+      },
+      "decision": {
+        "status": "approved",
+        "by": "Claude, for sid",
+        "at": "2026-10-05T07:20:34.397Z"
+      },
+      "surface": "s-publish-nodes-to-group",
+      "checks": "After the Evidence, then its Source, then the Evidence again are published, the Evidence's sourceDocument is the Source's concept and the last publish shows no missing-source warning.",
+      "caption": "Evidence first, Source second, Evidence again: the order doesn't matter in the end, the Evidence points at its Source."
+    },
+    {
+      "id": "qa-re-share-evidence-citing-an-imported",
+      "title": "Re-share Evidence citing an imported Source",
+      "steps": [
+        {
+          "use": "ui.quiet",
+          "why": "start from a quiet screen"
+        },
+        {
+          "use": "share.current-node",
+          "with": {
+            "title": "[[EVD]] - PK 2143 Roam evidence of imported source - [[@PK 2143 Obsidian source]]"
+          },
+          "why": "share the Evidence that cites the imported Source"
+        },
+        {
+          "do": {
+            "js": "proof.setSwitch('eng-2329-demo', true)"
+          },
+          "why": "pick the eng-2329-demo group"
+        },
+        {
+          "do": {
+            "click": ".bp3-dialog:visible .bp3-dialog-footer button:has-text(\"Publish\")"
+          },
+          "why": "publish it"
+        },
+        {
+          "do": {
+            "wait_for": ".bp3-toast"
+          },
+          "why": "wait for the publish result"
+        },
+        {
+          "do": {
+            "pause": 1.5
+          },
+          "why": "hold on the result"
+        },
+        {
+          "use": "ui.quiet",
+          "why": "start from a quiet screen"
+        },
+        {
+          "use": "share.current-node",
+          "with": {
+            "title": "[[EVD]] - PK 2143 Roam evidence of imported source - [[@PK 2143 Obsidian source]]"
+          },
+          "why": "share the same Evidence again"
+        },
+        {
+          "do": {
+            "js": "proof.setSwitch('eng-2329-demo', true)"
+          },
+          "why": "pick the eng-2329-demo group"
+        },
+        {
+          "do": {
+            "click": ".bp3-dialog:visible .bp3-dialog-footer button:has-text(\"Publish\")"
+          },
+          "why": "publish it"
+        },
+        {
+          "do": {
+            "wait_for": ".bp3-toast"
+          },
+          "why": "wait for the publish result"
+        },
+        {
+          "do": {
+            "pause": 1.5
+          },
+          "why": "hold on the result"
+        }
+      ],
+      "expect": {
+        "js": "(async () => { const key = '{{env.SUPABASE_SERVICE_ROLE_KEY}}'; const uid = proof.uid(\"[[EVD]] - PK 2143 Roam evidence of imported source - [[@PK 2143 Obsidian source]]\"); proof.assert(uid, 'The page is missing.'); const row = (await proof.waitFor(async () => (await proof.rest('/rest/v1/Concept?select=reference_content&is_schema=eq.false&space_id=eq.120237&source_local_id=eq.' + encodeURIComponent(uid), { key: '{{env.SUPABASE_SERVICE_ROLE_KEY}}' }))[0], { what: 'the published concept', timeout: 20000, interval: 500 })); const origin = (await proof.rest('/rest/v1/Concept?select=id&is_schema=eq.false&space_id=eq.106039&source_local_id=eq.pk-2143-o2r-src', { key }))[0]; proof.assert(origin, 'The vault Source concept is missing.'); proof.assert(row.reference_content && row.reference_content.sourceDocument === origin.id, 'The sourceDocument is ' + JSON.stringify(row.reference_content) + ', not the Source\\'s origin concept ' + origin.id + '.'); const importedUid = proof.uid(\"@PK 2143 Obsidian source\"); if (importedUid) { const local = await proof.rest('/rest/v1/Concept?select=id&space_id=eq.120237&source_local_id=eq.' + encodeURIComponent(importedUid), { key }); proof.assert(local.length === 0, 'The imported Source page was published as a node of its own.'); } proof.assert(!/not in this space yet/.test(proof.toastText()), 'A missing-source warning was shown: ' + proof.toastText()); })()"
+      },
+      "decision": {
+        "status": "approved",
+        "by": "Claude, for sid",
+        "at": "2026-10-05T07:20:34.397Z"
+      },
+      "surface": "s-evidence-pages-citing-imported-sources",
+      "checks": "The Evidence's published sourceDocument is the Source's original concept in the vault's space, not a Roam-local one, and publishing twice leaves it unchanged."
+    },
+    {
+      "id": "qa-import-dialog-summary-shows-warnings",
+      "title": "Import dialog summary shows warnings count",
+      "steps": [],
+      "intent": "Import the Evidence whose Source is hidden from the group, together with the Evidence that has no source.",
+      "expect": {
+        "text": "The callout is a warning with a \"N with warnings\" count. The hidden-source Evidence is listed with its message. The sourceless Evidence is listed with \"No source was published with this node.\" Failed stays 0."
+      },
+      "decision": {
+        "status": "rejected",
+        "by": "Claude, for sid",
+        "at": "2026-10-05T07:20:37.748Z",
+        "reason": "Another case covers it: pull-evidence-without-source and pull-evidence-unavailable-source check each warning and the summary count"
+      },
+      "surface": "s-import-dialog-results-summary"
+    },
+    {
+      "id": "qa-publish-evidence-with-a-never-shared",
+      "title": "Publish Evidence with a never-shared Source shows toast",
+      "steps": [],
+      "intent": "Publish the Evidence page citing the unshared Source, with no other nodes, and watch for toasts.",
+      "expect": {
+        "text": "A warning toast names the Source page and says it is publishing without the reference. The Evidence is still published. Sharing the Source and republishing then sets the source."
+      },
+      "decision": {
+        "status": "rejected",
+        "by": "Claude, for sid",
+        "at": "2026-10-05T07:20:41.275Z",
+        "reason": "Another case covers it: push-unpublished-source-warns"
+      },
+      "surface": "s-publish-nodes-to-group"
+    }
+  ],
+  "title": "Round-trip Roam and Obsidian source references",
+  "claim": "In Roam, an Evidence node's source survives the round trip: what the Obsidian vault shares comes in as a referenced Source, a missing or unavailable source warns without blocking and shows [[@placeholder]], refreshing and importing again change nothing, and what Roam shares keeps its source value.",
+  "given": "test-3-graph is signed in to the proof database, in the eng-2329-demo group with the Obsidian test vault. The vault published two Evidence notes with a Source each (one Source is hidden from the group) and one Evidence note with none. Stored Relations is on, and Roam has a Source page, the Evidence page that cites it, an Evidence page whose source is [[@placeholder]], and an Evidence page citing a Source that is never shared. Nothing from the vault was imported yet. The Obsidian half is in the eng-2143-obsidian kit.",
+  "baseline": "dg-baseline@1",
+  "target": {
+    "slot": "3",
+    "pr": 1412,
+    "viewport": {
+      "width": 1280,
+      "height": 720
+    }
+  },
+  "needs": [
+    "supabase",
+    "embed-stub"
+  ],
+  "prepare": [
+    {
+      "id": "database-session",
+      "why": "the extension has a proof database session for this graph; the proof database runs without edge functions, so this signs in the way create-space would",
+      "phase": "before-load",
+      "apply": {
+        "js": "proof.supabase.signIn({ serviceKey: '{{env.SUPABASE_SERVICE_ROLE_KEY}}', publishableKey: '{{env.SUPABASE_PUBLISHABLE_KEY}}' })"
+      },
+      "check": {
+        "js": "proof.supabase.signedIn()"
+      },
+      "settleMs": 1000
+    },
+    {
+      "id": "obsidian-published-evidence",
+      "why": "the Obsidian test vault published a Source, an Evidence note that cites it, an Evidence note with no source, a second Source, and an Evidence note that cites that one, to the eng-2329-demo group (this stands in for the vault's own push, which the Obsidian kit proves); plus a second Source with its Evidence, an Evidence node whose hidden Source leaves a placeholder title, and a Claim",
+      "phase": "outside",
+      "apply": {
+        "publish": {
+          "space": 106039,
+          "author": 106041,
+          "group": "eng-2329-demo",
+          "types": [
+            {
+              "id": "_EVD-node",
+              "label": "Evidence",
+              "format": "EVD - {content}"
+            },
+            {
+              "id": "_SRC-node",
+              "label": "Source",
+              "format": "SRC - {content}"
+            },
+            {
+              "id": "_CLM-node",
+              "label": "Claim",
+              "format": "CLM - {content}"
+            }
+          ],
+          "nodes": [
+            {
+              "id": "pk-2143-o2r-src",
+              "type": "_SRC-node",
+              "title": "PK 2143 Obsidian source",
+              "body": "A source the vault published.\n"
+            },
+            {
+              "id": "pk-2143-o2r-evd",
+              "type": "_EVD-node",
+              "title": "PK 2143 Obsidian evidence with source",
+              "body": "Evidence that cites the published source.\n"
+            },
+            {
+              "id": "pk-2143-o2r-evd-bare",
+              "type": "_EVD-node",
+              "title": "PK 2143 Obsidian evidence without source",
+              "body": "Evidence with no source relation in the vault.\n"
+            },
+            {
+              "id": "pk-2143-o2r-hid-src",
+              "type": "_SRC-node",
+              "title": "PK 2143 Obsidian hidden source",
+              "body": "A source the vault did not share with the group.\n"
+            },
+            {
+              "id": "pk-2143-o2r-evd-hid",
+              "type": "_EVD-node",
+              "title": "PK 2143 Obsidian evidence with hidden source",
+              "body": "Evidence that cites a source the group cannot see.\n"
+            },
+            {
+              "id": "pk-2143-o2r-src-b",
+              "type": "_SRC-node",
+              "title": "PK 2143 Obsidian batch source",
+              "body": "A source for the one-batch import.\n"
+            },
+            {
+              "id": "pk-2143-o2r-evd-b",
+              "type": "_EVD-node",
+              "title": "PK 2143 Obsidian batch evidence",
+              "body": "Evidence that cites the batch source.\n"
+            },
+            {
+              "id": "pk-2143-o2r-coll-src",
+              "type": "_SRC-node",
+              "title": "PK 2143 Obsidian colliding source",
+              "body": "A source the group cannot see.\n"
+            },
+            {
+              "id": "pk-2143-o2r-evd-coll",
+              "type": "_EVD-node",
+              "title": "PK 2143 Obsidian evidence with colliding title",
+              "body": "Evidence whose placeholder title is already taken.\n"
+            },
+            {
+              "id": "pk-2143-o2r-clm",
+              "type": "_CLM-node",
+              "title": "PK 2143 Obsidian claim",
+              "body": "A node type with no source.\n"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "obsidian-source-values",
+      "why": "the two published Evidence notes carry the source value the vault's push writes (sourceDocument, pointing at their Source), and the second Source is not shared with the group, so it is unavailable to this graph; the batch Evidence cites its own visible Source, and the colliding-title Evidence cites a Source that stays hidden",
+      "phase": "outside",
+      "apply": {
+        "sql": "UPDATE \"Concept\" SET reference_content = jsonb_build_object('sourceDocument', (SELECT id FROM \"Concept\" s WHERE s.space_id = 106039 AND s.source_local_id = 'pk-2143-o2r-src')) WHERE space_id = 106039 AND source_local_id = 'pk-2143-o2r-evd';\nUPDATE \"Concept\" SET reference_content = jsonb_build_object('sourceDocument', (SELECT id FROM \"Concept\" s WHERE s.space_id = 106039 AND s.source_local_id = 'pk-2143-o2r-hid-src')) WHERE space_id = 106039 AND source_local_id = 'pk-2143-o2r-evd-hid';\nUPDATE \"Concept\" SET reference_content = jsonb_build_object('sourceDocument', (SELECT id FROM \"Concept\" s WHERE s.space_id = 106039 AND s.source_local_id = 'pk-2143-o2r-src-b')) WHERE space_id = 106039 AND source_local_id = 'pk-2143-o2r-evd-b';\nUPDATE \"Concept\" SET reference_content = jsonb_build_object('sourceDocument', (SELECT id FROM \"Concept\" s WHERE s.space_id = 106039 AND s.source_local_id = 'pk-2143-o2r-coll-src')) WHERE space_id = 106039 AND source_local_id = 'pk-2143-o2r-evd-coll';\nDELETE FROM \"ResourceAccess\" WHERE space_id = 106039 AND source_local_id = 'pk-2143-o2r-coll-src';\nDELETE FROM \"ResourceAccess\" WHERE space_id = 106039 AND source_local_id = 'pk-2143-o2r-hid-src';"
+      }
+    },
+    {
+      "id": "linked-relation-nodes",
+      "why": "the dev graph published an Evidence node and a Claim node to the eng-2329-demo group, to be linked by a Supports relation",
+      "phase": "outside",
+      "apply": {
+        "publish": {
+          "space": 66566,
+          "author": 3,
+          "group": "eng-2329-demo",
+          "types": [
+            {
+              "id": "_EVD-node",
+              "label": "Evidence",
+              "format": "[[EVD]] - {content}"
+            },
+            {
+              "id": "_CLM-node",
+              "label": "Claim",
+              "format": "[[CLM]] - {content}"
+            }
+          ],
+          "nodes": [
+            {
+              "id": "pk-2143-rel-evd",
+              "type": "_EVD-node",
+              "title": "PK 2143 Linked evidence",
+              "body": "Evidence in a relation.\n"
+            },
+            {
+              "id": "pk-2143-rel-clm",
+              "type": "_CLM-node",
+              "title": "PK 2143 Linked claim",
+              "body": "A claim in a relation.\n"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "supports-relation",
+      "why": "the dev graph published a Supports relation type between Evidence and Claim (not a local id, so the import matches it to the local Supports by its label, the path that used to throw \"multiple matches\" for a relation with several query patterns), and one relation instance from the linked evidence to the linked claim",
+      "phase": "outside",
+      "apply": {
+        "sql": "BEGIN;\nINSERT INTO \"Concept\" (name, author_id, created, last_modified, space_id, literal_content, is_schema, reference_content, arity, source_local_id, is_relation) VALUES ('PK 2143 supports', 3, now(), '2024-08-01T12:00:00Z', 66566, '{\"label\":\"Supports\",\"complement\":\"Supported By\",\"roles\":[\"source\",\"destination\"]}'::jsonb, true, jsonb_build_object('source', (SELECT id FROM \"Concept\" WHERE space_id = 66566 AND source_local_id = '_EVD-node'), 'destination', (SELECT id FROM \"Concept\" WHERE space_id = 66566 AND source_local_id = '_CLM-node')), 2, 'rel_pk-2143-supports', true) ON CONFLICT (space_id, source_local_id) DO UPDATE SET literal_content = EXCLUDED.literal_content, reference_content = EXCLUDED.reference_content;\nINSERT INTO \"SpaceAccess\" (account_uid, space_id, permissions) VALUES ((SELECT id FROM auth.users WHERE email = 'eng-2329-demo@groups.discoursegraphs.com'), 66566, 'partial') ON CONFLICT (account_uid, space_id) DO NOTHING;\nINSERT INTO \"ResourceAccess\" (account_uid, space_id, source_local_id) VALUES ((SELECT id FROM auth.users WHERE email = 'eng-2329-demo@groups.discoursegraphs.com'), 66566, 'rel_pk-2143-supports') ON CONFLICT DO NOTHING;\nINSERT INTO \"Concept\" (name, author_id, created, last_modified, space_id, schema_id, literal_content, is_schema, reference_content, arity, source_local_id, is_relation) VALUES ('PK 2143 relation evd-clm', 3, now(), '2024-08-01T12:00:00Z', 66566, (SELECT id FROM \"Concept\" WHERE space_id = 66566 AND source_local_id = 'rel_pk-2143-supports'), '{}'::jsonb, false, jsonb_build_object('source', (SELECT id FROM \"Concept\" WHERE space_id = 66566 AND source_local_id = 'pk-2143-rel-evd'), 'destination', (SELECT id FROM \"Concept\" WHERE space_id = 66566 AND source_local_id = 'pk-2143-rel-clm')), 2, 'rel_pk-2143-evd-clm', true) ON CONFLICT (space_id, source_local_id) DO UPDATE SET schema_id = EXCLUDED.schema_id, reference_content = EXCLUDED.reference_content, author_id = EXCLUDED.author_id;\nINSERT INTO \"ResourceAccess\" (account_uid, space_id, source_local_id) VALUES ((SELECT id FROM auth.users WHERE email = 'eng-2329-demo@groups.discoursegraphs.com'), 66566, 'rel_pk-2143-evd-clm') ON CONFLICT DO NOTHING;\nCOMMIT;"
+      }
+    },
+    {
+      "id": "no-earlier-import",
+      "why": "none of the Obsidian nodes was imported into this graph before, under the placeholder title, the real source's, or the title it keeps on a collision; no relation from an earlier import is left",
+      "phase": "before-load",
+      "apply": {
+        "js": "(async () => { await proof.relations.removeTouching([\"[[CLM]] - PK 2143 Linked claim\",\"[[EVD]] - PK 2143 Linked evidence - [[@placeholder]]\",\"[[EVD]] - PK 2143 Linked evidence - (source missing)\"].map((title) => proof.uid(title)).filter(Boolean)); await proof.page.remove([\"[[EVD]] - PK 2143 Obsidian evidence with source - [[@PK 2143 Obsidian source]]\", \"@PK 2143 Obsidian source\", \"[[EVD]] - PK 2143 Obsidian evidence without source - [[@placeholder]]\", \"[[EVD]] - PK 2143 Obsidian evidence with hidden source - [[@placeholder]]\", \"[[EVD]] - PK 2143 Obsidian evidence with hidden source - [[@PK 2143 Obsidian hidden source]]\", \"@PK 2143 Obsidian hidden source\", \"[[EVD]] - PK 2143 Obsidian evidence without source - (source missing)\", \"[[EVD]] - PK 2143 Obsidian evidence with hidden source - (source missing)\", \"[[EVD]] - PK 2143 Obsidian batch evidence - [[@PK 2143 Obsidian batch source]]\", \"@PK 2143 Obsidian batch source\", \"[[EVD]] - PK 2143 Obsidian evidence with colliding title - [[@placeholder]]\", \"[[EVD]] - PK 2143 Obsidian evidence with colliding title - (source missing)\", \"EVD - PK 2143 Obsidian evidence with colliding title\", \"[[CLM]] - PK 2143 Obsidian claim\", \"[[CLM]] - PK 2143 Linked claim\", \"[[EVD]] - PK 2143 Linked evidence - [[@placeholder]]\", \"[[EVD]] - PK 2143 Linked evidence - (source missing)\"]); })()"
+      },
+      "check": {
+        "js": "![\"[[EVD]] - PK 2143 Obsidian evidence with source - [[@PK 2143 Obsidian source]]\", \"@PK 2143 Obsidian source\", \"[[EVD]] - PK 2143 Obsidian evidence without source - [[@placeholder]]\", \"[[EVD]] - PK 2143 Obsidian evidence with hidden source - [[@placeholder]]\", \"[[EVD]] - PK 2143 Obsidian evidence with hidden source - [[@PK 2143 Obsidian hidden source]]\", \"@PK 2143 Obsidian hidden source\", \"[[EVD]] - PK 2143 Obsidian evidence without source - (source missing)\", \"[[EVD]] - PK 2143 Obsidian evidence with hidden source - (source missing)\", \"[[EVD]] - PK 2143 Obsidian batch evidence - [[@PK 2143 Obsidian batch source]]\", \"@PK 2143 Obsidian batch source\", \"[[EVD]] - PK 2143 Obsidian evidence with colliding title - [[@placeholder]]\", \"[[EVD]] - PK 2143 Obsidian evidence with colliding title - (source missing)\", \"EVD - PK 2143 Obsidian evidence with colliding title\", \"[[CLM]] - PK 2143 Obsidian claim\", \"[[CLM]] - PK 2143 Linked claim\", \"[[EVD]] - PK 2143 Linked evidence - [[@placeholder]]\", \"[[EVD]] - PK 2143 Linked evidence - (source missing)\"].some((title) => proof.page.exists(title))"
+      }
+    },
+    {
+      "id": "stored-relations-on",
+      "why": "Stored Relations is on, so the share dialog publishes without a warning",
+      "phase": "in-session",
+      "apply": {
+        "steps": [
+          {
+            "id": "s1",
+            "why": "turn Stored Relations on",
+            "source": "kit",
+            "use": "settings.stored-relations",
+            "with": {
+              "on": true
+            }
+          },
+          {
+            "id": "s2",
+            "why": "close the settings",
+            "source": "kit",
+            "use": "ui.quiet"
+          }
+        ]
+      }
+    },
+    {
+      "id": "roam-pages",
+      "why": "Roam pages to share: a Source and the Evidence that cites it, an Evidence page whose source slot holds [[@placeholder]], and an Evidence page that cites a Source nobody has published; an Evidence page that cites the Source imported from the vault, and a Source with the Evidence that cites it, to share in the other order",
+      "phase": "in-session",
+      "apply": {
+        "js": "(async () => { for (const [title, text] of [[\"@PK 2143 Roam source\", \"A Source page for the ENG-2143 proof.\"], [\"[[EVD]] - PK 2143 Roam evidence - [[@PK 2143 Roam source]]\", \"Evidence that cites the published Source.\"], [\"[[EVD]] - PK 2143 Roam bare evidence - [[@placeholder]]\", \"Evidence with no source.\"], [\"@PK 2143 Roam unpublished source\", \"A Source page that is never shared.\"], [\"[[EVD]] - PK 2143 Roam orphan evidence - [[@PK 2143 Roam unpublished source]]\", \"Evidence that cites a Source nobody published.\"], [\"[[EVD]] - PK 2143 Roam evidence of imported source - [[@PK 2143 Obsidian source]]\", \"Evidence that cites a Source imported from the vault.\"], [\"@PK 2143 Roam ordered source\", \"A Source page, shared after its Evidence.\"], [\"[[EVD]] - PK 2143 Roam ordered evidence - [[@PK 2143 Roam ordered source]]\", \"Evidence shared before its Source.\"]]) { await proof.page.ensure(title, [text]); } })()"
+      }
+    }
+  ],
+  "surface": [
+    {
+      "id": "s-import-dialog-results-summary",
+      "area": "Import dialog results summary",
+      "why": "DiscoverSharedNodesDialog now counts and lists per-node warnings alongside failures and changes the callout intent.",
+      "files": [
+        "apps/roam/src/components/DiscoverSharedNodesDialog.tsx",
+        "apps/roam/src/utils/importSharedNodes.ts"
+      ]
+    },
+    {
+      "id": "s-refresh-imported-node-button-and-refresh",
+      "area": "Refresh imported node button and Refresh all command",
+      "why": "Refresh results carry warnings that change toast intent and text for the single-page button and the palette command.",
+      "files": [
+        "apps/roam/src/components/RefreshImportedNodeTitleButton.tsx",
+        "apps/roam/src/utils/refreshAllImportedNodes.ts",
+        "apps/roam/src/utils/refreshImportedNode.ts",
+        "apps/roam/src/utils/registerCommandPaletteCommands.ts"
+      ]
+    },
+    {
+      "id": "s-imported-page-titles-for-non-source-node",
+      "area": "Imported page titles for non-source node types",
+      "why": "Page title building moved into buildPageTitle, so node types without a {source} format still use decorated core titles.",
+      "files": [
+        "apps/roam/src/utils/materializeSharedNode.ts"
+      ]
+    },
+    {
+      "id": "s-publish-nodes-to-group",
+      "area": "Publish nodes to group",
+      "why": "Publishing now adds referenced Source ids to the sync check, drops unpublished sources with a toast, and reorders upserts by dependency.",
+      "files": [
+        "apps/roam/src/utils/publishNodesToGroups.ts",
+        "apps/roam/src/utils/conceptConversion.ts"
+      ]
+    },
+    {
+      "id": "s-import-shared-relations",
+      "area": "Import shared relations",
+      "why": "findTargetUid was moved out and rewritten, and relation schema matching now dedupes matches, which affects how imported relations link to pages.",
+      "files": [
+        "apps/roam/src/utils/importSharedRelations.ts",
+        "apps/roam/src/utils/findTargetUid.ts"
+      ]
+    },
+    {
+      "id": "s-evidence-pages-citing-imported-sources",
+      "area": "Evidence pages citing imported Sources",
+      "why": "sourceIdOfNode now returns the original RID for an imported Source page instead of its local uid, and ignores the (source missing) text.",
+      "files": [
+        "apps/roam/src/utils/sourceSlot.ts",
+        "apps/roam/src/utils/roamToCrossAppConverters.ts"
+      ]
+    },
+    {
+      "id": "s-import-ordering-in-a-batch",
+      "area": "Import ordering in a batch",
+      "why": "importSharedNodes sorts Sources before the nodes that cite them, so selection order should no longer matter.",
+      "files": [
+        "apps/roam/src/utils/importSharedNodes.ts"
+      ]
+    }
+  ]
+}

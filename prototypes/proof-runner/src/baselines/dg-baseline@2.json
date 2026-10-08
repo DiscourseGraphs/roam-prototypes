@@ -1,0 +1,99 @@
+{
+  "name": "dg-baseline",
+  "version": 2,
+  "why": "What most DG Roam proofs assume, without a database: sync and node sharing off (so a PR's CI build can run it, for anyone), advanced node search on, the four default node types, one page per default type, and a quiet UI. A kit that needs the database turns sync or sharing on in its own prepare and says needs: supabase; it then runs against the proof database.",
+  "prepare": [
+    {
+      "id": "no-sync",
+      "why": "the sync flag (Suggestive mode overlay enabled) is off, so DG doesn't connect to a database when it loads",
+      "phase": "before-load",
+      "check": {
+        "js": "!proof.flags.get('Suggestive mode overlay enabled')"
+      },
+      "apply": {
+        "js": "proof.flags.set('Suggestive mode overlay enabled', false)"
+      }
+    },
+    {
+      "id": "no-node-sharing",
+      "why": "node sharing is off, so DG doesn't connect to a database when it loads",
+      "phase": "before-load",
+      "check": {
+        "js": "!proof.flags.get('Enable node sharing')"
+      },
+      "apply": {
+        "js": "proof.flags.set('Enable node sharing', false)"
+      }
+    },
+    {
+      "id": "flag-node-search",
+      "why": "advanced node search is on, so DG: Open Node Search is registered",
+      "phase": "before-load",
+      "check": {
+        "js": "proof.flags.get('Advanced node search enabled')"
+      },
+      "apply": {
+        "js": "proof.flags.set('Advanced node search enabled', true)"
+      }
+    },
+    {
+      "id": "baseline-pages",
+      "why": "one page per default node type exists",
+      "phase": "in-session",
+      "check": {
+        "js": "['[[CLM]] - PK baseline claim', '[[QUE]] - PK baseline question', '@PK baseline source', '[[EVD]] - PK baseline evidence - [[@PK baseline source]]'].every((title) => proof.page.exists(title))"
+      },
+      "apply": {
+        "js": "(async () => { for (const title of ['[[CLM]] - PK baseline claim', '[[QUE]] - PK baseline question', '@PK baseline source', '[[EVD]] - PK baseline evidence - [[@PK baseline source]]']) { await proof.page.ensure(title, ['Baseline page for proof kits. Leave it in place.']); } })()"
+      }
+    },
+    {
+      "id": "quiet-ui",
+      "why": "no dialog, toast or right-sidebar window is left over from the load",
+      "phase": "in-session",
+      "apply": {
+        "js": "(async () => { await proof.closeDialogs(); proof.toasts.clear(); await proof.sidebar.clearRight(); })()"
+      }
+    }
+  ],
+  "smoke": [
+    {
+      "id": "extension-loaded",
+      "title": "The DG extension loaded",
+      "expect": {
+        "js": "proof.assert(typeof (window.roamjs && window.roamjs.extension && window.roamjs.extension.queryBuilder && window.roamjs.extension.queryBuilder.runQuery) === 'function', 'The DG extension did not load.')"
+      }
+    },
+    {
+      "id": "default-node-types",
+      "title": "The four default node types exist",
+      "expect": {
+        "js": "(() => { const labels = proof.nodeTypes().map((node) => node.text); const missing = ['Claim', 'Question', 'Evidence', 'Source'].filter((label) => !labels.includes(label)); proof.assert(missing.length === 0, 'Missing node types: ' + missing.join(', ') + '. Found: ' + labels.join(', ')); })()"
+      }
+    },
+    {
+      "id": "flags",
+      "title": "The baseline flags read back: node search on, sync and sharing off",
+      "expect": {
+        "js": "(() => { const wrong = [['Advanced node search enabled', true], ['Suggestive mode overlay enabled', false], ['Enable node sharing', false]].filter(([name, value]) => proof.flags.get(name) !== value).map(([name]) => name); proof.assert(wrong.length === 0, 'These flags are the wrong way round: ' + wrong.join(', ')); })()"
+      }
+    },
+    {
+      "id": "settings-open",
+      "title": "Discourse settings open from the command palette",
+      "steps": [
+        {
+          "use": "settings.open-home",
+          "why": "open the settings"
+        },
+        {
+          "use": "dialog.close-all",
+          "why": "close them again"
+        }
+      ],
+      "expect": {
+        "js": "proof.assert(proof.dialogs().length === 0, 'A dialog is still open after closing settings.')"
+      }
+    }
+  ]
+}

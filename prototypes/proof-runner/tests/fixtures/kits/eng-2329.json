@@ -1,0 +1,1236 @@
+{
+  "name": "eng-2329",
+  "cases": [
+    {
+      "id": "evidence-first-no-reference",
+      "title": "Publishing Evidence before its Source stores it without a source reference",
+      "steps": [
+        {
+          "id": "s1",
+          "why": "Close dialogs, toasts and the right sidebar",
+          "source": "kit",
+          "use": "ui.quiet"
+        },
+        {
+          "id": "s2",
+          "why": "Open \"Share current node\" on the page `[[EVD]] - PK 2329 evidence A - [[@PK 2329 source]]`, whose Source isn't published yet",
+          "source": "kit",
+          "use": "share.current-node",
+          "with": {
+            "title": "[[EVD]] - PK 2329 evidence A - [[@PK 2329 source]]"
+          }
+        },
+        {
+          "id": "s3",
+          "why": "Turn on the eng-2329-demo group",
+          "source": "kit",
+          "do": {
+            "js": "proof.setSwitch('eng-2329-demo', true)"
+          }
+        },
+        {
+          "id": "s4",
+          "why": "Click Publish",
+          "source": "kit",
+          "do": {
+            "click": ".bp3-dialog:visible .bp3-dialog-footer button:has-text(\"Publish\")"
+          }
+        },
+        {
+          "id": "s5",
+          "why": "Wait for the publish result",
+          "source": "kit",
+          "do": {
+            "wait_for": ".bp3-toast"
+          }
+        },
+        {
+          "id": "s6",
+          "why": "Look at the publish result",
+          "source": "kit",
+          "do": {
+            "pause": 2
+          }
+        }
+      ],
+      "proves": "the starting state of the Evidence-then-Source order: Evidence A is stored without its source reference",
+      "checks": "Evidence A is in the database with no source reference.",
+      "caption": "Evidence A names a Source that isn't in the database yet. Publishing it stores the node, with no source reference.",
+      "expect": {
+        "js": "(async () => { const row = (await proof.waitFor(async () => (await proof.rest('/rest/v1/Concept?select=id,reference_content,source_local_id&is_schema=eq.false&space_id=eq.120237&source_local_id=eq.pk2329eva', { key: '{{env.SUPABASE_SERVICE_ROLE_KEY}}' }))[0], { what: 'the published Evidence A concept', timeout: 15000, interval: 500 })); proof.assert(!(row.reference_content || {}).sourceDocument, 'Evidence A already has a source reference: ' + JSON.stringify(row.reference_content)); })()"
+      }
+    },
+    {
+      "id": "source-after-evidence-restores",
+      "title": "Publishing the Source afterwards gives Evidence A its source reference",
+      "steps": [
+        {
+          "id": "s1",
+          "why": "Close dialogs, toasts and the right sidebar",
+          "source": "kit",
+          "use": "ui.quiet"
+        },
+        {
+          "id": "s2",
+          "why": "Open \"Share current node\" on the page `@PK 2329 source`",
+          "source": "kit",
+          "use": "share.current-node",
+          "with": {
+            "title": "@PK 2329 source"
+          }
+        },
+        {
+          "id": "s3",
+          "why": "Turn on the eng-2329-demo group",
+          "source": "kit",
+          "do": {
+            "js": "proof.setSwitch('eng-2329-demo', true)"
+          }
+        },
+        {
+          "id": "s4",
+          "why": "Click Publish",
+          "source": "kit",
+          "do": {
+            "click": ".bp3-dialog:visible .bp3-dialog-footer button:has-text(\"Publish\")"
+          }
+        },
+        {
+          "id": "s5",
+          "why": "Wait for the publish result",
+          "source": "kit",
+          "do": {
+            "wait_for": ".bp3-toast"
+          }
+        },
+        {
+          "id": "s6",
+          "why": "Look at the publish result",
+          "source": "kit",
+          "do": {
+            "pause": 2
+          }
+        }
+      ],
+      "proves": "Done When 1: Publishing Evidence, then its Source, stores the Evidence's source reference, so importing that Evidence can import the Source and resolve its title without the missing-source warning.",
+      "checks": "Evidence A's source reference points to `@PK 2329 source`.",
+      "caption": "Now the Source is published. Evidence A, which is not published again, gets its reference to the Source.",
+      "expect": {
+        "js": "(async () => { const src = (await proof.waitFor(async () => (await proof.rest('/rest/v1/Concept?select=id,reference_content,source_local_id&is_schema=eq.false&space_id=eq.120237&source_local_id=eq.pk2329src', { key: '{{env.SUPABASE_SERVICE_ROLE_KEY}}' }))[0], { what: 'the published Source concept', timeout: 15000, interval: 500 })); await proof.waitFor(async () => { const row = (await proof.rest('/rest/v1/Concept?select=id,reference_content,source_local_id&is_schema=eq.false&space_id=eq.120237&source_local_id=eq.pk2329eva', { key: '{{env.SUPABASE_SERVICE_ROLE_KEY}}' }))[0]; return row && (row.reference_content || {}).sourceDocument === src.id; }, { what: 'Evidence A to reference the Source concept ' + src.id, timeout: 15000, interval: 500 }); })()"
+      }
+    },
+    {
+      "id": "source-grants-no-other-node",
+      "title": "Publishing the Source doesn't publish Evidence B or Evidence C",
+      "steps": [],
+      "proves": "Done When 2: Publishing a Source does not publish or grant access to any other node.",
+      "checks": "Evidence B and Evidence C aren't in the database and have no group access. Only the Source and Evidence A are published.",
+      "caption": "Evidence B also names the Source, but it was never published. Publishing the Source left it alone.",
+      "expect": {
+        "js": "(async () => { const key = '{{env.SUPABASE_SERVICE_ROLE_KEY}}'; const list = '(pk2329src,pk2329eva,pk2329evb,pk2329evc,pk2329orp)'; const rows = async (table) => (await proof.rest('/rest/v1/' + table + '?select=source_local_id&space_id=eq.120237&source_local_id=in.' + list, { key })).map((row) => row.source_local_id).sort(); for (const table of ['Concept', 'Content', 'ResourceAccess']) { const ids = await rows(table); proof.assert(!ids.includes('pk2329evb') && !ids.includes('pk2329evc'), table + ' has a row for an unpublished node: ' + JSON.stringify(ids)); } const access = await rows('ResourceAccess'); proof.assert(access.includes('pk2329src') && access.includes('pk2329eva'), 'The Source and Evidence A should be the published nodes: ' + JSON.stringify(access)); })()"
+      }
+    },
+    {
+      "id": "missing-source-warns",
+      "title": "Publishing Evidence whose Source isn't published warns and stores no source reference",
+      "steps": [
+        {
+          "id": "s1",
+          "why": "Close dialogs, toasts and the right sidebar",
+          "source": "kit",
+          "use": "ui.quiet"
+        },
+        {
+          "id": "s2",
+          "why": "Open \"Share current node\" on the page `[[EVD]] - PK 2329 evidence C - [[@PK 2329 orphan source]]`, whose Source is never published",
+          "source": "kit",
+          "use": "share.current-node",
+          "with": {
+            "title": "[[EVD]] - PK 2329 evidence C - [[@PK 2329 orphan source]]"
+          }
+        },
+        {
+          "id": "s3",
+          "why": "Turn on the eng-2329-demo group",
+          "source": "kit",
+          "do": {
+            "js": "proof.setSwitch('eng-2329-demo', true)"
+          }
+        },
+        {
+          "id": "s4",
+          "why": "Click Publish",
+          "source": "kit",
+          "do": {
+            "click": ".bp3-dialog:visible .bp3-dialog-footer button:has-text(\"Publish\")"
+          }
+        },
+        {
+          "id": "s5",
+          "why": "Wait for the publish result",
+          "source": "kit",
+          "do": {
+            "wait_for": ".bp3-toast"
+          }
+        },
+        {
+          "id": "s6",
+          "why": "Look at the publish result",
+          "source": "kit",
+          "do": {
+            "pause": 2
+          }
+        }
+      ],
+      "proves": "Done When 3: Publishing Evidence whose Source is not in this space still shows the missing-source warning and omits the reference.",
+      "checks": "A toast says the Source `@PK 2329 orphan source` is not in this space yet, and Evidence C is in the database with no source reference.",
+      "caption": "Evidence C names a Source that was never published. Publishing it warns about the missing Source and stores no reference.",
+      "expect": {
+        "js": "(async () => { await proof.waitFor(() => proof.toastText().includes('is not in this space yet'), { what: 'the missing-source warning toast' }); const row = (await proof.waitFor(async () => (await proof.rest('/rest/v1/Concept?select=id,reference_content,source_local_id&is_schema=eq.false&space_id=eq.120237&source_local_id=eq.pk2329evc', { key: '{{env.SUPABASE_SERVICE_ROLE_KEY}}' }))[0], { what: 'the published Evidence C concept', timeout: 15000, interval: 500 })); proof.assert(!(row.reference_content || {}).sourceDocument, 'Evidence C has a source reference: ' + JSON.stringify(row.reference_content)); })()",
+        "text": "The warning names @PK 2329 orphan source and says to publish the Source, then the node again."
+      }
+    },
+    {
+      "id": "qa-source-publish-with-several-evidence",
+      "title": "Publishing a Source gives every Evidence that names it its source reference",
+      "steps": [
+        {
+          "use": "ui.quiet",
+          "why": "Close dialogs, toasts and the right sidebar"
+        },
+        {
+          "use": "share.current-node",
+          "with": {
+            "title": "[[EVD]] - PK 2329 multi evidence 1 - [[@PK 2329 multi source]]"
+          },
+          "why": "Open \"Share current node\" on the page `[[EVD]] - PK 2329 multi evidence 1 - [[@PK 2329 multi source]]`, whose Source isn't published yet"
+        },
+        {
+          "do": {
+            "js": "proof.setSwitch('eng-2329-demo', true)"
+          },
+          "why": "Turn on the eng-2329-demo group"
+        },
+        {
+          "do": {
+            "click": ".bp3-dialog:visible .bp3-dialog-footer button:has-text(\"Publish\")"
+          },
+          "why": "Click Publish"
+        },
+        {
+          "do": {
+            "wait_for": ".bp3-toast"
+          },
+          "why": "Wait for the publish result"
+        },
+        {
+          "do": {
+            "pause": 2
+          },
+          "why": "Look at the publish result"
+        },
+        {
+          "use": "ui.quiet",
+          "why": "Close dialogs, toasts and the right sidebar"
+        },
+        {
+          "use": "share.current-node",
+          "with": {
+            "title": "[[EVD]] - PK 2329 multi evidence 2 - [[@PK 2329 multi source]]"
+          },
+          "why": "Open \"Share current node\" on the page `[[EVD]] - PK 2329 multi evidence 2 - [[@PK 2329 multi source]]`"
+        },
+        {
+          "do": {
+            "js": "proof.setSwitch('eng-2329-demo', true)"
+          },
+          "why": "Turn on the eng-2329-demo group"
+        },
+        {
+          "do": {
+            "click": ".bp3-dialog:visible .bp3-dialog-footer button:has-text(\"Publish\")"
+          },
+          "why": "Click Publish"
+        },
+        {
+          "do": {
+            "wait_for": ".bp3-toast"
+          },
+          "why": "Wait for the publish result"
+        },
+        {
+          "do": {
+            "pause": 2
+          },
+          "why": "Look at the publish result"
+        },
+        {
+          "do": {
+            "js": "(async () => { { const row = await proof.waitFor(async () => (await proof.rest('/rest/v1/Concept?select=id,reference_content,source_local_id&space_id=eq.120237&is_schema=eq.false&source_local_id=eq.pk2329me1', { key: '{{env.SUPABASE_SERVICE_ROLE_KEY}}' }))[0], { what: '[[EVD]] - PK 2329 multi evidence 1 - [[@PK 2329 multi source]] stored', timeout: 30000, interval: 500 }); proof.assert(!(row.reference_content || {}).sourceDocument, '[[EVD]] - PK 2329 multi evidence 1 - [[@PK 2329 multi source]] already has a source reference: ' + JSON.stringify(row.reference_content)); } { const row = await proof.waitFor(async () => (await proof.rest('/rest/v1/Concept?select=id,reference_content,source_local_id&space_id=eq.120237&is_schema=eq.false&source_local_id=eq.pk2329me2', { key: '{{env.SUPABASE_SERVICE_ROLE_KEY}}' }))[0], { what: '[[EVD]] - PK 2329 multi evidence 2 - [[@PK 2329 multi source]] stored', timeout: 30000, interval: 500 }); proof.assert(!(row.reference_content || {}).sourceDocument, '[[EVD]] - PK 2329 multi evidence 2 - [[@PK 2329 multi source]] already has a source reference: ' + JSON.stringify(row.reference_content)); } })()"
+          },
+          "why": "Check that both Evidence pages are stored without a source reference"
+        },
+        {
+          "use": "ui.quiet",
+          "why": "Close dialogs, toasts and the right sidebar"
+        },
+        {
+          "use": "share.current-node",
+          "with": {
+            "title": "@PK 2329 multi source"
+          },
+          "why": "Open \"Share current node\" on the page `@PK 2329 multi source`"
+        },
+        {
+          "do": {
+            "js": "proof.setSwitch('eng-2329-demo', true)"
+          },
+          "why": "Turn on the eng-2329-demo group"
+        },
+        {
+          "do": {
+            "click": ".bp3-dialog:visible .bp3-dialog-footer button:has-text(\"Publish\")"
+          },
+          "why": "Click Publish"
+        },
+        {
+          "do": {
+            "wait_for": ".bp3-toast"
+          },
+          "why": "Wait for the publish result"
+        },
+        {
+          "do": {
+            "pause": 2
+          },
+          "why": "Look at the publish result"
+        }
+      ],
+      "intent": "Publish Evidence A and B (both naming the Source) before the Source, in one or two publishes. Then publish the Source alone to the eng-2329-demo group.",
+      "expect": {
+        "js": "(async () => { const src = (await proof.waitFor(async () => (await proof.rest('/rest/v1/Concept?select=id,reference_content,source_local_id&space_id=eq.120237&is_schema=eq.false&source_local_id=eq.pk2329ms0', { key: '{{env.SUPABASE_SERVICE_ROLE_KEY}}' }))[0], { what: 'the published Source concept', timeout: 30000, interval: 500 })); await proof.waitFor(async () => { const row = (await proof.rest('/rest/v1/Concept?select=id,reference_content,source_local_id&space_id=eq.120237&is_schema=eq.false&source_local_id=eq.pk2329me1', { key: '{{env.SUPABASE_SERVICE_ROLE_KEY}}' }))[0]; return row && (row.reference_content || {}).sourceDocument === src.id; }, { what: '[[EVD]] - PK 2329 multi evidence 1 - [[@PK 2329 multi source]] to reference the Source concept ' + src.id, timeout: 30000, interval: 500 }); await proof.waitFor(async () => { const row = (await proof.rest('/rest/v1/Concept?select=id,reference_content,source_local_id&space_id=eq.120237&is_schema=eq.false&source_local_id=eq.pk2329me2', { key: '{{env.SUPABASE_SERVICE_ROLE_KEY}}' }))[0]; return row && (row.reference_content || {}).sourceDocument === src.id; }, { what: '[[EVD]] - PK 2329 multi evidence 2 - [[@PK 2329 multi source]] to reference the Source concept ' + src.id, timeout: 30000, interval: 500 }); })()"
+      },
+      "decision": {
+        "status": "approved",
+        "by": "Claude, for sid",
+        "at": "2026-10-05T07:21:48.970Z"
+      },
+      "caption": "Two Evidence nodes name the same Source. Publishing the Source alone sets the reference on both.",
+      "checks": "Both Evidence pages have a source reference to `@PK 2329 multi source`."
+    },
+    {
+      "id": "qa-evidence-that-already-has-a-source",
+      "title": "Publishing the Source again leaves an existing source reference as it was",
+      "steps": [
+        {
+          "use": "ui.quiet",
+          "why": "Close dialogs, toasts and the right sidebar"
+        },
+        {
+          "use": "share.current-node",
+          "with": {
+            "title": "@PK 2329 linked source"
+          },
+          "why": "Open \"Share current node\" on the page `@PK 2329 linked source`"
+        },
+        {
+          "do": {
+            "js": "proof.setSwitch('eng-2329-demo', true)"
+          },
+          "why": "Turn on the eng-2329-demo group"
+        },
+        {
+          "do": {
+            "click": ".bp3-dialog:visible .bp3-dialog-footer button:has-text(\"Publish\")"
+          },
+          "why": "Click Publish"
+        },
+        {
+          "do": {
+            "wait_for": ".bp3-toast"
+          },
+          "why": "Wait for the publish result"
+        },
+        {
+          "do": {
+            "pause": 2
+          },
+          "why": "Look at the publish result"
+        },
+        {
+          "use": "ui.quiet",
+          "why": "Close dialogs, toasts and the right sidebar"
+        },
+        {
+          "use": "share.current-node",
+          "with": {
+            "title": "[[EVD]] - PK 2329 linked evidence - [[@PK 2329 linked source]]"
+          },
+          "why": "Open \"Share current node\" on the page `[[EVD]] - PK 2329 linked evidence - [[@PK 2329 linked source]]`, whose Source is already published"
+        },
+        {
+          "do": {
+            "js": "proof.setSwitch('eng-2329-demo', true)"
+          },
+          "why": "Turn on the eng-2329-demo group"
+        },
+        {
+          "do": {
+            "click": ".bp3-dialog:visible .bp3-dialog-footer button:has-text(\"Publish\")"
+          },
+          "why": "Click Publish"
+        },
+        {
+          "do": {
+            "wait_for": ".bp3-toast"
+          },
+          "why": "Wait for the publish result"
+        },
+        {
+          "do": {
+            "pause": 2
+          },
+          "why": "Look at the publish result"
+        },
+        {
+          "do": {
+            "js": "(async () => { const src = (await proof.waitFor(async () => (await proof.rest('/rest/v1/Concept?select=id,reference_content,source_local_id&space_id=eq.120237&is_schema=eq.false&source_local_id=eq.pk2329al0', { key: '{{env.SUPABASE_SERVICE_ROLE_KEY}}' }))[0], { what: 'the published Source concept', timeout: 30000, interval: 500 })); await proof.waitFor(async () => { const row = (await proof.rest('/rest/v1/Concept?select=id,reference_content,source_local_id&space_id=eq.120237&is_schema=eq.false&source_local_id=eq.pk2329al1', { key: '{{env.SUPABASE_SERVICE_ROLE_KEY}}' }))[0]; return row && (row.reference_content || {}).sourceDocument === src.id; }, { what: '[[EVD]] - PK 2329 linked evidence - [[@PK 2329 linked source]] to reference the Source concept ' + src.id, timeout: 30000, interval: 500 }); window.__pk2329Linked = src.id; })()"
+          },
+          "why": "Note which Source the Evidence's source reference points to"
+        },
+        {
+          "use": "ui.quiet",
+          "why": "Close dialogs, toasts and the right sidebar"
+        },
+        {
+          "use": "share.current-node",
+          "with": {
+            "title": "@PK 2329 linked source"
+          },
+          "why": "Open \"Share current node\" on the page `@PK 2329 linked source` again"
+        },
+        {
+          "do": {
+            "js": "proof.setSwitch('eng-2329-demo', true)"
+          },
+          "why": "Turn on the eng-2329-demo group"
+        },
+        {
+          "do": {
+            "click": ".bp3-dialog:visible .bp3-dialog-footer button:has-text(\"Publish\")"
+          },
+          "why": "Click Publish"
+        },
+        {
+          "do": {
+            "wait_for": ".bp3-toast"
+          },
+          "why": "Wait for the publish result"
+        },
+        {
+          "do": {
+            "pause": 2
+          },
+          "why": "Look at the publish result"
+        }
+      ],
+      "intent": "Publish the Source first, then Evidence A (it gets a reference). Edit nothing. Publish the Source again, alone.",
+      "expect": {
+        "js": "(async () => { const src = (await proof.waitFor(async () => (await proof.rest('/rest/v1/Concept?select=id,reference_content,source_local_id&space_id=eq.120237&is_schema=eq.false&source_local_id=eq.pk2329al0', { key: '{{env.SUPABASE_SERVICE_ROLE_KEY}}' }))[0], { what: 'the Source concept', timeout: 30000, interval: 500 })); proof.assert(src.id === window.__pk2329Linked, 'The Source concept changed from ' + window.__pk2329Linked + ' to ' + src.id + '.'); await proof.waitFor(async () => { const row = (await proof.rest('/rest/v1/Concept?select=id,reference_content,source_local_id&space_id=eq.120237&is_schema=eq.false&source_local_id=eq.pk2329al1', { key: '{{env.SUPABASE_SERVICE_ROLE_KEY}}' }))[0]; return row && (row.reference_content || {}).sourceDocument === src.id; }, { what: '[[EVD]] - PK 2329 linked evidence - [[@PK 2329 linked source]] to reference the Source concept ' + src.id, timeout: 30000, interval: 500 }); })()"
+      },
+      "decision": {
+        "status": "approved",
+        "by": "Claude, for sid",
+        "at": "2026-10-05T07:21:48.970Z"
+      },
+      "surface": "s-evidence-already-linked-to-a-source",
+      "caption": "The Evidence already references its Source. Publishing the Source again leaves that reference as it was.",
+      "checks": "After the Source is published again, the Evidence's source reference still points to the same Source."
+    },
+    {
+      "id": "qa-unpublished-edits-to-evidence-are-not",
+      "title": "Publishing the Source doesn't publish unpublished changes to the Evidence's text",
+      "steps": [
+        {
+          "use": "ui.quiet",
+          "why": "Close dialogs, toasts and the right sidebar"
+        },
+        {
+          "use": "share.current-node",
+          "with": {
+            "title": "[[EVD]] - PK 2329 edit evidence - [[@PK 2329 edit source]]"
+          },
+          "why": "Open \"Share current node\" on the page `[[EVD]] - PK 2329 edit evidence - [[@PK 2329 edit source]]`, whose Source isn't published yet"
+        },
+        {
+          "do": {
+            "js": "proof.setSwitch('eng-2329-demo', true)"
+          },
+          "why": "Turn on the eng-2329-demo group"
+        },
+        {
+          "do": {
+            "click": ".bp3-dialog:visible .bp3-dialog-footer button:has-text(\"Publish\")"
+          },
+          "why": "Click Publish"
+        },
+        {
+          "do": {
+            "wait_for": ".bp3-toast"
+          },
+          "why": "Wait for the publish result"
+        },
+        {
+          "do": {
+            "pause": 2
+          },
+          "why": "Look at the publish result"
+        },
+        {
+          "do": {
+            "js": "window.roamAlphaAPI.data.block.update({ block: { uid: 'pk2329edb', string: \"EDITED-2329 body, changed after the first publish.\" } })"
+          },
+          "why": "Change the Evidence page's text, without publishing it"
+        },
+        {
+          "use": "ui.quiet",
+          "why": "Close dialogs, toasts and the right sidebar"
+        },
+        {
+          "use": "share.current-node",
+          "with": {
+            "title": "@PK 2329 edit source"
+          },
+          "why": "Open \"Share current node\" on the page `@PK 2329 edit source`"
+        },
+        {
+          "do": {
+            "js": "proof.setSwitch('eng-2329-demo', true)"
+          },
+          "why": "Turn on the eng-2329-demo group"
+        },
+        {
+          "do": {
+            "click": ".bp3-dialog:visible .bp3-dialog-footer button:has-text(\"Publish\")"
+          },
+          "why": "Click Publish"
+        },
+        {
+          "do": {
+            "wait_for": ".bp3-toast"
+          },
+          "why": "Wait for the publish result"
+        },
+        {
+          "do": {
+            "pause": 2
+          },
+          "why": "Look at the publish result"
+        }
+      ],
+      "intent": "Publish Evidence A without its Source. Edit A's body in Roam without republishing. Publish the Source.",
+      "expect": {
+        "js": "(async () => { const src = (await proof.waitFor(async () => (await proof.rest('/rest/v1/Concept?select=id,reference_content,source_local_id&space_id=eq.120237&is_schema=eq.false&source_local_id=eq.pk2329ed0', { key: '{{env.SUPABASE_SERVICE_ROLE_KEY}}' }))[0], { what: 'the published Source concept', timeout: 30000, interval: 500 })); await proof.waitFor(async () => { const row = (await proof.rest('/rest/v1/Concept?select=id,reference_content,source_local_id&space_id=eq.120237&is_schema=eq.false&source_local_id=eq.pk2329ed1', { key: '{{env.SUPABASE_SERVICE_ROLE_KEY}}' }))[0]; return row && (row.reference_content || {}).sourceDocument === src.id; }, { what: '[[EVD]] - PK 2329 edit evidence - [[@PK 2329 edit source]] to reference the Source concept ' + src.id, timeout: 30000, interval: 500 }); const rows = await proof.rest('/rest/v1/Content?select=variant,text&space_id=eq.120237&source_local_id=eq.pk2329ed1', { key: '{{env.SUPABASE_SERVICE_ROLE_KEY}}' }); proof.assert(rows.length > 0, 'The Evidence has no stored content.'); proof.assert(!rows.some((r) => (r.text || '').includes('EDITED-2329')), 'The unpublished edit was published: ' + JSON.stringify(rows)); })()"
+      },
+      "decision": {
+        "status": "approved",
+        "by": "Claude, for sid",
+        "at": "2026-10-05T07:21:48.970Z"
+      },
+      "surface": "s-evidence-published-later-with-edits",
+      "caption": "The Evidence's body was edited in Roam but not published. Publishing the Source restores the reference and leaves the stored body as it was.",
+      "checks": "The Evidence has a source reference to `@PK 2329 edit source`, and its stored text doesn't have the unpublished change."
+    },
+    {
+      "id": "qa-a-later-normal-publish-of-the-edited",
+      "title": "Publishing the changed Evidence stores its new text and keeps its source reference",
+      "steps": [
+        {
+          "use": "ui.quiet",
+          "why": "Close dialogs, toasts and the right sidebar"
+        },
+        {
+          "use": "share.current-node",
+          "with": {
+            "title": "[[EVD]] - PK 2329 edit evidence - [[@PK 2329 edit source]]"
+          },
+          "why": "Open \"Share current node\" on the page `[[EVD]] - PK 2329 edit evidence - [[@PK 2329 edit source]]` again"
+        },
+        {
+          "do": {
+            "js": "proof.setSwitch('eng-2329-demo', true)"
+          },
+          "why": "Turn on the eng-2329-demo group"
+        },
+        {
+          "do": {
+            "click": ".bp3-dialog:visible .bp3-dialog-footer button:has-text(\"Publish\")"
+          },
+          "why": "Click Publish"
+        },
+        {
+          "do": {
+            "wait_for": ".bp3-toast"
+          },
+          "why": "Wait for the publish result"
+        },
+        {
+          "do": {
+            "pause": 2
+          },
+          "why": "Look at the publish result"
+        }
+      ],
+      "intent": "After the previous case, publish Evidence A again from Roam with its new body.",
+      "expect": {
+        "js": "(async () => { const src = (await proof.waitFor(async () => (await proof.rest('/rest/v1/Concept?select=id,reference_content,source_local_id&space_id=eq.120237&is_schema=eq.false&source_local_id=eq.pk2329ed0', { key: '{{env.SUPABASE_SERVICE_ROLE_KEY}}' }))[0], { what: 'the published Source concept', timeout: 30000, interval: 500 })); await proof.waitFor(async () => (await proof.rest('/rest/v1/Content?select=variant,text&space_id=eq.120237&source_local_id=eq.pk2329ed1', { key: '{{env.SUPABASE_SERVICE_ROLE_KEY}}' })).some((r) => (r.text || '').includes('EDITED-2329')), { what: 'the edited body in the stored content', timeout: 30000, interval: 500 }); await proof.waitFor(async () => { const row = (await proof.rest('/rest/v1/Concept?select=id,reference_content,source_local_id&space_id=eq.120237&is_schema=eq.false&source_local_id=eq.pk2329ed1', { key: '{{env.SUPABASE_SERVICE_ROLE_KEY}}' }))[0]; return row && (row.reference_content || {}).sourceDocument === src.id; }, { what: '[[EVD]] - PK 2329 edit evidence - [[@PK 2329 edit source]] to reference the Source concept ' + src.id, timeout: 30000, interval: 500 }); })()"
+      },
+      "decision": {
+        "status": "approved",
+        "by": "Claude, for sid",
+        "at": "2026-10-05T07:21:48.970Z"
+      },
+      "surface": "s-evidence-published-later-with-edits",
+      "caption": "Publishing the edited Evidence normally stores the new body, and the reference the Source restored is still there.",
+      "checks": "The stored text has the change, and the Evidence still has its source reference to `@PK 2329 edit source`."
+    },
+    {
+      "id": "qa-renamed-evidence-gets-no-reference",
+      "title": "Publishing a Source gives no source reference to Evidence renamed to name it after its publish",
+      "intent": "Publish Evidence naming Source 1 before Source 1. Rename the Evidence in Roam to name Source 2, without republishing it. Publish Source 2.",
+      "decision": {
+        "status": "approved",
+        "by": "Claude, for sid",
+        "at": "2026-10-07T10:45:22.150Z"
+      },
+      "surface": "s-evidence-published-later-with-edits",
+      "caption": "The Evidence was renamed in Roam to name another Source, and not published again. Publishing that Source leaves the stored Evidence without a reference, because its stored title still names the first Source.",
+      "checks": "The stored Evidence keeps its first title, which names `@PK 2329 first source`, and has no source reference.",
+      "steps": [
+        {
+          "use": "ui.quiet",
+          "why": "Close dialogs, toasts and the right sidebar"
+        },
+        {
+          "use": "share.current-node",
+          "with": {
+            "title": "[[EVD]] - PK 2329 renamed evidence - [[@PK 2329 first source]]"
+          },
+          "why": "Open \"Share current node\" on the page `[[EVD]] - PK 2329 renamed evidence - [[@PK 2329 first source]]`, whose Source isn't published yet"
+        },
+        {
+          "do": {
+            "js": "proof.setSwitch('eng-2329-demo', true)"
+          },
+          "why": "Turn on the eng-2329-demo group"
+        },
+        {
+          "do": {
+            "click": ".bp3-dialog:visible .bp3-dialog-footer button:has-text(\"Publish\")"
+          },
+          "why": "Click Publish"
+        },
+        {
+          "do": {
+            "wait_for": ".bp3-toast"
+          },
+          "why": "Wait for the publish result"
+        },
+        {
+          "do": {
+            "pause": 2
+          },
+          "why": "Look at the publish result"
+        },
+        {
+          "do": {
+            "js": "window.roamAlphaAPI.data.page.update({ page: { uid: 'pk2329rv1', title: \"[[EVD]] - PK 2329 renamed evidence - [[@PK 2329 second source]]\" } })"
+          },
+          "why": "Rename the Evidence page to name `@PK 2329 second source`, without publishing it"
+        },
+        {
+          "use": "ui.quiet",
+          "why": "Close dialogs, toasts and the right sidebar"
+        },
+        {
+          "use": "share.current-node",
+          "with": {
+            "title": "@PK 2329 second source"
+          },
+          "why": "Open \"Share current node\" on the page `@PK 2329 second source`"
+        },
+        {
+          "do": {
+            "js": "proof.setSwitch('eng-2329-demo', true)"
+          },
+          "why": "Turn on the eng-2329-demo group"
+        },
+        {
+          "do": {
+            "click": ".bp3-dialog:visible .bp3-dialog-footer button:has-text(\"Publish\")"
+          },
+          "why": "Click Publish"
+        },
+        {
+          "do": {
+            "wait_for": ".bp3-toast"
+          },
+          "why": "Wait for the publish result"
+        },
+        {
+          "do": {
+            "pause": 2
+          },
+          "why": "Look at the publish result"
+        }
+      ],
+      "expect": {
+        "js": "(async () => { await proof.waitFor(async () => (await proof.rest('/rest/v1/Concept?select=id,name,reference_content&space_id=eq.120237&is_schema=eq.false&source_local_id=eq.pk2329rv2', { key: '{{env.SUPABASE_SERVICE_ROLE_KEY}}' }))[0], { what: 'the published second Source concept', timeout: 30000, interval: 500 }); const row = (await proof.rest('/rest/v1/Concept?select=id,name,reference_content&space_id=eq.120237&is_schema=eq.false&source_local_id=eq.pk2329rv1', { key: '{{env.SUPABASE_SERVICE_ROLE_KEY}}' }))[0]; proof.assert(row, 'The renamed Evidence has no concept in the space.'); proof.assert(row.name === \"[[EVD]] - PK 2329 renamed evidence - [[@PK 2329 first source]]\", 'The stored title changed: ' + row.name); proof.assert(!(row.reference_content || {}).sourceDocument, 'The renamed Evidence got a source reference: ' + JSON.stringify(row.reference_content)); })()"
+      }
+    },
+    {
+      "id": "qa-pages-that-only-mention-the-source-title",
+      "title": "Publishing a Source leaves pages that only mention its title unchanged",
+      "steps": [
+        {
+          "use": "ui.quiet",
+          "why": "Close dialogs, toasts and the right sidebar"
+        },
+        {
+          "use": "share.current-node",
+          "with": {
+            "title": "[[CLM]] - PK 2329 claim about @PK 2329 mention source"
+          },
+          "why": "Open \"Share current node\" on the page `[[CLM]] - PK 2329 claim about @PK 2329 mention source`"
+        },
+        {
+          "do": {
+            "js": "proof.setSwitch('eng-2329-demo', true)"
+          },
+          "why": "Turn on the eng-2329-demo group"
+        },
+        {
+          "do": {
+            "click": ".bp3-dialog:visible .bp3-dialog-footer button:has-text(\"Publish\")"
+          },
+          "why": "Click Publish"
+        },
+        {
+          "do": {
+            "wait_for": ".bp3-toast"
+          },
+          "why": "Wait for the publish result"
+        },
+        {
+          "do": {
+            "pause": 2
+          },
+          "why": "Look at the publish result"
+        },
+        {
+          "use": "ui.quiet",
+          "why": "Close dialogs, toasts and the right sidebar"
+        },
+        {
+          "use": "share.current-node",
+          "with": {
+            "title": "@PK 2329 mention source"
+          },
+          "why": "Open \"Share current node\" on the page `@PK 2329 mention source`"
+        },
+        {
+          "do": {
+            "js": "proof.setSwitch('eng-2329-demo', true)"
+          },
+          "why": "Turn on the eng-2329-demo group"
+        },
+        {
+          "do": {
+            "click": ".bp3-dialog:visible .bp3-dialog-footer button:has-text(\"Publish\")"
+          },
+          "why": "Click Publish"
+        },
+        {
+          "do": {
+            "wait_for": ".bp3-toast"
+          },
+          "why": "Wait for the publish result"
+        },
+        {
+          "do": {
+            "pause": 2
+          },
+          "why": "Look at the publish result"
+        }
+      ],
+      "intent": "Create a Claim and an ordinary page whose titles contain the Source's title text (the Claim already published). Publish the Source.",
+      "expect": {
+        "js": "(async () => { const src = (await proof.waitFor(async () => (await proof.rest('/rest/v1/Concept?select=id,reference_content,source_local_id&space_id=eq.120237&is_schema=eq.false&source_local_id=eq.pk2329mn0', { key: '{{env.SUPABASE_SERVICE_ROLE_KEY}}' }))[0], { what: 'the published Source concept', timeout: 30000, interval: 500 })); const claim = (await proof.waitFor(async () => (await proof.rest('/rest/v1/Concept?select=id,reference_content,source_local_id&space_id=eq.120237&is_schema=eq.false&source_local_id=eq.pk2329mn1', { key: '{{env.SUPABASE_SERVICE_ROLE_KEY}}' }))[0], { what: 'the published Claim concept', timeout: 30000, interval: 500 })); proof.assert(Object.keys(claim.reference_content || {}).length === 0, 'The Claim got a reference: ' + JSON.stringify(claim.reference_content)); const notes = await proof.rest('/rest/v1/Concept?select=id,reference_content,source_local_id&space_id=eq.120237&is_schema=eq.false&source_local_id=eq.pk2329mn2', { key: '{{env.SUPABASE_SERVICE_ROLE_KEY}}' }); proof.assert(notes.length === 0, 'The notes page was published.'); })()"
+      },
+      "decision": {
+        "status": "approved",
+        "by": "Claude, for sid",
+        "at": "2026-10-05T07:21:48.970Z"
+      },
+      "surface": "s-source-reference-on-other-evidence",
+      "caption": "A Claim and a notes page only mention the Source's title. Publishing the Source gives neither a reference, and the notes page stays unpublished.",
+      "checks": "The Claim has no source reference, and the notes page isn't in the database."
+    },
+    {
+      "id": "qa-source-whose-title-is-also-part-of",
+      "title": "Publishing a Source whose title is part of another Source's title doesn't link that Source's Evidence",
+      "steps": [
+        {
+          "use": "ui.quiet",
+          "why": "Close dialogs, toasts and the right sidebar"
+        },
+        {
+          "use": "share.current-node",
+          "with": {
+            "title": "[[EVD]] - PK 2329 smith evidence - [[@PK 2329 smith 2020 appendix]]"
+          },
+          "why": "Open \"Share current node\" on the page `[[EVD]] - PK 2329 smith evidence - [[@PK 2329 smith 2020 appendix]]`"
+        },
+        {
+          "do": {
+            "js": "proof.setSwitch('eng-2329-demo', true)"
+          },
+          "why": "Turn on the eng-2329-demo group"
+        },
+        {
+          "do": {
+            "click": ".bp3-dialog:visible .bp3-dialog-footer button:has-text(\"Publish\")"
+          },
+          "why": "Click Publish"
+        },
+        {
+          "do": {
+            "wait_for": ".bp3-toast"
+          },
+          "why": "Wait for the publish result"
+        },
+        {
+          "do": {
+            "pause": 2
+          },
+          "why": "Look at the publish result"
+        },
+        {
+          "use": "ui.quiet",
+          "why": "Close dialogs, toasts and the right sidebar"
+        },
+        {
+          "use": "share.current-node",
+          "with": {
+            "title": "@PK 2329 smith 2020"
+          },
+          "why": "Open \"Share current node\" on the page `@PK 2329 smith 2020`, whose title is part of the longer Source's title"
+        },
+        {
+          "do": {
+            "js": "proof.setSwitch('eng-2329-demo', true)"
+          },
+          "why": "Turn on the eng-2329-demo group"
+        },
+        {
+          "do": {
+            "click": ".bp3-dialog:visible .bp3-dialog-footer button:has-text(\"Publish\")"
+          },
+          "why": "Click Publish"
+        },
+        {
+          "do": {
+            "wait_for": ".bp3-toast"
+          },
+          "why": "Wait for the publish result"
+        },
+        {
+          "do": {
+            "pause": 2
+          },
+          "why": "Look at the publish result"
+        },
+        {
+          "do": {
+            "js": "(async () => { { const row = await proof.waitFor(async () => (await proof.rest('/rest/v1/Concept?select=id,reference_content,source_local_id&space_id=eq.120237&is_schema=eq.false&source_local_id=eq.pk2329sm2', { key: '{{env.SUPABASE_SERVICE_ROLE_KEY}}' }))[0], { what: '[[EVD]] - PK 2329 smith evidence - [[@PK 2329 smith 2020 appendix]] stored', timeout: 30000, interval: 500 }); proof.assert(!(row.reference_content || {}).sourceDocument, '[[EVD]] - PK 2329 smith evidence - [[@PK 2329 smith 2020 appendix]] already has a source reference: ' + JSON.stringify(row.reference_content)); } })()"
+          },
+          "why": "Check that the Evidence still has no source reference"
+        },
+        {
+          "use": "ui.quiet",
+          "why": "Close dialogs, toasts and the right sidebar"
+        },
+        {
+          "use": "share.current-node",
+          "with": {
+            "title": "@PK 2329 smith 2020 appendix"
+          },
+          "why": "Open \"Share current node\" on the page `@PK 2329 smith 2020 appendix`"
+        },
+        {
+          "do": {
+            "js": "proof.setSwitch('eng-2329-demo', true)"
+          },
+          "why": "Turn on the eng-2329-demo group"
+        },
+        {
+          "do": {
+            "click": ".bp3-dialog:visible .bp3-dialog-footer button:has-text(\"Publish\")"
+          },
+          "why": "Click Publish"
+        },
+        {
+          "do": {
+            "wait_for": ".bp3-toast"
+          },
+          "why": "Wait for the publish result"
+        },
+        {
+          "do": {
+            "pause": 2
+          },
+          "why": "Look at the publish result"
+        }
+      ],
+      "intent": "Create Source 'Smith 2020' and Source 'Smith 2020 appendix', with Evidence naming only the longer one. Publish both Sources.",
+      "expect": {
+        "js": "(async () => { const short = (await proof.waitFor(async () => (await proof.rest('/rest/v1/Concept?select=id,reference_content,source_local_id&space_id=eq.120237&is_schema=eq.false&source_local_id=eq.pk2329sm0', { key: '{{env.SUPABASE_SERVICE_ROLE_KEY}}' }))[0], { what: 'the short Source concept', timeout: 30000, interval: 500 })); const src = (await proof.waitFor(async () => (await proof.rest('/rest/v1/Concept?select=id,reference_content,source_local_id&space_id=eq.120237&is_schema=eq.false&source_local_id=eq.pk2329sm1', { key: '{{env.SUPABASE_SERVICE_ROLE_KEY}}' }))[0], { what: 'the long Source concept', timeout: 30000, interval: 500 })); proof.assert(short.id !== src.id, 'Both Sources have one concept.'); await proof.waitFor(async () => { const row = (await proof.rest('/rest/v1/Concept?select=id,reference_content,source_local_id&space_id=eq.120237&is_schema=eq.false&source_local_id=eq.pk2329sm2', { key: '{{env.SUPABASE_SERVICE_ROLE_KEY}}' }))[0]; return row && (row.reference_content || {}).sourceDocument === src.id; }, { what: '[[EVD]] - PK 2329 smith evidence - [[@PK 2329 smith 2020 appendix]] to reference the Source concept ' + src.id, timeout: 30000, interval: 500 }); })()"
+      },
+      "decision": {
+        "status": "approved",
+        "by": "Claude, for sid",
+        "at": "2026-10-05T07:21:48.970Z"
+      },
+      "surface": "s-source-reference-on-other-evidence",
+      "caption": "Smith 2020 is part of the title of Smith 2020 appendix. Publishing the shorter Source doesn't link the Evidence; the longer one does.",
+      "checks": "The Evidence's source reference points to `@PK 2329 smith 2020 appendix`, not `@PK 2329 smith 2020`."
+    },
+    {
+      "id": "qa-publish-a-source-after-renaming-the",
+      "title": "Publishing a Source after renaming the Source node type still adds the source reference",
+      "steps": [
+        {
+          "use": "ui.quiet",
+          "why": "Close dialogs, toasts and the right sidebar"
+        },
+        {
+          "use": "share.current-node",
+          "with": {
+            "title": "[[EVD]] - PK 2329 paper evidence - [[@PK 2329 paper source]]"
+          },
+          "why": "Open \"Share current node\" on the page `[[EVD]] - PK 2329 paper evidence - [[@PK 2329 paper source]]`, whose Source isn't published yet"
+        },
+        {
+          "do": {
+            "js": "proof.setSwitch('eng-2329-demo', true)"
+          },
+          "why": "Turn on the eng-2329-demo group"
+        },
+        {
+          "do": {
+            "click": ".bp3-dialog:visible .bp3-dialog-footer button:has-text(\"Publish\")"
+          },
+          "why": "Click Publish"
+        },
+        {
+          "do": {
+            "wait_for": ".bp3-toast"
+          },
+          "why": "Wait for the publish result"
+        },
+        {
+          "do": {
+            "pause": 2
+          },
+          "why": "Look at the publish result"
+        },
+        {
+          "do": {
+            "js": "(async () => { const api = window.roamAlphaAPI; window.__pk2329Renamed = false; const uid = proof.uid('discourse-graph/nodes/Source'); if (!uid) return; await api.data.page.update({ page: { uid, title: 'discourse-graph/nodes/PK 2329 Paper' } }); try { await proof.waitFor(() => proof.nodeTypes().some((n) => n.text === 'PK 2329 Paper'), { what: 'the renamed node type', timeout: 8000 }); window.__pk2329Renamed = true; } catch (e) {} })()"
+          },
+          "why": "Rename the Source node type to PK 2329 Paper"
+        },
+        {
+          "use": "ui.quiet",
+          "why": "Close dialogs, toasts and the right sidebar"
+        },
+        {
+          "use": "share.current-node",
+          "with": {
+            "title": "@PK 2329 paper source"
+          },
+          "why": "Open \"Share current node\" on the page `@PK 2329 paper source`"
+        },
+        {
+          "do": {
+            "js": "proof.setSwitch('eng-2329-demo', true)"
+          },
+          "why": "Turn on the eng-2329-demo group"
+        },
+        {
+          "do": {
+            "click": ".bp3-dialog:visible .bp3-dialog-footer button:has-text(\"Publish\")"
+          },
+          "why": "Click Publish"
+        },
+        {
+          "do": {
+            "wait_for": ".bp3-toast"
+          },
+          "why": "Wait for the publish result"
+        },
+        {
+          "do": {
+            "pause": 2
+          },
+          "why": "Look at the publish result"
+        },
+        {
+          "do": {
+            "js": "(async () => { const uid = proof.uid('discourse-graph/nodes/PK 2329 Paper'); if (uid) await window.roamAlphaAPI.data.page.update({ page: { uid, title: 'discourse-graph/nodes/Source' } }); })()"
+          },
+          "why": "Rename the node type back to Source"
+        }
+      ],
+      "intent": "Rename the Source node type in Settings (e.g. 'Paper'), keep the Evidence format with its Source placeholder, and publish the Source after its Evidence.",
+      "expect": {
+        "js": "(async () => { proof.assert(window.__pk2329Renamed, 'The rename did not reach the extension (getDiscourseNodes still lists no PK 2329 Paper), so this run does not test a renamed type.'); const src = (await proof.waitFor(async () => (await proof.rest('/rest/v1/Concept?select=id,reference_content,source_local_id&space_id=eq.120237&is_schema=eq.false&source_local_id=eq.pk2329rn0', { key: '{{env.SUPABASE_SERVICE_ROLE_KEY}}' }))[0], { what: 'the published Source concept', timeout: 30000, interval: 500 })); await proof.waitFor(async () => { const row = (await proof.rest('/rest/v1/Concept?select=id,reference_content,source_local_id&space_id=eq.120237&is_schema=eq.false&source_local_id=eq.pk2329rn1', { key: '{{env.SUPABASE_SERVICE_ROLE_KEY}}' }))[0]; return row && (row.reference_content || {}).sourceDocument === src.id; }, { what: '[[EVD]] - PK 2329 paper evidence - [[@PK 2329 paper source]] to reference the Source concept ' + src.id, timeout: 30000, interval: 500 }); })()"
+      },
+      "decision": {
+        "status": "approved",
+        "by": "Claude, for sid",
+        "at": "2026-10-05T07:21:48.970Z"
+      },
+      "surface": "s-source-node-type-naming-and-settings",
+      "caption": "The Source node type is renamed Paper. Publishing a Paper after its Evidence still restores the Evidence's reference. The name is put back afterwards.",
+      "checks": "With the node type renamed, the Evidence has a source reference to `@PK 2329 paper source`."
+    },
+    {
+      "id": "qa-source-published-together-with-its",
+      "title": "Publishing a Source and its Evidence together stores the Evidence with its source reference",
+      "steps": [
+        {
+          "use": "ui.quiet",
+          "why": "Close dialogs, toasts and the right sidebar"
+        },
+        {
+          "do": {
+            "js": "(async () => { const uid = proof.uid('discourse-graph/nodes/PK 2329 Paper'); if (uid) await window.roamAlphaAPI.data.page.update({ page: { uid, title: 'discourse-graph/nodes/Source' } }); })()"
+          },
+          "why": "Make sure the Source node type is named Source"
+        },
+        {
+          "do": {
+            "command_palette": "DG: Export - Discourse graph"
+          },
+          "why": "Run DG: Export - Discourse graph, which exports every discourse node"
+        },
+        {
+          "do": {
+            "wait_for": ".bp3-dialog:visible"
+          },
+          "why": "Wait for the dialog"
+        },
+        {
+          "do": {
+            "click": ".bp3-dialog:visible .bp3-tab:has-text(\"Publish\")"
+          },
+          "why": "Open the Publish tab"
+        },
+        {
+          "do": {
+            "js": "proof.setSwitch('eng-2329-demo', true)"
+          },
+          "why": "Turn on the eng-2329-demo group"
+        },
+        {
+          "do": {
+            "click": ".bp3-dialog:visible .bp3-dialog-footer button:has-text(\"Publish\")"
+          },
+          "why": "Click Publish, which publishes the Source and its Evidence together"
+        },
+        {
+          "do": {
+            "wait_for": ".bp3-toast"
+          },
+          "why": "Wait for the publish result"
+        },
+        {
+          "do": {
+            "pause": 3
+          },
+          "why": "Look at the publish result"
+        }
+      ],
+      "intent": "Select the Source and Evidence A together and publish them to the group in a single action.",
+      "expect": {
+        "js": "(async () => { const src = (await proof.waitFor(async () => (await proof.rest('/rest/v1/Concept?select=id,reference_content,source_local_id&space_id=eq.120237&is_schema=eq.false&source_local_id=eq.pk2329tg0', { key: '{{env.SUPABASE_SERVICE_ROLE_KEY}}' }))[0], { what: 'the published batch Source concept', timeout: 90000, interval: 1000 })); await proof.waitFor(async () => { const row = (await proof.rest('/rest/v1/Concept?select=id,reference_content,source_local_id&space_id=eq.120237&is_schema=eq.false&source_local_id=eq.pk2329tg1', { key: '{{env.SUPABASE_SERVICE_ROLE_KEY}}' }))[0]; return row && (row.reference_content || {}).sourceDocument === src.id; }, { what: 'the batch Evidence to reference its Source', timeout: 90000, interval: 1000 }); })()"
+      },
+      "decision": {
+        "status": "approved",
+        "by": "Claude, for sid",
+        "at": "2026-10-05T07:21:48.970Z"
+      },
+      "surface": "s-publish-nodes-to-a-group-export-dialog",
+      "caption": "A Source and its Evidence are published in the same action. The Evidence is stored with its reference to the Source.",
+      "checks": "The Evidence has a source reference to `@PK 2329 batch source`."
+    },
+    {
+      "id": "qa-evidence-for-an-unpublished-source-stays",
+      "title": "Evidence whose Source is never published keeps no source reference",
+      "steps": [],
+      "intent": "Publish Evidence C (naming the second, unpublished Source), then publish the first Source.",
+      "expect": {
+        "text": "C still has no source reference and the usual warning about a missing Source on C's publish remains. C is not changed by the Source's publish."
+      },
+      "decision": {
+        "status": "rejected",
+        "by": "Claude, for sid",
+        "at": "2026-10-05T07:21:52.434Z",
+        "reason": "Another case covers it: source-grants-no-other-node and missing-source-warns check Evidence C stays unpublished and unreferenced"
+      },
+      "surface": "s-source-reference-on-other-evidence"
+    },
+    {
+      "id": "qa-publishing-only-a-claim-runs-no-restore",
+      "title": "Publishing only a Claim changes no source reference and shows no error",
+      "steps": [],
+      "intent": "Publish a single Claim to the group with sharing on, then check the console and toasts.",
+      "expect": {
+        "text": "The publish succeeds as before, with no 'Restore Source References Failed' error and no change to any Evidence node."
+      },
+      "decision": {
+        "status": "rejected",
+        "by": "Claude, for sid",
+        "at": "2026-10-05T07:21:55.836Z",
+        "reason": "This PR doesn't reach it: the restore only runs when a Source is in the publish batch"
+      },
+      "surface": "s-publish-of-non-source-nodes-claims"
+    }
+  ],
+  "title": "A Source published after its Evidence restores the Evidence's source reference",
+  "claim": "Publishing a Source from Roam adds the source reference to Evidence that was published before it without one, and publishes nothing else. Publishing Evidence whose Source isn't in this space still warns and stores no source reference.",
+  "given": "A Roam graph signed in to the proof database with node sharing on and sync off, in the eng-2329-demo group. It holds a Source, two Evidence nodes naming it (A and B) and a third Evidence node (C) naming a second Source that stays unpublished. None of them is in the database yet.",
+  "target": {
+    "slot": "3",
+    "pr": 1493,
+    "viewport": {
+      "width": 1280,
+      "height": 720
+    }
+  },
+  "needs": [
+    "supabase",
+    "embed-stub"
+  ],
+  "prepare": [
+    {
+      "id": "database-session",
+      "why": "the extension has a proof database session for this graph; the proof database runs without edge functions, so this signs in the way create-space would",
+      "phase": "before-load",
+      "apply": {
+        "js": "proof.supabase.signIn({ serviceKey: '{{env.SUPABASE_SERVICE_ROLE_KEY}}', publishableKey: '{{env.SUPABASE_PUBLISHABLE_KEY}}' })"
+      },
+      "check": {
+        "js": "proof.supabase.signedIn()"
+      },
+      "settleMs": 1000
+    },
+    {
+      "id": "sharing-on-sync-off",
+      "why": "node sharing is on, so DG: Share current node is registered, and sync is off, so the background sync doesn't store the nodes before they are published",
+      "phase": "before-load",
+      "apply": {
+        "js": "(async () => { await proof.flags.set('Enable node sharing', true); await proof.flags.set('Suggestive mode overlay enabled', false); })()"
+      },
+      "check": {
+        "js": "proof.flags.get('Enable node sharing') && !proof.flags.get('Suggestive mode overlay enabled')"
+      }
+    },
+    {
+      "id": "evidence-and-source-types",
+      "why": "the default Evidence type, whose format has a {Source} placeholder, and the Source type, so Evidence titles name a Source",
+      "phase": "before-load",
+      "apply": {
+        "js": "(async () => { await proof.nodeType.ensure({ label: 'Evidence', format: '[[EVD]] - {content} - {Source}', shortcut: 'E' }); await proof.nodeType.ensure({ label: 'Source', format: '@{content}', shortcut: 'S' }); })()"
+      },
+      "check": {
+        "js": "/\\{source\\}/i.test(proof.nodeType.format('Evidence') || '') && proof.nodeType.format('Source') === '@{content}'"
+      }
+    },
+    {
+      "id": "nothing-published-yet",
+      "why": "none of the PK 2329 nodes is in the proof database for this graph, so each Evidence is published before its Source on every run",
+      "phase": "outside",
+      "apply": {
+        "sql": "DELETE FROM \"ResourceAccess\" WHERE space_id = 120237 AND source_local_id IN ('pk2329src','pk2329eva','pk2329evb','pk2329evc','pk2329orp','pk2329ms0','pk2329me1','pk2329me2','pk2329al0','pk2329al1','pk2329ed0','pk2329ed1','pk2329mn0','pk2329mn1','pk2329mn2','pk2329sm0','pk2329sm1','pk2329sm2','pk2329rn0','pk2329rn1','pk2329tg0','pk2329tg1','pk2329rv0','pk2329rv1','pk2329rv2');\nDELETE FROM \"Content\" WHERE space_id = 120237 AND source_local_id IN ('pk2329src','pk2329eva','pk2329evb','pk2329evc','pk2329orp','pk2329ms0','pk2329me1','pk2329me2','pk2329al0','pk2329al1','pk2329ed0','pk2329ed1','pk2329mn0','pk2329mn1','pk2329mn2','pk2329sm0','pk2329sm1','pk2329sm2','pk2329rn0','pk2329rn1','pk2329tg0','pk2329tg1','pk2329rv0','pk2329rv1','pk2329rv2');\nDELETE FROM \"Document\" WHERE space_id = 120237 AND source_local_id IN ('pk2329src','pk2329eva','pk2329evb','pk2329evc','pk2329orp','pk2329ms0','pk2329me1','pk2329me2','pk2329al0','pk2329al1','pk2329ed0','pk2329ed1','pk2329mn0','pk2329mn1','pk2329mn2','pk2329sm0','pk2329sm1','pk2329sm2','pk2329rn0','pk2329rn1','pk2329tg0','pk2329tg1','pk2329rv0','pk2329rv1','pk2329rv2');\nDELETE FROM \"Concept\" WHERE space_id = 120237 AND source_local_id IN ('pk2329src','pk2329eva','pk2329evb','pk2329evc','pk2329orp','pk2329ms0','pk2329me1','pk2329me2','pk2329al0','pk2329al1','pk2329ed0','pk2329ed1','pk2329mn0','pk2329mn1','pk2329mn2','pk2329sm0','pk2329sm1','pk2329sm2','pk2329rn0','pk2329rn1','pk2329tg0','pk2329tg1','pk2329rv0','pk2329rv1','pk2329rv2');"
+      }
+    },
+    {
+      "id": "pk-2329-pages",
+      "why": "the PK 2329 pages (Sources, the Evidence naming them, a Claim and a notes page mentioning a Source), each with a fixed uid so the database rows above can be cleared; the Source type's name is put back if an earlier run left it renamed",
+      "phase": "in-session",
+      "apply": {
+        "js": "(async () => { const api = window.roamAlphaAPI; const paper = proof.uid('discourse-graph/nodes/PK 2329 Paper'); if (paper && !proof.uid('discourse-graph/nodes/Source')) await api.data.page.update({ page: { uid: paper, title: 'discourse-graph/nodes/Source' } }); for (const [uid, title, body] of [[\"pk2329src\", \"@PK 2329 source\", \"Page for the PK 2329 proof kit. Leave it in place.\"], [\"pk2329eva\", \"[[EVD]] - PK 2329 evidence A - [[@PK 2329 source]]\", \"Page for the PK 2329 proof kit. Leave it in place.\"], [\"pk2329evb\", \"[[EVD]] - PK 2329 evidence B - [[@PK 2329 source]]\", \"Page for the PK 2329 proof kit. Leave it in place.\"], [\"pk2329evc\", \"[[EVD]] - PK 2329 evidence C - [[@PK 2329 orphan source]]\", \"Page for the PK 2329 proof kit. Leave it in place.\"], [\"pk2329orp\", \"@PK 2329 orphan source\", \"Page for the PK 2329 proof kit. Leave it in place.\"], [\"pk2329ms0\", \"@PK 2329 multi source\", \"Page for the PK 2329 proof kit. Leave it in place.\"], [\"pk2329me1\", \"[[EVD]] - PK 2329 multi evidence 1 - [[@PK 2329 multi source]]\", \"Page for the PK 2329 proof kit. Leave it in place.\"], [\"pk2329me2\", \"[[EVD]] - PK 2329 multi evidence 2 - [[@PK 2329 multi source]]\", \"Page for the PK 2329 proof kit. Leave it in place.\"], [\"pk2329al0\", \"@PK 2329 linked source\", \"Page for the PK 2329 proof kit. Leave it in place.\"], [\"pk2329al1\", \"[[EVD]] - PK 2329 linked evidence - [[@PK 2329 linked source]]\", \"Page for the PK 2329 proof kit. Leave it in place.\"], [\"pk2329ed0\", \"@PK 2329 edit source\", \"Page for the PK 2329 proof kit. Leave it in place.\"], [\"pk2329ed1\", \"[[EVD]] - PK 2329 edit evidence - [[@PK 2329 edit source]]\", \"Original PK 2329 body, published first.\"], [\"pk2329mn0\", \"@PK 2329 mention source\", \"Page for the PK 2329 proof kit. Leave it in place.\"], [\"pk2329mn1\", \"[[CLM]] - PK 2329 claim about @PK 2329 mention source\", \"Page for the PK 2329 proof kit. Leave it in place.\"], [\"pk2329mn2\", \"PK 2329 notes on @PK 2329 mention source\", \"Page for the PK 2329 proof kit. Leave it in place.\"], [\"pk2329sm0\", \"@PK 2329 smith 2020\", \"Page for the PK 2329 proof kit. Leave it in place.\"], [\"pk2329sm1\", \"@PK 2329 smith 2020 appendix\", \"Page for the PK 2329 proof kit. Leave it in place.\"], [\"pk2329sm2\", \"[[EVD]] - PK 2329 smith evidence - [[@PK 2329 smith 2020 appendix]]\", \"Page for the PK 2329 proof kit. Leave it in place.\"], [\"pk2329rn0\", \"@PK 2329 paper source\", \"Page for the PK 2329 proof kit. Leave it in place.\"], [\"pk2329rn1\", \"[[EVD]] - PK 2329 paper evidence - [[@PK 2329 paper source]]\", \"Page for the PK 2329 proof kit. Leave it in place.\"], [\"pk2329tg0\", \"@PK 2329 batch source\", \"Page for the PK 2329 proof kit. Leave it in place.\"], [\"pk2329tg1\", \"[[EVD]] - PK 2329 batch evidence - [[@PK 2329 batch source]]\", \"Page for the PK 2329 proof kit. Leave it in place.\"], [\"pk2329rv0\", \"@PK 2329 first source\", \"Page for the PK 2329 proof kit. Leave it in place.\"], [\"pk2329rv1\", \"[[EVD]] - PK 2329 renamed evidence - [[@PK 2329 first source]]\", \"Page for the PK 2329 proof kit. Leave it in place.\"], [\"pk2329rv2\", \"@PK 2329 second source\", \"Page for the PK 2329 proof kit. Leave it in place.\"]]) { try { await api.data.page.delete({ page: { uid } }); } catch (e) {} await proof.page.remove(title); await api.data.page.create({ page: { title, uid } }); await api.data.block.create({ location: { 'parent-uid': uid, order: 0 }, block: { string: body, uid: uid === 'pk2329ed1' ? 'pk2329edb' : undefined } }); await proof.waitFor(() => proof.page.exists(title), { what: 'the page ' + title }); } })()"
+      }
+    }
+  ],
+  "surface": [
+    {
+      "id": "s-publish-nodes-to-a-group-export-dialog",
+      "area": "Publish nodes to a group (Export dialog)",
+      "why": "restoreSourceReferences now runs inside every publishNodesToGroups call after the concept upsert, and a thrown error is caught and sent to internalError so it must not block the publish.",
+      "files": [
+        "apps/roam/src/utils/publishNodesToGroups.ts"
+      ]
+    },
+    {
+      "id": "s-source-reference-on-other-evidence",
+      "area": "Source reference on other Evidence/dependent nodes",
+      "why": "The new update matches any page whose title contains the Source's title, so Evidence naming the Source is found by a substring scan, and nodes that merely mention the title could be caught.",
+      "files": [
+        "apps/roam/src/utils/publishNodesToGroups.ts"
+      ]
+    },
+    {
+      "id": "s-evidence-already-linked-to-a-source",
+      "area": "Evidence already linked to a Source",
+      "why": "The update is filtered on reference_content->>sourceDocument being null, so it must not overwrite a reference that already exists.",
+      "files": [
+        "apps/roam/src/utils/publishNodesToGroups.ts"
+      ]
+    },
+    {
+      "id": "s-evidence-published-later-with-edits",
+      "area": "Evidence published later with edits",
+      "why": "The change deliberately avoids re-upserting the Evidence, so its stored title/body and edit time must stay as they were while only the reference changes.",
+      "files": [
+        "apps/roam/src/utils/publishNodesToGroups.ts"
+      ]
+    },
+    {
+      "id": "s-sources-with-unusual-or-imported",
+      "area": "Sources with unusual or imported identity",
+      "why": "Dependents are matched via sourceIdOfNode, which returns an RID for imported Sources while the restore keys by the local Source uid.",
+      "files": [
+        "apps/roam/src/utils/publishNodesToGroups.ts"
+      ]
+    },
+    {
+      "id": "s-publish-of-non-source-nodes-claims",
+      "area": "Publish of non-Source nodes (Claims, Questions)",
+      "why": "The title scan is meant to run only when a Source node is among those published, so ordinary publishes should be unaffected.",
+      "files": [
+        "apps/roam/src/utils/publishNodesToGroups.ts"
+      ]
+    },
+    {
+      "id": "s-source-node-type-naming-and-settings",
+      "area": "Source node type naming and settings",
+      "why": "The Source type is found by sourceSlotSchemaId, which looks for a node type named 'source' or falls back to the default id, and Evidence is found by a {source} placeholder in its format.",
+      "files": [
+        "apps/roam/src/utils/publishNodesToGroups.ts"
+      ]
+    }
+  ]
+}

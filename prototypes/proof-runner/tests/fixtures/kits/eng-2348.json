@@ -1,0 +1,155 @@
+{
+  "name": "eng-2348",
+  "title": "Warn when Roam sharing or importing is used with Stored Relations disabled",
+  "baseline": "dg-baseline@1",
+  "target": {
+    "slot": "3",
+    "pr": 1506,
+    "viewport": {
+      "width": 1280,
+      "height": 720
+    }
+  },
+  "needs": [
+    "supabase",
+    "embed-stub"
+  ],
+  "prepare": [
+    {
+      "id": "database-session",
+      "why": "the extension has a proof database session for this graph; the proof database runs without edge functions, so this signs in the way create-space would",
+      "phase": "before-load",
+      "check": {
+        "js": "proof.supabase.signedIn()"
+      },
+      "apply": {
+        "js": "proof.supabase.signIn({ serviceKey: '{{env.SUPABASE_SERVICE_ROLE_KEY}}', publishableKey: '{{env.SUPABASE_PUBLISHABLE_KEY}}' })"
+      },
+      "settleMs": 1000
+    },
+    {
+      "id": "stored-relations-off",
+      "why": "Stored Relations is off, the state the warning is for",
+      "phase": "in-session",
+      "apply": {
+        "steps": [
+          {
+            "use": "settings.stored-relations",
+            "with": {
+              "on": false
+            },
+            "why": "turn Stored Relations off"
+          }
+        ]
+      }
+    }
+  ],
+  "cases": [
+    {
+      "id": "import-warns",
+      "title": "Discover shared nodes warns while Stored Relations is off",
+      "proves": "Done When 1: The warning appears before sharing or importing with Stored Relations disabled.",
+      "caption": "With Stored Relations off, the import dialog now says so up front and links to the setting.",
+      "steps": [
+        {
+          "use": "discover.open",
+          "why": "open import the way a user would"
+        }
+      ],
+      "expect": {
+        "js": "proof.waitFor(() => proof.callout('Stored relations are disabled'), { what: 'the Stored Relations warning in the import dialog' })"
+      }
+    },
+    {
+      "id": "share-warns",
+      "title": "Share current node warns while Stored Relations is off",
+      "proves": "Done When 1: The warning appears before sharing or importing with Stored Relations disabled.",
+      "expect": {
+        "js": "proof.waitFor(() => proof.callout('Stored relations are disabled'), { what: 'the Stored Relations warning in the publish panel' })"
+      },
+      "caption": "Publishing a node shows the same warning before anything is shared.",
+      "steps": [
+        {
+          "use": "dialog.close-all",
+          "why": "close the import dialog"
+        },
+        {
+          "use": "share.current-node",
+          "with": {
+            "title": "[[CLM]] - PK baseline claim"
+          },
+          "why": "share the baseline claim"
+        }
+      ]
+    },
+    {
+      "id": "search-and-sync-stay",
+      "title": "Semantic search and similar-node sync stay available",
+      "proves": "Done When 3: Semantic search and similar-node sync remain available.",
+      "intent": "With Stored Relations still off, run node-search.open, search for 'PK baseline', and check that the baseline nodes show and no sync error appears.",
+      "expect": {
+        "js": "(async () => { await proof.waitFor(() => Array.from(document.querySelectorAll('.bp3-dialog [role=\"option\"]')).some((el) => el.innerText.includes('PK baseline')), { what: 'the baseline nodes in the results' }); proof.assert(!/error|fail/i.test(proof.toastText()), 'A toast reports a problem: ' + proof.toastText()); })()",
+        "text": "Node Search returns results, and no sync error shows, while Stored Relations is off."
+      },
+      "caption": "Search keeps working with Stored Relations off: Node Search still finds the baseline nodes, and no sync error shows.",
+      "steps": [
+        {
+          "use": "dialog.close-all",
+          "why": "close the share dialog"
+        },
+        {
+          "use": "node-search.open",
+          "why": "open Node Search the way a user would"
+        },
+        {
+          "do": {
+            "type": {
+              "into": ".bp3-dialog input.bp3-input >> nth=0",
+              "text": "PK baseline",
+              "delay_ms": 80
+            }
+          },
+          "why": "search for the baseline nodes"
+        },
+        {
+          "do": {
+            "wait_for": ".bp3-dialog [role=\"option\"]"
+          },
+          "why": "wait for results"
+        },
+        {
+          "do": {
+            "pause": 1.5
+          },
+          "why": "hold on the results"
+        }
+      ]
+    },
+    {
+      "id": "warning-clears",
+      "title": "Turning Stored Relations on removes the warning",
+      "proves": "Done When 2: Enabling Stored Relations removes the warning.",
+      "caption": "Turn Stored Relations on, and the warning is gone.",
+      "steps": [
+        {
+          "use": "dialog.close-all",
+          "why": "close the open dialog"
+        },
+        {
+          "use": "settings.stored-relations",
+          "with": {
+            "on": true
+          },
+          "why": "turn Stored Relations on"
+        },
+        {
+          "use": "discover.open",
+          "why": "open import again"
+        }
+      ],
+      "expect": {
+        "js": "(async () => { await proof.sleep(800); proof.assert(!proof.callout('Stored relations are disabled'), 'The warning still shows with Stored Relations on.'); })()"
+      }
+    }
+  ]
+}
