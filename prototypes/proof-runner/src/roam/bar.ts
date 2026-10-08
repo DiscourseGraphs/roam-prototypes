@@ -12,6 +12,7 @@ import {
   forecastWords,
   historyLine,
   holdLine,
+  endWords,
   howWords,
   kitFixes,
   kitReport,
@@ -69,6 +70,7 @@ export type BarAction =
   | { kind: "done-by-hand" }
   | { kind: "ask-agent" }
   | { kind: "edit-step" }
+  | { kind: "add-case"; title: string; intent: string; passes: string }
   | { kind: "run" }
   | { kind: "rerun" }
   | { kind: "open-kit" }
@@ -99,6 +101,7 @@ const CSS = `
   .seg.pass { background: #45c47e; }
   .seg.fail { background: #ff655b; }
   .seg.skip { background: #8e8aa3; }
+  .seg.left { background: transparent; box-shadow: inset 0 0 0 1px #4a4563; }
   .seg.you { box-shadow: inset 0 -2px 0 #ffb547; }
   .seg.now > b { position: absolute; left: 0; top: 0; bottom: 0; background: #8f7fff; }
   .seg.now.am > b { background: #ffb547; }
@@ -170,12 +173,18 @@ const CSS = `
     border: 1px solid #2f2c40; border-radius: 8px; padding: 8px 11px; max-height: 160px; overflow: auto; white-space: pre-wrap; word-break: break-word; }
   .guide { background: rgba(255, 181, 71, .1); border-radius: 7px; padding: 7px 10px; color: #ffe2b5; max-width: 80ch; }
   .err { color: #ffa49d; padding: 0 16px 8px; }
+  .err.ok { color: #9fe7bd; }
   .err:empty { display: none; }
   .sheet { background: #1d1a28; border-top: 1px solid #34304a; max-height: 52vh; overflow: auto; box-shadow: 0 -16px 34px -14px rgba(0, 0, 0, .45); }
   .sheet.result { max-height: 78vh; padding: 16px 22px 18px; }
   .sh-hd { position: sticky; top: 0; display: flex; align-items: center; gap: 10px; padding: 8px 16px; background: #1d1a28;
     border-bottom: 1px solid #2f2c40; font-weight: 700; }
-  .crow { display: grid; grid-template-columns: 18px 24px minmax(0, 1fr) auto; gap: 8px; align-items: baseline; padding: 4px 16px; }
+  .crow { display: grid; grid-template-columns: 18px 24px minmax(0, 1fr) auto auto; gap: 8px; align-items: baseline; padding: 4px 16px; }
+  .crow.left .tt { color: #8e8aa3; text-decoration: line-through; text-decoration-color: rgba(142, 138, 163, .5); }
+  .crow button.link { padding: 0; font-size: 12px; }
+  .sh-ft { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 8px 16px 10px; border-top: 1px solid #2f2c40; }
+  .form { display: grid; gap: 6px; max-width: 640px; }
+  .form input.note { max-width: none; width: 100%; }
   .crow .ix { color: #a9a5bd; font-variant-numeric: tabular-nums; }
   .crow .tt { overflow-wrap: anywhere; }
   .crow .tg { color: #a9a5bd; font-size: 12px; white-space: nowrap; }
@@ -213,6 +222,8 @@ const CSS = `
   .bar.you .seg.pass, .bar.held .seg.pass { background: #17713f; }
   .bar.you .seg.fail, .bar.held .seg.fail { background: #9f241c; }
   .bar.you .seg.skip, .bar.held .seg.skip { background: #5f5a6b; }
+  .bar.you .seg.left, .bar.held .seg.left { background: transparent; box-shadow: inset 0 0 0 1px rgba(35, 20, 0, .35); }
+  .bar.you .err.ok, .bar.held .err.ok { color: #14532d; }
   .bar.you .seg.now > b, .bar.held .seg.now > b { background: #231700; }
   .bar.you .seg.you, .bar.held .seg.you { box-shadow: inset 0 -2px 0 #231700; }
   .bar.you .purpose, .bar.you .now, .bar.you .hint, .bar.you .cn, .bar.you .kd, .bar.you .lbl, .bar.you .meta, .bar.you .fc,
@@ -257,6 +268,32 @@ const button = (label: string, action: string, className = "", args?: unknown, t
   return node;
 };
 
+// Makes `into` read like `fresh`, keeping every node that already matches. A
+// repaint that replaced a button between the person's press and release would
+// lose their click. A fold the person opened stays open.
+const reconcile = (into: Node, fresh: Node): void => {
+  const old = Array.from(into.childNodes);
+  const next = Array.from(fresh.childNodes);
+  next.forEach((node, index) => {
+    const was = old[index];
+    if (!was) {
+      into.appendChild(node);
+      return;
+    }
+    if (was.isEqualNode(node)) return;
+    if (was instanceof Element && node instanceof Element && was.tagName === node.tagName) {
+      for (const { name } of Array.from(was.attributes)) if (!node.hasAttribute(name) && name !== "open") was.removeAttribute(name);
+      for (const { name, value } of Array.from(node.attributes)) if (name !== "open" && was.getAttribute(name) !== value) was.setAttribute(name, value);
+      reconcile(was, node);
+    } else if (was instanceof Text && node instanceof Text) {
+      was.data = node.data;
+    } else {
+      into.replaceChild(node, was);
+    }
+  });
+  for (const extra of old.slice(next.length)) into.removeChild(extra);
+};
+
 const ICON: Record<string, string> = { pass: "✓", fail: "✗", skip: "–" };
 const ICON_CLASS: Record<string, string> = { pass: "g", fail: "r", skip: "gr" };
 
@@ -275,6 +312,21 @@ type Local = {
   keepOpen: boolean;
   resultOpen: boolean;
   flagOpen: boolean;
+  // The case Flag was opened on, so a note goes where it was meant even if the
+  // case ends first.
+  flagFor: { caseId: string; index: number } | null;
+  // What's typed in the note box and the add-case form: kept across repaints,
+  // a closed box and the run's own questions.
+  flagDraft: string;
+  adding: boolean;
+  addDraft: { title: string; intent: string; passes: string };
+  // Flag or Add a case asked the run to pause; the box stays up until it says
+  // it has.
+  awaitingPause: boolean;
+  // The box takes the keyboard once, when it opens.
+  focusAsk: boolean;
+  // Where the keyboard was before the box took it.
+  back: HTMLElement | null;
   menuOpen: boolean;
   tucked: boolean;
   details: boolean;
@@ -291,19 +343,22 @@ export class CaptionBar {
   readonly host: HTMLElement;
   private readonly root: ShadowRoot;
   private readonly box: HTMLElement;
-  private readonly casesSheet: HTMLElement;
-  private readonly resultSheet: HTMLElement;
+  // These parts are painted into scratch copies and patched in (inPlace), so
+  // they're swapped for the copy while a painter runs.
+  private casesSheet: HTMLElement;
+  private resultSheet: HTMLElement;
   private readonly bar: HTMLElement;
   private readonly prog: HTMLElement;
-  private readonly menu: HTMLElement;
-  private readonly head: HTMLElement;
-  private readonly purpose: HTMLElement;
-  private readonly foot: HTMLElement;
+  private menu: HTMLElement;
+  private head: HTMLElement;
+  private purpose: HTMLElement;
+  private foot: HTMLElement;
   private readonly ask: HTMLElement;
   private readonly err: HTMLElement;
   private model: BarModel | null = null;
   private askKey = "";
   private flash = "";
+  private flashOk = false;
   private flashTimer = 0;
   private ticker = 0;
   private waitingSince = 0;
@@ -315,6 +370,13 @@ export class CaptionBar {
     keepOpen: false,
     resultOpen: false,
     flagOpen: false,
+    flagFor: null,
+    flagDraft: "",
+    adding: false,
+    addDraft: { title: "", intent: "", passes: "" },
+    awaitingPause: false,
+    focusAsk: false,
+    back: null,
     menuOpen: false,
     tucked: false,
     details: false,
@@ -386,8 +448,14 @@ export class CaptionBar {
         this.local.menuOpen = false;
         this.paint();
       }
+      if (event.key === "Escape" && (this.local.flagOpen || this.local.adding) && input?.matches?.("input.note")) {
+        this.closeBoxes();
+        this.paint();
+      }
     });
     document.body.append(this.host);
+    // The page's focus traps mustn't see focus move into the bar.
+    for (const type of ["focus", "focusin"]) window.addEventListener(type, this.shield, true);
     // Roam makes room for the bar: its height goes to --proof-runner-h.
     this.sizer = typeof ResizeObserver === "function" ? new ResizeObserver(() => this.publishHeight()) : null;
     this.sizer?.observe(this.box);
@@ -439,11 +507,19 @@ export class CaptionBar {
 
   showError(message: string): void {
     this.flash = message;
+    this.flashOk = false;
     clearTimeout(this.flashTimer);
     this.flashTimer = window.setTimeout(() => {
       this.flash = "";
       this.paint();
     }, 7000);
+    this.paint();
+  }
+
+  // Something done that the person should see went through.
+  private say(message: string): void {
+    this.showError(message);
+    this.flashOk = true;
     this.paint();
   }
 
@@ -465,7 +541,16 @@ export class CaptionBar {
     this.paint();
   }
 
+  // Blueprint's dialogs and popovers listen for focus on the document, in
+  // capture, and pull it back inside themselves when it lands anywhere else,
+  // the bar's note box included. The window hears focus first: the bar's focus
+  // stops here, and the page never learns of it.
+  private readonly shield = (event: Event): void => {
+    if (event.composedPath().includes(this.host)) event.stopImmediatePropagation();
+  };
+
   dispose(): void {
+    for (const type of ["focus", "focusin"]) window.removeEventListener(type, this.shield, true);
     this.sizer?.disconnect();
     document.documentElement.style.removeProperty("--proof-runner-h");
     clearInterval(this.ticker);
@@ -498,9 +583,14 @@ export class CaptionBar {
       this.local.tucked = false;
       this.local.details = false;
       this.local.why = null;
-      if (key) this.local.flagOpen = false;
       if (this.local.doingIt && this.local.doingIt !== key) this.local.doingIt = "";
     }
+    // The run's own question comes first; what was typed stays for next time.
+    if (state.pending) this.closeBoxes(false);
+    // The run reported the pause the box asked for.
+    if (state.paused) this.local.awaitingPause = false;
+    // The run goes on without the box: it was resumed some other way.
+    if (!state.paused && state.phase !== "waiting-next" && !this.local.awaitingPause && (this.local.flagOpen || this.local.adding)) this.closeBoxes(false);
     const ticking = live && (Boolean(state.pending) || state.paused || Boolean(this.local.countdown));
     if (ticking && !this.ticker) this.ticker = window.setInterval(() => this.paint(), 1000);
     if (!ticking && this.ticker) {
@@ -513,13 +603,37 @@ export class CaptionBar {
     this.bar.classList.toggle("held", held);
     this.bar.classList.toggle("you", yours && !held);
     this.paintProgress(model);
-    if (live) this.paintLines(model);
-    else this.paintEnded(model);
-    this.paintMenu(model, live);
+    this.inPlace(["head", "purpose", "foot"], () => (live ? this.paintLines(model) : this.paintEnded(model)));
+    this.inPlace(["menu"], () => this.paintMenu(model, live));
     this.paintAsk(model);
-    this.paintCases(model);
-    this.paintResult(model);
+    this.inPlace(["casesSheet"], () => this.paintCases(model));
+    this.inPlace(["resultSheet"], () => this.paintResult(model));
     this.err.textContent = this.flash;
+    this.err.classList.toggle("ok", this.flashOk && Boolean(this.flash));
+  }
+
+  // Runs the painters of some parts of the bar into scratch copies, then
+  // patches the parts on screen to match. Nothing on screen is taken out and
+  // put back, so the button under the mouse stays the one the person pressed:
+  // a browser drops the click when its target leaves the page in between.
+  private inPlace(names: Array<"head" | "purpose" | "foot" | "menu" | "casesSheet" | "resultSheet">, paint: () => void): void {
+    const shown = names.map((name) => this[name]);
+    const scratch = shown.map((part) => part.cloneNode(false) as HTMLElement);
+    names.forEach((name, index) => {
+      this[name] = scratch[index];
+    });
+    try {
+      paint();
+    } finally {
+      names.forEach((name, index) => {
+        this[name] = shown[index];
+      });
+    }
+    shown.forEach((part, index) => {
+      part.className = scratch[index].className;
+      part.hidden = scratch[index].hidden;
+      reconcile(part, scratch[index]);
+    });
   }
 
   private paintProgress(model: BarModel): void {
@@ -532,7 +646,8 @@ export class CaptionBar {
       const seg = el("i", undefined, "seg");
       const verdict = state.results[item.id] ?? item.verdict;
       if (verdict) seg.classList.add(verdict);
-      if (needOf(item)) seg.classList.add("you");
+      if (item.leftOut) seg.classList.add("left");
+      else if (needOf(item)) seg.classList.add("you");
       if (index === state.caseIndex && !verdict && state.phase !== "done" && state.phase !== "stopped") {
         seg.classList.add("now");
         if (state.pending || state.paused) seg.classList.add("am");
@@ -626,10 +741,12 @@ export class CaptionBar {
     }
     if (state.paused || state.phase === "waiting-next") {
       const stepping = !state.paused;
-      this.head.append(el("span", stepping ? "Every step" : "❚❚ Paused", "pill"));
+      // Paused, but the step it was in is still looking for what it acts on.
+      const pausing = state.paused && state.phase !== "paused";
+      this.head.append(el("span", stepping ? "Every step" : pausing ? "❚❚ Pausing" : "❚❚ Paused", "pill"));
       this.caseLine(state, this.head);
       // What runs next is what a person stepping through reads every time.
-      const next = this.stepWords(model, true);
+      const next = this.stepWords(model, !pausing);
       if (state.stepWhy) {
         this.purpose.classList.add("lead");
         this.purpose.append(el("span", next.kind, "kd"), document.createTextNode(next.text));
@@ -638,13 +755,17 @@ export class CaptionBar {
       const verdict = before ? (state.results[before.id] ?? before.verdict) : null;
       const why = stepping
         ? "The run waits before each step. Next step runs one."
-        : state.pausedBy === "between-cases" && before
+        : pausing
+          ? "Stops before its next click or key. Resume goes on from there."
+          : state.pausedBy === "between-cases" && before
           ? `Case ${state.caseIndex} ${verdictWord(verdict).toLowerCase()}. Look around, then Resume.`
           : pauseWords(state.pausedBy ?? null);
       this.foot.append(el("span", why, "now"));
       if (stepping) ctrl.append(button("Next step", "next", "go"));
       else ctrl.append(button("▶ Resume", "resume", "go"), button("Next step", "next"));
-      ctrl.append(this.chip(model), this.stopButton(), cases);
+      ctrl.append(this.chip(model));
+      if (state.caseIndex >= 0) ctrl.append(this.flagButton());
+      ctrl.append(this.stopButton(), cases);
       this.foot.append(ctrl);
       return;
     }
@@ -665,9 +786,13 @@ export class CaptionBar {
     const fc = el("span", undefined, "fc");
     fc.append(el("b", ahead.you, ahead.soon ? "soon" : ""), document.createTextNode(` · ${ahead.left}`));
     ctrl.append(fc, this.chip(model), button("❚❚ Pause", "pause", "", undefined, "Pause (Ctrl+Alt+Space)"));
-    if (state.caseIndex >= 0) ctrl.append(button("⚑ Flag", "flag", this.local.flagOpen ? "hot" : ""));
+    if (state.caseIndex >= 0) ctrl.append(this.flagButton());
     ctrl.append(cases);
     this.foot.append(ctrl);
+  }
+
+  private flagButton(): HTMLButtonElement {
+    return button("⚑ Flag", "flag", this.local.flagOpen ? "hot" : "", undefined, "Pause the run and write down what's wrong with this case");
   }
 
   private stopButton(): HTMLButtonElement {
@@ -731,9 +856,10 @@ export class CaptionBar {
     const pending = state.pending;
     const live = state.phase !== "done" && state.phase !== "stopped";
     const flag = live && !pending && this.local.flagOpen && state.caseIndex >= 0;
+    const add = live && !pending && this.local.adding;
     const history = pending?.caseId ? model.history[pending.caseId]?.passed : null;
     const key = [
-      pending ? this.pendingKey(state) : flag ? `flag:${state.caseId}` : "",
+      pending ? this.pendingKey(state) : flag ? `flag:${this.local.flagFor?.caseId ?? ""}:${this.local.flagFor?.caseId === state.caseId}` : add ? "add" : "",
       history ? `${history.when}@${history.commit ?? ""}` : "",
       this.local.tucked,
       this.local.details,
@@ -744,13 +870,19 @@ export class CaptionBar {
     ].join("|");
     if (key === this.askKey && this.ask.childElementCount) return;
     this.askKey = key;
+    const hadKeyboard = this.ask.contains(this.root.activeElement);
     this.ask.replaceChildren();
     if (!live) return;
-    if (flag) {
-      this.ask.append(el("div", "Flag a problem in this case", "lbl"));
-      const row = el("div", undefined, "acts");
-      row.append(this.noteInput("What's wrong?", "flag-note"), button("Add note", "flag-note"), button("✗ Fail this case", "flag-fail", "fail"), button("Cancel", "flag"));
-      this.ask.append(row);
+    if (flag || add) {
+      if (flag) this.askFlag(state);
+      else this.askAdd();
+      // The box takes the keyboard when it opens, and keeps it through a repaint.
+      const field = this.ask.querySelector("input.note") as HTMLInputElement | null;
+      if (field && (hadKeyboard || this.local.focusAsk)) {
+        this.local.focusAsk = false;
+        field.focus({ preventScroll: true });
+        field.setSelectionRange(field.value.length, field.value.length);
+      }
       return;
     }
     if (!pending) return;
@@ -764,6 +896,77 @@ export class CaptionBar {
     else if (pending.kind === "approval") this.askApproval(pending.js, pending.why, state);
     else if (pending.kind === "failure") this.askFailure(model, item, pending.error);
     else if (pending.kind === "check-failed") this.askCheckFailed(model, item, pending.error);
+  }
+
+  // Flag: a line on what's wrong, kept with the case. The run is paused while
+  // it's open, so the box keeps the keyboard.
+  private askFlag(state: MachineState): void {
+    const flagged = this.local.flagFor;
+    const here = !flagged || flagged.caseId === state.caseId;
+    this.ask.append(el("div", here ? "Flag a problem in this case" : `Add a note to case ${(flagged?.index ?? 0) + 1}, which has just ended`, "lbl"));
+    const row = el("div", undefined, "acts");
+    const field = this.noteInput("What's wrong?", "flag-note");
+    field.value = this.local.flagDraft;
+    field.addEventListener("input", () => {
+      this.local.flagDraft = field.value;
+    });
+    row.append(field, button("Add note", "flag-note"));
+    if (here) row.append(button("✗ Fail this case", "flag-fail", "fail"), button("Skip this case", "flag-skip"));
+    row.append(button("Cancel", "flag"));
+    this.ask.append(row);
+  }
+
+  // Add a case: a title, and optionally what to do and what should happen. It
+  // plays by hand at the end of the run.
+  private askAdd(): void {
+    this.ask.append(el("div", "Add a case", "lbl"), el("div", "It runs by hand at the end of this run, and it's saved on the kit page for the next one.", "hint"));
+    const draft = this.local.addDraft;
+    const form = el("div", undefined, "form");
+    const make = (name: keyof typeof draft, placeholder: string): HTMLInputElement => {
+      const field = this.noteInput(placeholder, "add-case");
+      field.dataset.field = name;
+      field.value = draft[name];
+      field.addEventListener("input", () => {
+        draft[name] = field.value;
+      });
+      return field;
+    };
+    form.append(make("title", "What should work? (the case's title)"), make("intent", "What to do (optional)"), make("passes", "Passes if (optional)"));
+    const row = el("div", undefined, "acts");
+    row.append(button("Add case", "add-case", "go"), button("Cancel", "add-cancel"));
+    this.ask.append(form, row);
+  }
+
+  // Opens the note box or the add-case form, and pauses a run that drives:
+  // typing needs the keyboard, and the run must not take it back.
+  private openBox(kind: "flag" | "add"): void {
+    const state = this.model?.state;
+    if (!state || state.pending) return;
+    if (kind === "flag" && state.caseIndex < 0) return;
+    if (!this.local.flagOpen && !this.local.adding) {
+      const active = document.activeElement as HTMLElement | null;
+      this.local.back = active && active !== document.body && !active.closest?.("[data-proof-runner-ui]") ? active : null;
+    }
+    this.local.flagOpen = kind === "flag";
+    this.local.adding = kind === "add";
+    this.local.focusAsk = true;
+    if (kind === "flag" && state.caseId) this.local.flagFor = { caseId: state.caseId, index: state.caseIndex };
+    if (!state.paused && state.phase !== "waiting-next") {
+      this.local.awaitingPause = true;
+      this.command("pause", { why: "flag" });
+    }
+  }
+
+  // Takes the boxes down; what was typed stays. The keyboard goes back to where
+  // it was before the box opened, if that's still on the page.
+  private closeBoxes(restore = true): void {
+    const was = this.local.flagOpen || this.local.adding;
+    this.local.flagOpen = false;
+    this.local.adding = false;
+    this.local.awaitingPause = false;
+    const back = this.local.back;
+    this.local.back = null;
+    if (restore && was && back?.isConnected) back.focus({ preventScroll: true });
   }
 
   private noteInput(placeholder: string, submit: string): HTMLInputElement {
@@ -819,6 +1022,9 @@ export class CaptionBar {
 
   private askByHand(item: PlanCase | undefined): void {
     this.ask.append(el("div", "Do this by hand", "lbl"), el("div", plainText(item?.intent ?? "Do what this case says."), "say"));
+    // What it passes on, so the answer below isn't a guess.
+    const passes = purposeLine(item, false).text;
+    if (passes) this.ask.append(el("div", passes, "hint"));
     const checked = Boolean(item?.hasCheck);
     this.ask.append(
       el("div", checked ? "Roam is yours. Press Done when you've done it, and the case's check decides." : "Roam is yours. The run won't touch anything until you answer.", "hint"),
@@ -927,22 +1133,28 @@ export class CaptionBar {
     sheet.replaceChildren();
     const passed = state.plan.filter((item) => (state.results[item.id] ?? item.verdict) === "pass").length;
     const head = el("div", undefined, "sh-hd");
-    head.append(el("span", `Cases · ${state.plan.length}`), el("span", `${passed} passed`, "meta"), el("span", undefined, "grow"));
+    const left = state.plan.filter((item) => item.leftOut).length;
+    head.append(el("span", `Cases · ${state.plan.length}`), el("span", `${passed} passed${left ? `, ${left} left out` : ""}`, "meta"), el("span", undefined, "grow"));
     head.append(button(this.local.keepOpen ? "Kept open" : "Keep open", "keep-open", this.local.keepOpen ? "hot" : ""), button("✕", "cases", "", undefined, "Close the list"));
     sheet.append(head);
     const { bullets } = doneWhen(state.plan);
     state.plan.forEach((item, index) => {
       const verdict = state.results[item.id] ?? item.verdict;
       const current = index === state.caseIndex;
-      const row = el("div", undefined, `crow${current ? " cur" : ""}`);
-      const icon = verdict ? ICON[verdict] : current ? "▶" : "○";
-      const tone = verdict ? ICON_CLASS[verdict] : current ? "v" : "gr";
+      const ahead = index > state.caseIndex && !verdict;
+      const row = el("div", undefined, `crow${current ? " cur" : ""}${item.leftOut ? " left" : ""}`);
+      const icon = verdict ? ICON[verdict] : item.leftOut ? "–" : current ? "▶" : "○";
+      const tone = verdict ? ICON_CLASS[verdict] : item.leftOut ? "gr" : current ? "v" : "gr";
       const covers = bullets.filter((bullet) => bullet.caseIds.includes(item.id)).map((bullet) => bullet.number);
       const need = needOf(item);
       const tag = verdict
         ? howWords(verdict, item.record ?? null)
-        : [covers.length ? `Done When ${covers.join(", ")}` : "", need === "judge" ? "you'll judge" : need === "by-hand" ? "by hand" : ""].filter(Boolean).join(" · ");
+        : item.leftOut
+          ? "left out"
+          : [covers.length ? `Done When ${covers.join(", ")}` : "", need === "judge" ? "you'll judge" : need === "by-hand" ? "by hand" : ""].filter(Boolean).join(" · ");
       row.append(el("span", icon, tone), el("span", String(index + 1), "ix"), el("span", plainText(item.title), "tt"), el("span", tag, "tg"));
+      // A case still ahead can be left out of this run, and put back until its turn.
+      if (ahead) row.append(item.leftOut ? button("Put back", "put-back", "link", { caseId: item.id }) : button("Skip", "leave-out", "link", { caseId: item.id }));
       sheet.append(row);
       if (current) {
         const steps = el("div", undefined, "steps");
@@ -959,6 +1171,9 @@ export class CaptionBar {
         sheet.append(steps);
       }
     });
+    const foot = el("div", undefined, "sh-ft");
+    foot.append(button("＋ Add a case", "add-open", "link"), el("span", "Pauses the run. The case runs by hand at the end.", "meta"));
+    sheet.append(foot);
   }
 
   private paintResult(model: BarModel): void {
@@ -973,6 +1188,7 @@ export class CaptionBar {
     const count = (verdict: string): number => plan.filter((item) => results[item.id] === verdict).length;
     const failed = count("fail");
     const skipped = count("skip");
+    const leftOut = plan.filter((item) => item.leftOut && !results[item.id]).length;
     const stopped = state.phase === "stopped";
     const fixes = kitFixes(plan, results);
     const helped = plan.filter((item) => results[item.id] === "pass" && passedWithHelp(item.record)).length;
@@ -990,6 +1206,7 @@ export class CaptionBar {
     sheet.append(head);
     const sum = [
       skipped ? `${skipped} couldn't be tested.` : "",
+      leftOut ? `${leftOut} left out by you.` : "",
       fixes.length ? `The kit needs ${fixes.length} fix${fixes.length === 1 ? "" : "es"}${helped ? `, and ${helped} case${helped === 1 ? "" : "s"} passed with your help` : ""}.` : helped ? `${helped} case${helped === 1 ? "" : "s"} passed with your help.` : "",
     ]
       .filter(Boolean)
@@ -1011,7 +1228,15 @@ export class CaptionBar {
           el("span", plainText(bullet.text) || "(the kit doesn't say)"),
           el(
             "span",
-            verdict === "fail" ? `${size}, failed` : verdict === "skip" ? `${size}, couldn't be tested` : verdict ? `${size}${yours ? ` · ${yours} passed by you` : ""}` : `${size}, didn't run`,
+            verdict === "fail"
+              ? `${size}, failed`
+              : verdict === "skip"
+                ? `${size}, couldn't be tested`
+                : verdict
+                  ? `${size}${yours ? ` · ${yours} passed by you` : ""}`
+                  : plan.some((item) => bullet.caseIds.includes(item.id) && item.leftOut && !results[item.id])
+                    ? `${size}, left out by you`
+                    : `${size}, didn't run`,
             `tg${verdict === "fail" ? " r" : ""}`,
           ),
         );
@@ -1065,9 +1290,9 @@ export class CaptionBar {
     if (bullets.length && other.length) {
       const others = plan.filter((item) => other.includes(item.id));
       const ok = others.filter((item) => results[item.id] === "pass").length;
-      sec.append(this.foldList(`Other cases: ${ok} of ${others.length} passed`, others.map((item) => `${ICON[results[item.id]] ?? "○"} ${plainText(item.title)} · ${howWords(results[item.id] ?? null, item.record ?? null)}`)));
+      sec.append(this.foldList(`Other cases: ${ok} of ${others.length} passed`, others.map((item) => `${ICON[results[item.id]] ?? "○"} ${plainText(item.title)} · ${endWords(item, results[item.id] ?? null)}`)));
     } else if (!bullets.length) {
-      sec.append(this.foldList(`Every case: ${count("pass")} of ${plan.length} passed`, plan.map((item) => `${ICON[results[item.id]] ?? "○"} ${plainText(item.title)} · ${howWords(results[item.id] ?? null, item.record ?? null)}`)));
+      sec.append(this.foldList(`Every case: ${count("pass")} of ${plan.length} passed`, plan.map((item) => `${ICON[results[item.id]] ?? "○"} ${plainText(item.title)} · ${endWords(item, results[item.id] ?? null)}`)));
     }
     if (model.notTested) sec.append(el("div", `Not tested, and why: ${model.notTested} on the proof page.`, "meta"));
     const took = (model.endedAt ?? Date.now()) - model.startedAt;
@@ -1171,17 +1396,50 @@ export class CaptionBar {
         this.send({ kind: "setting", key: "pointer", value: args.value === "cursor" ? "cursor" : "ring" });
         break;
       case "flag":
-        this.local.flagOpen = !this.local.flagOpen;
+        if (this.local.flagOpen) this.closeBoxes();
+        else this.openBox("flag");
         break;
-      case "flag-note":
+      case "flag-note": {
         if (!note) return this.showError("Type what's wrong first.");
-        this.command("note", { text: note, caseId: state?.caseId });
-        this.local.flagOpen = false;
-        break;
+        const flagged = this.local.flagFor;
+        this.command("note", { text: note, caseId: flagged?.caseId ?? state?.caseId });
+        this.local.flagDraft = "";
+        this.closeBoxes();
+        this.say(`Noted on case ${(flagged?.index ?? state?.caseIndex ?? 0) + 1}. The run is paused: Resume when you're ready.`);
+        return;
+      }
       case "flag-fail":
         this.command("verdict", withNote({ verdict: "fail" }));
-        this.local.flagOpen = false;
+        this.local.flagDraft = "";
+        this.closeBoxes();
         break;
+      case "flag-skip":
+        if (!note) return this.showError("Say in one line why you're skipping it.");
+        this.command("skip-case", { note });
+        this.local.flagDraft = "";
+        this.closeBoxes();
+        break;
+      case "add-open":
+        this.openBox("add");
+        break;
+      case "add-cancel":
+        this.closeBoxes();
+        break;
+      case "add-case": {
+        const draft = this.local.addDraft;
+        const title = draft.title.trim();
+        if (!title) return this.showError("Say what the case should check.");
+        void Promise.resolve(this.act({ kind: "add-case", title, intent: draft.intent.trim(), passes: draft.passes.trim() })).then((error) => {
+          if (error) {
+            this.showError(error);
+            return;
+          }
+          this.local.addDraft = { title: "", intent: "", passes: "" };
+          this.closeBoxes();
+          this.say(`Added: ${title}. It runs by hand at the end. The run is paused: Resume when you're ready.`);
+        });
+        return;
+      }
       case "tuck":
       case "untuck":
         this.local.tucked = action === "tuck";
@@ -1257,6 +1515,7 @@ export class CaptionBar {
         this.command("skip-case", withNote());
         break;
       case "resume":
+        this.closeBoxes();
         this.countdown("resume");
         break;
       case "countdown-cancel":

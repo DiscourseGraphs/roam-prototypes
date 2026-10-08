@@ -1,4 +1,4 @@
-import type { MachineState } from "../core/machine";
+import type { MachineState, PlanCase } from "../core/machine";
 import { CaptionBar, type BarAction } from "./bar";
 import type { CheckAction, CheckItem } from "./checklist";
 import type { RunSummary } from "./outcome";
@@ -12,8 +12,10 @@ import {
   duration,
   isPauseSetting,
   isPointerSetting,
+  needOf,
   paceLabel,
   plainText,
+  purposeLine,
   type CaseHistory,
   type DoneWhen,
   type PauseSetting,
@@ -46,6 +48,10 @@ const roamBlocks: BlockRenderer = {
   unmount: (el) => roam().ui.components.unmountNode({ el }),
 };
 
+// A case of the run, for the list on the card: what it checks and asks of you,
+// its steps, and the page block that holds it (to open it for editing).
+export type KitCase = { plan: PlanCase; uid: string | null };
+
 // What the page says about the kit, for the run card before Run.
 export type KitSummary = {
   claim: string | null;
@@ -63,6 +69,8 @@ export type KitSummary = {
   // Rejected cases, with why.
   notTested: Array<{ title: string; reason: string | null }>;
   proposed: number;
+  // Every case a run plays, in order.
+  list: KitCase[];
 };
 
 // What a run carries beside the machine's state.
@@ -108,13 +116,16 @@ export type PanelView = {
 };
 
 export type PanelAction =
-  | { kind: "run" }
+  // leave: the cases the person left out of this run.
+  | { kind: "run"; leave?: string[] }
   | { kind: CheckAction }
   | { kind: "resume" }
   | { kind: "reset" }
   | { kind: "restart" }
   | { kind: "done-by-hand" }
   | { kind: "edit-step" }
+  | { kind: "edit-case"; caseId: string }
+  | { kind: "add-case"; title: string; intent: string; passes: string }
   | { kind: "rerun" }
   | { kind: "open-kit" }
   | { kind: "setting"; key: "pause"; value: PauseSetting }
@@ -122,7 +133,7 @@ export type PanelAction =
   | { kind: "setting"; key: "pointer"; value: PointerSetting }
   | { kind: "command"; cmd: string; args?: Record<string, unknown> };
 
-const OWN_ACTIONS = new Set(["run", "resume", "reset", "rerun", "done-by-hand", "connect", "disconnect", "load", "reload", "check-database", "ask-agent"]);
+const OWN_ACTIONS = new Set(["resume", "reset", "rerun", "done-by-hand", "connect", "disconnect", "load", "reload", "check-database", "ask-agent"]);
 
 const CSS = `
   :host { all: initial; display: block; }
@@ -194,6 +205,28 @@ const CSS = `
   .plan[hidden] { display: none; }
   .setup { color: #4c4a5c; font-size: 12.5px; }
   .setup:empty { display: none; }
+  .cases { display: grid; gap: 2px; }
+  .cases-hd { gap: 10px; }
+  .cases-hd .meta { flex: 1; }
+  .case { display: grid; grid-template-columns: 20px 20px minmax(0, 1fr) auto; gap: 2px 8px; align-items: baseline; padding: 7px 2px; border-top: 1px solid #e6e4ee; }
+  .case .ix { color: #6b6880; text-align: right; font-variant-numeric: tabular-nums; }
+  .case .tt { font-weight: 650; overflow-wrap: anywhere; }
+  .case .why { color: #4c4a5c; overflow-wrap: anywhere; }
+  .case .why b { color: #1f1d29; font-weight: 650; }
+  .case .tg { color: #6b6880; font-size: 12px; white-space: nowrap; }
+  .case .acts { grid-column: 3 / 5; display: flex; gap: 12px; align-items: baseline; flex-wrap: wrap; }
+  .case details { border: 0; padding: 0; margin: 0; }
+  .case summary { color: #6b6880; font-size: 12px; }
+  .case details ul { margin: 3px 0 0; font-size: 12.5px; }
+  .case.off .tt, .case.off .why { color: #8b889c; }
+  .case.off .tt { text-decoration: line-through; text-decoration-color: rgba(139, 136, 156, .6); }
+  button.tick { width: 18px; height: 18px; padding: 0; display: inline-grid; place-items: center; border: 1.5px solid #8b889c; border-radius: 4px;
+    background: #fff; color: transparent; font-size: 12px; line-height: 1; align-self: start; margin-top: 1px; }
+  button.tick[aria-checked="true"] { background: #5541d2; border-color: #5541d2; color: #fff; }
+  .add { display: grid; gap: 6px; border-top: 1px solid #e6e4ee; padding-top: 8px; }
+  .add input { font: 13px system-ui, -apple-system, "Segoe UI", sans-serif; color: #1f1d29; background: #fff; border: 1px solid #cfccdc; border-radius: 6px; padding: 6px 9px; width: 100%; }
+  .add input:focus { outline: 2px solid #5541d2; outline-offset: 0; }
+  button.small { font-weight: 600; padding: 3px 9px; }
 `;
 
 // The case blocks live in the light DOM, where the shadow root's styles
@@ -312,6 +345,15 @@ const button = (label: string, action: string, extra: { className?: string; titl
   return node;
 };
 
+// What a case checks, or asks of you, in the words the card lists it with.
+const caseLines = (plan: PlanCase): Array<{ label: string; text: string }> => {
+  if (needOf(plan) === "by-hand") {
+    return [{ label: "You do this by hand:", text: plainText(plan.intent ?? "") }, ...(plan.checks ? [{ label: "Passes if", text: plainText(plan.checks) }] : [])];
+  }
+  const purpose = purposeLine(plan, false);
+  return purpose.text || purpose.label ? [purpose] : [];
+};
+
 // A press on the runner's buttons leaves focus where the run put it: Roam
 // stops editing a block that loses focus, and takes its menus with it.
 const keepFocus = (event: Event): void => {
@@ -348,6 +390,11 @@ export class ProofPanel {
   private readonly stage: Stage;
   private lastAsk = "";
   private lastFailure = "";
+  // Cases the person left out of the next run, on the card; and the add-case form.
+  private readonly left = new Set<string>();
+  private addOpen = false;
+  private addFocused = false;
+  private readonly draft = { title: "", intent: "", passes: "" };
   // How long steps take here, from the run so far.
   private stepTimes: number[] = [];
   private lastStep: { key: string; at: number } | null = null;
@@ -591,7 +638,7 @@ export class ProofPanel {
     }
     if (action.kind === "run" || action.kind === "rerun") {
       this.stage.prime();
-      return this.onAction({ kind: action.kind });
+      return this.onAction(action.kind === "run" ? { kind: "run", leave: this.leaveList() } : { kind: "rerun" });
     }
     if (action.kind === "ask-agent") return this.onAction({ kind: "ask-agent" });
     // A setting changed in the bar during the run: kept for later runs too.
@@ -632,9 +679,48 @@ export class ProofPanel {
     return this.onAction(action);
   }
 
+  // The cases the person left out that this kit still has.
+  private leaveList(): string[] {
+    const ids = new Set((this.view?.kit?.list ?? []).map((item) => item.plan.id));
+    return [...this.left].filter((id) => ids.has(id));
+  }
+
   private async press(target: HTMLButtonElement): Promise<void> {
     const action = target.dataset.action ?? "";
     const args = target.dataset.args ? (JSON.parse(target.dataset.args) as Record<string, unknown>) : {};
+    if (action === "pick-case") {
+      const id = String(args.id ?? "");
+      if (this.left.has(id)) this.left.delete(id);
+      else this.left.add(id);
+      this.repaint();
+      return;
+    }
+    if (action === "pick-all" || action === "pick-none") {
+      this.left.clear();
+      if (action === "pick-none") for (const item of this.view?.kit?.list ?? []) this.left.add(item.plan.id);
+      this.repaint();
+      return;
+    }
+    if (action === "add-open" || action === "add-cancel") {
+      this.addOpen = action === "add-open";
+      this.repaint();
+      return;
+    }
+    if (action === "add-case") {
+      const title = this.draft.title.trim();
+      if (!title) return this.showError("Say what the case should check.");
+      const error = await this.onAction({ kind: "add-case", title, intent: this.draft.intent.trim(), passes: this.draft.passes.trim() });
+      if (error) return this.showError(error);
+      Object.assign(this.draft, { title: "", intent: "", passes: "" });
+      this.addOpen = false;
+      this.repaint();
+      return;
+    }
+    if (action === "edit-case") {
+      const error = await this.onAction({ kind: "edit-case", caseId: String(args.caseId ?? "") });
+      if (error) this.showError(error);
+      return;
+    }
     if (action === "set-pause" && isPauseSetting(args.value)) {
       const error = await this.setting({ kind: "setting", key: "pause", value: args.value });
       if (error) this.showError(error);
@@ -651,7 +737,8 @@ export class ProofPanel {
       return;
     }
     if (action === "run" || action === "resume" || action === "rerun") this.stage.prime();
-    const request: PanelAction | null = OWN_ACTIONS.has(action) ? ({ kind: action } as PanelAction) : { kind: "command", cmd: action, args };
+    const request: PanelAction | null =
+      action === "run" ? { kind: "run", leave: this.leaveList() } : OWN_ACTIONS.has(action) ? ({ kind: action } as PanelAction) : { kind: "command", cmd: action, args };
     const error = await this.onAction(request);
     if (error) this.showError(error);
   }
@@ -661,6 +748,10 @@ export class ProofPanel {
     if (!view) return;
     const state = view.machine;
     const card = parts.card;
+    // A repaint keeps the keyboard where the person had it in the add-case form.
+    const typing = parts.root.activeElement as HTMLInputElement | null;
+    const field = typing?.dataset?.field ?? null;
+    const caret = field ? typing?.selectionStart ?? null : null;
     card.replaceChildren();
     card.append(this.paintHead(view));
     const body = el("div", undefined, "body");
@@ -674,6 +765,8 @@ export class ProofPanel {
       for (const text of view.warnings) body.append(el("div", text, "warn"));
       if (view.kit && !view.last) body.append(el("div", "Nobody has run this kit in Roam yet, so a failure may be the kit's own. When one happens, the run asks you.", "warn"));
       if (state) body.append(this.paintEnded(state));
+      const list = this.paintList(view);
+      if (list) body.append(list);
       body.append(this.paintStart(view));
       const folds = this.paintFolds(view);
       if (folds) body.append(folds);
@@ -684,6 +777,11 @@ export class ProofPanel {
     body.append(parts.err);
     card.append(body);
     this.paintPlan(parts, view);
+    const again = field ? (parts.root.querySelector(`[data-field="${field}"]`) as HTMLInputElement | null) : null;
+    if (again) {
+      again.focus({ preventScroll: true });
+      if (caret !== null) again.setSelectionRange(caret, caret);
+    }
   }
 
   private paintHead(view: PanelView): HTMLElement {
@@ -722,6 +820,7 @@ export class ProofPanel {
     const tail = `${where}${when ? `, ${when}` : ""}`;
     if (run.stopped) return el("span", `Last run: stopped, ${run.passed} of ${run.total} passed${tail}`, "fact grey");
     if (run.failed) return el("span", `Last run: ${run.failed} failed${tail}`, "fact bad");
+    if (run.left) return el("span", `Last run: ${run.passed} of ${run.total} passed, ${run.left} left out${tail}`, "fact you");
     if (run.skipped) return el("span", `Last run: ${run.passed} of ${run.total} passed, ${run.skipped} couldn't be tested${tail}`, "fact you");
     return el("span", `Last run: ${run.passed} of ${run.total} passed${tail}`, last.thisBuild === false ? "fact grey" : "fact ok");
   }
@@ -777,6 +876,94 @@ export class ProofPanel {
     return line;
   }
 
+  // Every case the run plays, before it starts: what each checks and asks of
+  // you, with a tick to leave it out of this run, and a way to add one.
+  private paintList(view: PanelView): HTMLElement | null {
+    const kit = view.kit;
+    if (!kit?.list.length) return null;
+    const left = new Set(this.leaveList());
+    const plays = kit.list.length - left.size;
+    const box = el("div", undefined, "cases");
+    const head = el("div", undefined, "row cases-hd");
+    head.append(
+      el("span", "Cases", "lbl"),
+      el("span", `${left.size ? `${plays} of ${kit.list.length}` : `all ${plays}`} will run`, "meta"),
+      button("All", "pick-all", { className: "link" }),
+      button("None", "pick-none", { className: "link" }),
+    );
+    box.append(head);
+    kit.list.forEach(({ plan, uid }, index) => {
+      const off = left.has(plan.id);
+      const row = el("div", undefined, `case${off ? " off" : ""}`);
+      row.dataset.case = plan.id;
+      const tick = button("✓", "pick-case", { className: "tick", args: { id: plan.id }, title: off ? "Left out of this run. Tick to run it." : "Runs. Untick to leave it out." });
+      tick.setAttribute("role", "checkbox");
+      tick.setAttribute("aria-checked", String(!off));
+      tick.setAttribute("aria-label", `Run case ${index + 1}: ${plainText(plan.title)}`);
+      const what = el("div", undefined, "what");
+      what.append(el("div", plainText(plan.title), "tt"));
+      for (const line of caseLines(plan)) {
+        const why = el("div", undefined, "why");
+        if (line.label) why.append(el("b", `${line.label} `));
+        why.append(document.createTextNode(line.text));
+        what.append(why);
+      }
+      if (plan.steps.length) {
+        const steps = el("details");
+        steps.append(el("summary", `${plan.steps.length} step${plan.steps.length === 1 ? "" : "s"}`));
+        const list = el("ul");
+        for (const step of plan.steps) list.append(el("li", plainText(step.why)));
+        steps.append(list);
+        what.append(steps);
+      }
+      const need = needOf(plan);
+      const covers = kit.doneWhen.filter((bullet) => bullet.caseIds.includes(plan.id)).map((bullet) => bullet.number);
+      const tag = [covers.length ? `Done When ${covers.join(", ")}` : "", need === "judge" ? "you'll judge" : need === "by-hand" ? "by hand" : ""].filter(Boolean).join(" · ");
+      row.append(tick, el("span", String(index + 1), "ix"), what, el("span", tag, "tg"));
+      if (uid) {
+        const acts = el("div", undefined, "acts");
+        acts.append(button("Edit", "edit-case", { className: "link", args: { caseId: plan.id }, title: "Opens this case's block in the right sidebar. Changes apply from the next Run." }));
+        row.append(acts);
+      }
+      box.append(row);
+    });
+    if (this.addOpen) {
+      const form = el("div", undefined, "add");
+      form.append(el("div", "Add a case", "lbl"), el("div", "It runs by hand, after the others, and it's saved on the kit page for the next run.", "meta"));
+      const make = (name: "title" | "intent" | "passes", placeholder: string): HTMLInputElement => {
+        const field = document.createElement("input");
+        field.type = "text";
+        field.placeholder = placeholder;
+        field.value = this.draft[name];
+        field.dataset.field = name;
+        field.setAttribute("aria-label", placeholder);
+        field.addEventListener("input", () => {
+          this.draft[name] = field.value;
+        });
+        field.addEventListener("keydown", (event) => {
+          if (event.key !== "Enter") return;
+          event.preventDefault();
+          (form.querySelector('button[data-action="add-case"]') as HTMLButtonElement | null)?.click();
+        });
+        return field;
+      };
+      form.append(make("title", "What should work? (the case's title)"), make("intent", "What to do (optional)"), make("passes", "Passes if (optional)"));
+      const row = el("div", undefined, "row");
+      row.append(button("Add case", "add-case", { className: "primary small" }), button("Cancel", "add-cancel"));
+      form.append(row);
+      box.append(form);
+      // The form opens with the keyboard in it.
+      if (!this.addFocused) {
+        this.addFocused = true;
+        queueMicrotask(() => (form.querySelector('[data-field="title"]') as HTMLInputElement | null)?.focus({ preventScroll: true }));
+      }
+    } else {
+      this.addFocused = false;
+      box.append(button("＋ Add a case", "add-open", { className: "link" }));
+    }
+    return box;
+  }
+
   private paintStart(view: PanelView): HTMLElement {
     const box = el("div", undefined, "start");
     const state = view.machine;
@@ -802,17 +989,21 @@ export class ProofPanel {
     const row = el("div", undefined, "row");
     row.style.marginTop = "10px";
     const count = view.kit?.cases ?? 0;
-    const run = button(state ? "Run again" : count ? `▶ Run ${count} case${count === 1 ? "" : "s"}` : "▶ Run", "run", {
-      className: "primary",
-      title: view.blocked ?? "Run every case on this page",
-    });
-    run.disabled = Boolean(view.error) || Boolean(view.blocked);
+    const plays = count - this.leaveList().length;
+    const some = plays < count;
+    const run = button(
+      state ? `Run again${some ? ` (${plays} of ${count})` : ""}` : plays ? `▶ Run ${some ? `${plays} of ${count}` : plays} case${count === 1 ? "" : "s"}` : "▶ Run",
+      "run",
+      { className: "primary", title: view.blocked ?? (some ? "Run the cases that are ticked" : "Run every case on this page") },
+    );
+    run.disabled = Boolean(view.error) || Boolean(view.blocked) || (Boolean(view.kit) && plays === 0);
     row.append(run);
     if (view.resumable && !state) row.append(button(`Resume from case ${view.resumable.caseIndex + 1}`, "resume"));
     const rerun = view.run?.rerun ?? 0;
     if (state && rerun) row.append(button(`Run the ${rerun === 1 ? "one" : rerun} that didn't pass`, "rerun"));
     if (state || view.resumable) row.append(button("Reset", "reset", { title: "Forget this tab's run of the kit" }));
     if (view.blocked) row.append(el("span", `Waiting on ${view.blocked.split(":")[0]}`, "meta"));
+    else if (view.kit && plays === 0) row.append(el("span", "Every case is left out. Tick at least one.", "meta"));
     box.append(row);
     // Said before the first click is held, so it doesn't read as Roam freezing.
     box.append(el("div", "While it runs, a click on the page pauses the run instead of landing. Scrolling still works, and Ctrl+Alt+Space pauses too.", "meta held"));

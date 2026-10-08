@@ -80,7 +80,10 @@ export const needOf = (item: Pick<PlanCase, "judge" | "hasCheck" | "intent" | "s
 export const purposeLine = (item: PlanCase | undefined, setup: boolean): { label: string; text: string } => {
   if (setup || !item) return { label: "", text: "Getting the graph ready. You don't need to watch this part." };
   const need = needOf(item);
-  if (need === "by-hand") return { label: "You'll do this one by hand.", text: item.checks ? `Then it checks: ${plainText(item.checks)}` : "" };
+  if (need === "by-hand") {
+    const text = item.checks ? `Then it checks: ${plainText(item.checks)}` : item.judge ? `Passes if ${plainText(item.judge)}` : "";
+    return { label: "You'll do this one by hand.", text };
+  }
   if (need === "judge") return { label: "You'll judge:", text: plainText(item.judge ?? "") };
   if (item.checks) return { label: "Passes if", text: plainText(item.checks) };
   if (item.hasCheck) return { label: "Passes if", text: "its check holds." };
@@ -198,6 +201,7 @@ export const holdLine = (why: string, item: Pick<PlanCase, "judge" | "hasCheck" 
 // Why the run paused, short enough to sit beside what runs next.
 export const pauseWords = (cause: PauseCause | null): string => {
   if (cause === "page") return "You clicked the page; your click didn't reach Roam.";
+  if (cause === "flag") return "You flagged this case, so the run is paused. Resume when you're ready.";
   if (cause === "between-cases") return "Paused between cases. Look around, then Resume.";
   if (cause === "agent") return "Your agent paused the run.";
   return "You paused the run.";
@@ -220,6 +224,10 @@ export const howWords = (verdict: string | null, record: CaseRecord | null): str
       return record.byHand ? "done by hand, nothing checked" : "ran, nothing checked";
   }
 };
+
+// How a case ended, or that the person left it out of the run.
+export const endWords = (item: Pick<PlanCase, "leftOut" | "record">, verdict: string | null): string =>
+  item.leftOut && !verdict ? "left out by you" : howWords(verdict, item.record ?? null);
 
 export const verdictWord = (verdict: string | null): string =>
   verdict === "pass" ? "Passed" : verdict === "fail" ? "Failed" : verdict === "skip" ? "Couldn't be tested" : "Didn't run";
@@ -256,6 +264,7 @@ export const forecast = (
   }
   for (let index = Math.max(0, state.caseIndex + (inCase ? 1 : 0)); index < plan.length; index += 1) {
     const item = plan[index];
+    if (item.leftOut) continue;
     const need = needOf(item);
     if (need && !next) next = { index, need, inMs: leftMs };
     leftMs += Math.max(1, item.steps.length) * msPerStep;
@@ -414,7 +423,13 @@ export const resultMarkdown = (state: Pick<MachineState, "plan" | "results">, fa
   const count = (verdict: string): number => plan.filter((item) => state.results[item.id] === verdict).length;
   const failed = count("fail");
   const skipped = count("skip");
-  const headline = [`${count("pass")} of ${plan.length} passed`, failed ? `${failed} failed` : "none failed", skipped ? `${skipped} couldn't be tested` : ""]
+  const leftOut = plan.filter((item) => item.leftOut && !state.results[item.id]);
+  const headline = [
+    `${count("pass")} of ${plan.length} passed`,
+    failed ? `${failed} failed` : "none failed",
+    skipped ? `${skipped} couldn't be tested` : "",
+    leftOut.length ? `${leftOut.length} left out` : "",
+  ]
     .filter(Boolean)
     .join(", ");
   const lines = [`**Proof run: ${headline}**`];
@@ -429,6 +444,7 @@ export const resultMarkdown = (state: Pick<MachineState, "plan" | "results">, fa
       const verdict = bulletVerdict(bullet, state.results);
       const size = `${bullet.caseIds.length} case${bullet.caseIds.length === 1 ? "" : "s"}`;
       const helped = plan.filter((item) => bullet.caseIds.includes(item.id) && state.results[item.id] === "pass" && passedWithHelp(item.record)).length;
+      const left = leftOut.filter((item) => bullet.caseIds.includes(item.id)).length;
       const tail =
         verdict === "fail"
           ? `${size}, failed`
@@ -436,7 +452,9 @@ export const resultMarkdown = (state: Pick<MachineState, "plan" | "results">, fa
             ? `${size}, couldn't be tested`
             : verdict
               ? `${size}${helped ? `, ${helped} passed by the tester` : ""}`
-              : `${size}, not run`;
+              : left
+                ? `${size}, ${left} left out`
+                : `${size}, not run`;
       lines.push(`- ${verdict ? BOX[verdict] : "[ ]"} ${bullet.number}. ${bullet.text || "(no text in the kit)"} (${tail})`);
     }
   }
@@ -452,6 +470,10 @@ export const resultMarkdown = (state: Pick<MachineState, "plan" | "results">, fa
   if (skips.length) {
     lines.push("", "Couldn't be tested");
     for (const item of skips) lines.push(`- Case ${plan.indexOf(item) + 1}: ${item.title}.${item.note ? ` ${firstLine(item.note, 300)}` : ""}`);
+  }
+  if (leftOut.length) {
+    lines.push("", "Left out by the tester");
+    for (const item of leftOut) lines.push(`- Case ${plan.indexOf(item) + 1}: ${item.title}.`);
   }
   const fixes = kitFixes(plan, state.results).length;
   if (fixes) lines.push("", `The kit needs ${fixes} fix${fixes === 1 ? "" : "es"}, listed on ${facts.page ?? "the proof page"} under runs.`);

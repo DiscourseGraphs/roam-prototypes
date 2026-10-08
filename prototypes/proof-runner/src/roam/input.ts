@@ -252,8 +252,16 @@ const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout
 
 // Types into the focused field one character at a time, with key events
 // around each insert, so handlers watching keys (a trigger like @) see them.
-export const typeText = async (text: string, delayMs: number): Promise<void> => {
+// `before` runs ahead of each character: it can hold the typing while the run
+// is paused, answering true when it held (the field gets the keyboard back
+// then) and throwing to end the typing.
+export const typeText = async (
+  text: string,
+  delayMs: number,
+  options: { before?: () => Promise<boolean>; field?: Element } = {},
+): Promise<void> => {
   for (const char of Array.from(text)) {
+    if (options.before && (await options.before())) (options.field as HTMLElement | undefined)?.focus?.({ preventScroll: true });
     const target = keyTarget();
     const spec = char === "\n" ? NAMED_KEYS.Enter : charSpec(char);
     const proceed = keyEvent("keydown", target, spec);

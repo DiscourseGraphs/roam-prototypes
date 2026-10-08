@@ -8,7 +8,7 @@ import { fill, fillDeep, type TemplateContext } from "../core/template";
 import type { ExtensionAPI, FetchedBuild, LoadedBuild, PaletteRegistry } from "./build-loader";
 import { checklist, runBlocked, type CheckItem } from "./checklist";
 import { evaluate, makePageExecutor } from "./executor";
-import { blockText, pageKit, rootConfig, runBlocksFor, stepBlockOf, stepFromBlock, type BlockNode, type PageKit, type RunBlocks } from "./page-kit";
+import { attribute, blockText, caseBlockOf, newCase, pageKit, rootConfig, runBlocksFor, stepBlockOf, stepFromBlock, type BlockNode, type PageKit, type RunBlocks } from "./page-kit";
 import { ProofPanel, type KitSummary, type PanelAction, type PanelView, type RunInfo } from "./panel";
 import { caseHistory, logLine, parseRunSummary, type RunLogBlock } from "./outcome";
 import { createTree, pageOf, readTree, roam, userName } from "./roam";
@@ -80,6 +80,8 @@ type RunRecord = {
   // Each judged case's record: its verdict, how it was reached, and its notes.
   records: Record<string, CaseRecord>;
   commit: string | null;
+  // The cases the run left out, so a resume leaves them out too.
+  left?: string[];
 };
 
 const hash = (value: unknown): string => {
@@ -333,6 +335,23 @@ type Driven = { driver?: "terminal"; pause?: string; pace?: number };
 
 const ticketOf = (kit: Kit): string | null => kit.ticket ?? /\beng-\d+\b/i.exec(kit.name)?.[0]?.toUpperCase() ?? null;
 
+// A kit case as the run's plan shows it, with the record carried from an
+// earlier run when it has one.
+export const planCaseOf = (item: Kit["cases"][number], record: CaseRecord | null = null): PlanCase => ({
+  id: item.id,
+  title: item.title,
+  proves: item.proves ?? null,
+  checks: item.checks ?? null,
+  judge: item.expect?.text ?? null,
+  hasCheck: Boolean(item.expect?.js),
+  intent: item.intent ?? null,
+  verdict: record?.verdict ?? null,
+  note: record ? [record.note, record.yourNote].filter(Boolean).join(" · ") || null : null,
+  record,
+  leftOut: false,
+  steps: item.steps.map((step) => ({ why: step.why, source: step.source ?? "kit" })),
+});
+
 export class ProofRun {
   readonly panel: ProofPanel;
   private tree: BlockNode | null = null;
@@ -538,24 +557,7 @@ export class ProofRun {
     const all = this.runKit?.cases ?? [];
     if (all.length === state.plan.length && all.every((item, index) => state.plan[index]?.id === item.id)) return state;
     const playing = new Map(state.plan.map((item) => [item.id, item]));
-    const plan = all.map((item): PlanCase => {
-      const live = playing.get(item.id);
-      if (live) return live;
-      const record = this.carried[item.id] ?? null;
-      return {
-        id: item.id,
-        title: item.title,
-        proves: item.proves ?? null,
-        checks: item.checks ?? null,
-        judge: item.expect?.text ?? null,
-        hasCheck: Boolean(item.expect?.js),
-        intent: item.intent ?? null,
-        verdict: record?.verdict ?? null,
-        note: record ? [record.note, record.yourNote].filter(Boolean).join(" · ") || null : null,
-        record,
-        steps: item.steps.map((step) => ({ why: step.why, source: step.source ?? "kit" })),
-      };
-    });
+    const plan = all.map((item): PlanCase => playing.get(item.id) ?? planCaseOf(item, this.carried[item.id] ?? null));
     const current = state.plan[state.caseIndex];
     const caseIndex = current ? plan.findIndex((item) => item.id === current.id) : state.caseIndex < 0 ? -1 : plan.length;
     const carried = Object.fromEntries(Object.entries(this.carried).map(([id, record]) => [id, record.verdict]));
@@ -584,6 +586,7 @@ export class ProofRun {
         .filter((item) => decisionOf(item) === "rejected")
         .map((item) => ({ title: item.title, reason: item.decision?.reason ?? null })),
       proposed: page.cases.filter((item) => decisionOf(item) === "proposed").length,
+      list: cases.map((item) => ({ plan: planCaseOf(item), uid: this.kit?.blocks.cases[item.id] ?? null })),
     };
   }
 
@@ -681,7 +684,14 @@ export class ProofRun {
 
   private async act(action: PanelAction): Promise<string | null> {
     try {
-      if (action.kind === "run") return await this.start();
+      if (action.kind === "run") return await this.start({ leave: action.leave });
+      if (action.kind === "add-case") return await this.addCase(action);
+      if (action.kind === "edit-case") {
+        const uid = this.runBlocks?.cases[action.caseId] ?? this.kit?.blocks.cases[action.caseId];
+        if (!uid) return "This case has no block on the page to edit.";
+        await roam().ui.rightSidebar.addWindow({ window: { type: "block", "block-uid": uid } });
+        return null;
+      }
       if (action.kind === "restart") return await this.restart();
       if (action.kind === "resume") return await this.start({ from: this.readRecord()?.nextCase ?? 0 });
       if (action.kind === "rerun") return await this.start({ only: this.rerunIds() });
@@ -739,6 +749,34 @@ export class ProofRun {
     } catch (error) {
       return describe(error);
     }
+  }
+
+  // A case the person adds, from the card or the bar: written under the
+  // {{proof}} block after the last case, so the page keeps it for the next
+  // run, and, when a run is going, handed to it to play by hand at the end.
+  async addCase(input: { title: string; intent: string; passes: string }): Promise<string | null> {
+    if (!this.kit || !this.tree) return this.error ?? "This page has no kit.";
+    if (!input.title.trim()) return "Say what the case should check.";
+    const taken = new Set([...this.kit.kit.cases, ...(this.machine?.kit.cases ?? [])].map((item) => item.id));
+    const testCase = newCase(input, taken);
+    if (this.running) {
+      const error = this.command("add-case", { case: testCase });
+      if (error) return error;
+    }
+    const uid = roam().util.generateUID();
+    const children = this.tree.children ?? [];
+    let at = children.length;
+    children.forEach((child, index) => {
+      if (attribute(child.string)?.key === "case") at = index + 1;
+    });
+    try {
+      await createTree(this.rootUid, [{ ...caseBlockOf(testCase), uid }], at);
+    } catch (error) {
+      return `${this.running ? "The run has it, but the page doesn't: " : ""}Couldn't write the case to the page: ${describe(error)}`;
+    }
+    if (this.runBlocks) this.runBlocks.cases[testCase.id] = uid;
+    await this.refresh();
+    return null;
   }
 
   // Retry runs the failed step as its block reads now, so a step fixed in the
@@ -852,8 +890,8 @@ export class ProofRun {
   }
 
   // Starts a run: every case, the cases from `from` on (a resume), or only
-  // those listed (the ones that didn't pass).
-  async start(options: { from?: number; only?: string[] } = {}): Promise<string | null> {
+  // those listed (the ones that didn't pass); less the ones the person left out.
+  async start(options: { from?: number; only?: string[]; leave?: string[] } = {}): Promise<string | null> {
     if (this.running) return "A run is already going.";
     await this.refresh();
     if (!this.kit) return this.error ?? "This page has no kit.";
@@ -865,6 +903,7 @@ export class ProofRun {
     const kit: Kit = JSON.parse(JSON.stringify(source)) as Kit;
     this.runBlocks = this.tree ? runBlocksFor(this.kit, this.tree, source) : null;
     const earlier = this.bestRecords();
+    let leave = options.leave;
     if (options.only) {
       const only = new Set(options.only);
       kit.cases = kit.cases.filter((item) => only.has(item.id));
@@ -874,13 +913,17 @@ export class ProofRun {
       const record = this.readRecord();
       kit.cases = kit.cases.slice(Math.min(options.from, kit.cases.length - 1));
       this.carried = record ? { ...record.records } : {};
+      leave ??= record?.left;
       this.scope = "resume";
     } else {
       this.carried = {};
       this.scope = "all";
     }
     if (kit.cases.length === 0) return "There's no case to run.";
-    this.runIds = kit.cases.map((item) => item.id);
+    const here = new Set(kit.cases.map((item) => item.id));
+    const leaveOut = (leave ?? []).filter((id) => here.has(id));
+    if (leaveOut.length >= kit.cases.length) return "Every case is left out. Tick at least one.";
+    this.runIds = kit.cases.map((item) => item.id).filter((id) => !leaveOut.includes(id));
     const baseline = kit.baseline ? this.env.baselines.get(kit.baseline) : null;
     const setup = [...inSessionSteps(fixturesFor(kit, this.env)), ...smokeSteps(baseline?.smoke ?? [])];
     const context = contextFor(kit.name, this.env, runId());
@@ -924,6 +967,7 @@ export class ProofRun {
       dwellMs: DWELL_MS,
       holdOnCheckFail: play.holdOnCheckFail,
       expand: makeExpander(this.env.recipes),
+      leaveOut,
     });
     this.machine = machine;
     this.state = machine.state();
@@ -1017,12 +1061,14 @@ export class ProofRun {
 
   private saveProgress(source: Kit, machine: Machine): void {
     const records = this.records(machine);
-    const next = source.cases.findIndex((item) => !(item.id in records));
+    const left = machine.leftOutIds;
+    const next = source.cases.findIndex((item) => !(item.id in records) && !left.includes(item.id));
     this.writeRecord({
       kitHash: hash(source),
       nextCase: next < 0 ? source.cases.length : next,
       records,
       commit: this.env.build?.commit ?? null,
+      left,
     });
   }
 
@@ -1033,8 +1079,10 @@ export class ProofRun {
     const records = this.records(machine);
     if (stopped) this.saveProgress(source, machine);
     else this.writeRecord(null);
+    // Cases added during the run are on the page now, so its line lists them too.
+    const logged: Kit = { ...source, cases: [...source.cases, ...machine.kit.cases.filter((item) => !source.cases.some((known) => known.id === item.id))] };
     try {
-      await this.writeRunLog(source, records, Object.keys(machine.caseRecords), stopped);
+      await this.writeRunLog(logged, records, Object.keys(machine.caseRecords), stopped, machine.leftOutIds);
     } catch (error) {
       this.panel.showError(`Couldn't write the run log: ${describe(error)}`);
     }
@@ -1043,7 +1091,7 @@ export class ProofRun {
 
   // A line in the {{proof}} block's runs list, newest first, with a child
   // per case, so whoever opens the page sees what passed on which build.
-  private async writeRunLog(source: Kit, records: Record<string, CaseRecord>, ran: string[], stopped: boolean): Promise<void> {
+  private async writeRunLog(source: Kit, records: Record<string, CaseRecord>, ran: string[], stopped: boolean, leftOut: string[] = []): Promise<void> {
     const tree = await readTree(this.rootUid);
     if (!tree) return;
     let runs = (tree.children ?? []).find((child) => child.string.trim().toLowerCase() === "runs");
@@ -1059,13 +1107,16 @@ export class ProofRun {
     const passed = count("pass");
     const failed = count("fail");
     const skipped = count("skip");
-    const notRun = source.cases.length - passed - failed - skipped;
+    // A case the tester left out has no record; the rest that has none didn't run.
+    const left = source.cases.filter((item) => leftOut.includes(item.id) && !records[item.id]).length;
+    const notRun = source.cases.length - passed - failed - skipped - left;
     const build = this.env.build;
     const summary = [
       `${passed === source.cases.length ? "✓" : "✗"} ${passed}/${source.cases.length} passed`,
       failed ? `${failed} failed` : null,
       skipped ? `${skipped} couldn't be tested` : null,
       notRun ? `${notRun} not run` : null,
+      left ? `${left} left out` : null,
       stopped ? "stopped" : null,
       this.scope === "failed" ? "re-ran the cases that didn't pass" : this.scope === "resume" ? "resumed" : null,
       build ? `build ${build.branch}${build.commit ? ` @ ${build.commit.slice(0, 7)}` : ""}` : "no build loaded",
@@ -1085,7 +1136,7 @@ export class ProofRun {
           string: summary,
           open: false,
           children: source.cases.map((item) => ({
-            string: logLine(item.title, records[item.id] ?? null, Boolean(records[item.id]) && !fresh.has(item.id)),
+            string: logLine(item.title, records[item.id] ?? null, Boolean(records[item.id]) && !fresh.has(item.id), leftOut.includes(item.id)),
           })),
         },
       ],

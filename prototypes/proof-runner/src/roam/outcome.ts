@@ -30,8 +30,8 @@ export const outcomeText = (record: CaseRecord): string => {
   return parts.join(" · ");
 };
 
-export const logLine = (title: string, record: CaseRecord | null, earlier: boolean): string =>
-  record ? `${ICON[record.verdict]} ${title} · ${outcomeText(record)}${earlier ? " · from the earlier run" : ""}` : `○ ${title} · not run`;
+export const logLine = (title: string, record: CaseRecord | null, earlier: boolean, leftOut = false): string =>
+  record ? `${ICON[record.verdict]} ${title} · ${outcomeText(record)}${earlier ? " · from the earlier run" : ""}` : `○ ${title} · ${leftOut ? "left out by the tester" : "not run"}`;
 
 export type LastResult = { icon: string; verdict: Verdict | null; detail: string };
 
@@ -53,6 +53,8 @@ export type RunSummary = {
   total: number;
   failed: number;
   skipped: number;
+  // Cases the tester left out of the run.
+  left: number;
   stopped: boolean;
   branch: string | null;
   commit: string | null;
@@ -81,6 +83,7 @@ export const parseRunSummary = (line: string): RunSummary | null => {
     total: Number(head[2]),
     failed: count(/^(\d+) failed$/),
     skipped: count(/^(\d+) couldn't (?:run|be tested)$/),
+    left: count(/^(\d+) left out$/),
     stopped: parts.includes("stopped"),
     branch: build?.[1] ?? null,
     commit: build?.[2] ?? null,

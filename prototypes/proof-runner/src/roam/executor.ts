@@ -1,5 +1,5 @@
 import type { Action } from "../core/action";
-import type { Executor, MachineState } from "../core/machine";
+import type { ActionHooks, Executor, MachineState } from "../core/machine";
 import { click, drag, fillText, hitTarget, moveTo, press, typeText, center } from "./input";
 import { elementText, isVisible, query } from "./selector";
 
@@ -27,6 +27,11 @@ export type PageExecutorOptions = {
 };
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+
+// Thrown by a hold to send the action back to look at the page again, or to
+// end it unacted; run() catches both, so a step's own error handling never sees them.
+const HELD = new Error("held");
+const STOPPED = new Error("stopped");
 
 const POLL_MS = 100;
 const SNAPSHOT_LIMIT = 4000;
@@ -231,7 +236,28 @@ export const makePageExecutor = (options: PageExecutorOptions): Executor => {
     if (ms > 0) await sleep(ms);
   };
 
-  const run = async (raw: Action): Promise<void> => {
+  // A pause holds an action just before it clicks, types or presses, so a
+  // person writing a note keeps the keyboard. After a hold the page may have
+  // changed: the action starts over from looking for its target.
+  const gate = async (hooks: ActionHooks | undefined): Promise<void> => {
+    const outcome = (await hooks?.hold()) ?? "go";
+    if (outcome === "held") throw HELD;
+    if (outcome === "interrupted") throw STOPPED;
+  };
+
+  const run = async (raw: Action, hooks?: ActionHooks): Promise<void> => {
+    for (;;) {
+      try {
+        return await act(raw, hooks);
+      } catch (error) {
+        if (error === HELD) continue;
+        if (error === STOPPED) return;
+        throw error;
+      }
+    }
+  };
+
+  const act = async (raw: Action, hooks?: ActionHooks): Promise<void> => {
     const action = options.fill(raw);
     if (!("click" in action || "type" in action || "fill" in action || "hover" in action || "drag" in action || "when" in action)) {
       if (!("press" in action && typeof action.press !== "string" && action.press.selector)) options.target?.(null, "");
@@ -240,30 +266,52 @@ export const makePageExecutor = (options: PageExecutorOptions): Executor => {
       const spec = typeof action.click === "string" ? { selector: action.click } : action.click;
       const element = await actionable(spec.selector, timeout);
       await show(element, spec.button === "right" ? "Right-click" : (spec.count ?? 1) > 1 ? "Double-click" : "Click");
+      await gate(hooks);
       click(element, { button: spec.button, count: spec.count, position: spec.position });
       await enterRoamBlock(element);
     } else if ("type" in action) {
       const element = await actionable(action.type.into, timeout);
       await show(element, "Type");
+      await gate(hooks);
       click(element);
       await enterRoamBlock(element);
-      await typeText(action.type.text, action.type.delay_ms ?? 50);
+      await typeText(action.type.text, action.type.delay_ms ?? 50, {
+        field: element,
+        before: async () => {
+          try {
+            await gate(hooks);
+            return false;
+          } catch (error) {
+            // Held mid-typing: carry on in the same field, not from the top.
+            if (error === HELD) return true;
+            throw error;
+          }
+        },
+      });
     } else if ("fill" in action) {
       const element = await actionable(action.fill.into, timeout);
       await show(element, "Type");
+      await gate(hooks);
       fillText(element, action.fill.text);
     } else if ("press" in action) {
-      if (typeof action.press === "string") press(action.press);
-      else if (action.press.selector) {
+      if (typeof action.press === "string") {
+        await gate(hooks);
+        press(action.press);
+      } else if (action.press.selector) {
         const element = await actionable(action.press.selector, timeout);
         await show(element, `Press ${action.press.key}`);
+        await gate(hooks);
         (element as HTMLElement).focus();
         press(action.press.key, element);
-      } else press(action.press.key);
+      } else {
+        await gate(hooks);
+        press(action.press.key);
+      }
     } else if ("hover" in action) {
       const element = await firstVisible(action.hover, timeout);
       reveal(element);
       await show(element, "Hover");
+      await gate(hooks);
       moveTo(element);
     } else if ("scroll" in action) {
       if (typeof action.scroll === "number") window.scrollBy(0, action.scroll);
@@ -289,19 +337,25 @@ export const makePageExecutor = (options: PageExecutorOptions): Executor => {
     } else if ("screenshot" in action) {
       options.note(`Skipped screenshot ${action.screenshot}: screenshots are only taken in a recorded take.`);
     } else if ("drag" in action) {
-      if (action.drag.hover) moveTo(await firstVisible(action.drag.hover, timeout));
+      if (action.drag.hover) {
+        const hover = await firstVisible(action.drag.hover, timeout);
+        await gate(hooks);
+        moveTo(hover);
+      }
       const from = await firstVisible(action.drag.from, timeout);
       await show(from, "Drag");
       const to = await firstVisible(action.drag.to, timeout);
+      await gate(hooks);
       await drag(from, to, action.drag.toPosition);
     } else if ("command_palette" in action) {
       const value = action.command_palette;
       const label = typeof value === "string" ? value : value.label;
       const delay = typeof value === "string" ? 60 : (value.type_delay_ms ?? 60);
+      await gate(hooks);
       if (!(await options.palette(label))) await openPalette(label, timeout, delay);
     } else if ("when" in action) {
       if (await evaluate(action.when.js)) {
-        for (const inner of action.when.do) await run(inner);
+        for (const inner of action.when.do) await run(inner, hooks);
       }
     } else {
       throw new Error(`Unknown action ${JSON.stringify(action)}.`);

@@ -557,6 +557,21 @@ const caseBlock = (testCase: TestCase): BlockNode => {
   return block(`case:: ${testCase.title}`, children);
 };
 
+// A case a person adds to a kit while testing: a title, and optionally what
+// to do and what should happen. It has no steps, so the run has them do it by
+// hand; with nothing said, the title is what to do.
+export const newCase = (input: { title: string; intent?: string; passes?: string }, taken: Set<string>): TestCase => {
+  const title = input.title.trim();
+  const base = title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40).replace(/-+$/, "") || "case";
+  let id = base;
+  for (let count = 2; taken.has(id); count += 1) id = `${base}-${count}`;
+  const passes = input.passes?.trim();
+  return { id, title, intent: input.intent?.trim() || title, steps: [], ...(passes ? { expect: { text: passes } } : {}) };
+};
+
+// The case as the page keeps it: collapsed, like every case the page writes.
+export const caseBlockOf = (testCase: TestCase): BlockNode => ({ ...caseBlock(testCase), open: false });
+
 const surfaceBlock = (area: SurfaceArea): BlockNode =>
   block(area.area, [
     block(`id:: ${inline(area.id)}`),

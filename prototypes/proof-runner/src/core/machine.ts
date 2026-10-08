@@ -50,7 +50,7 @@ export type Pending =
     }
   | { kind: "check-failed"; caseId: string; error: string };
 
-export type PauseCause = "you" | "page" | "between-cases" | "agent";
+export type PauseCause = "you" | "page" | "flag" | "between-cases" | "agent";
 
 export type How = "checked" | "judged" | "marked" | "skipped" | "unchecked";
 
@@ -85,6 +85,8 @@ export type PlanCase = {
   verdict: Verdict | null;
   note: string | null;
   record: CaseRecord | null;
+  // Left out of this run by the person: it won't play, and has no verdict.
+  leftOut: boolean;
   steps: { why: string; source: StepSource }[];
 };
 
@@ -124,8 +126,16 @@ export type MachineState = {
 const FEED_LIMIT = 40;
 const AGENT_FRESH_MS = 45_000;
 
+// What a step's action may ask the machine before it touches the page.
+export type ActionHooks = {
+  // "go": act now. "held": a pause held the action first, so the page may have
+  // changed and the action should look at it again. "interrupted": the run was
+  // stopped or the case ended, so don't act.
+  hold(): Promise<"go" | "held" | "interrupted">;
+};
+
 export type Executor = {
-  run(action: Action): Promise<void>;
+  run(action: Action, hooks?: ActionHooks): Promise<void>;
   check(js: string): Promise<void>;
   snapshot(): Promise<string>;
   render(state: MachineState): Promise<void>;
@@ -208,6 +218,9 @@ export type MachineOptions = {
   // Runs each time every case has a verdict, e.g. to write an interim bake.
   onIdle?: () => Promise<void>;
   holdOnCheckFail?: boolean;
+  // Cases (by id) this run leaves out; the person can change that until each
+  // one's turn.
+  leaveOut?: string[];
 };
 
 const firstLine = (value: unknown, limit = 160): string =>
@@ -293,6 +306,9 @@ export class Machine {
   private readonly verdicts: Record<string, Verdict> = {};
   private readonly verdictNotes: Record<string, string> = {};
   private readonly records: Record<string, CaseRecord> = {};
+  // What the person said about a case before it ended, with its record after.
+  private readonly handNotes: Record<string, string[]> = {};
+  private readonly leftOut: Set<string>;
   private tracks: Tracks = freshTracks();
   private lastFailure: { why: string; index: number; error: string } | null = null;
   private lastCheckError: string | null = null;
@@ -309,6 +325,9 @@ export class Machine {
   private agentSeenAt = 0;
 
   private stepOnce = false;
+  // A Next step released an action held before it touched the page: let its
+  // second ask through.
+  private passOnce = false;
   private skipDwell = false;
   private stopRequested = false;
   private skipCaseRequested = false;
@@ -326,6 +345,7 @@ export class Machine {
     this.stayOpen = options.stayOpen ?? false;
     this.onIdle = options.onIdle;
     this.holdOnCheckFail = options.holdOnCheckFail ?? false;
+    this.leftOut = new Set(options.leaveOut ?? []);
     this.expand =
       options.expand ??
       ((step) => {
@@ -343,6 +363,11 @@ export class Machine {
 
   get notes(): Record<string, string> {
     return { ...this.verdictNotes };
+  }
+
+  // The cases this run leaves out now, in kit order.
+  get leftOutIds(): string[] {
+    return this.kit.cases.filter((testCase) => this.leftOut.has(testCase.id)).map((testCase) => testCase.id);
   }
 
   get caseRecords(): Record<string, CaseRecord> {
@@ -385,6 +410,7 @@ export class Machine {
         verdict: this.verdicts[item.id] ?? null,
         note: this.verdictNotes[item.id] ?? null,
         record: this.records[item.id] ?? null,
+        leftOut: this.leftOut.has(item.id),
         steps: item.steps.map((planStep) => ({
           why: planStep.why,
           source: planStep.source ?? "kit",
@@ -412,6 +438,7 @@ export class Machine {
         intent: testCase.intent ?? null,
         expect: testCase.expect ?? null,
         current: index === this.caseIndex,
+        leftOut: this.leftOut.has(testCase.id),
         verdict: this.verdicts[testCase.id] ?? null,
         steps: testCase.steps.map((step) => ({
           id: step.id,
@@ -458,11 +485,14 @@ export class Machine {
     }
     let index = 0;
     while (!this.stopRequested) {
+      // A case left out is passed over when its turn comes, so the person can
+      // put it back until then.
+      index = this.nextToRun(index);
       if (index < this.kit.cases.length) {
         this.caseIndex = index;
         await this.runCase(this.kit.cases[index]);
         index += 1;
-        if (this.mode === "case" && index < this.kit.cases.length && !this.paused && !this.failureAnswered) {
+        if (this.mode === "case" && this.nextToRun(index) < this.kit.cases.length && !this.paused && !this.failureAnswered) {
           this.paused = true;
           this.pausedBy = "between-cases";
         }
@@ -474,7 +504,7 @@ export class Machine {
       this.log("cases-done", { results: { ...this.verdicts } });
       if (this.onIdle) await this.onIdle();
       if (!this.stayOpen) break;
-      while (!this.stopRequested && index >= this.kit.cases.length) {
+      while (!this.stopRequested && this.nextToRun(index) >= this.kit.cases.length) {
         await this.signal();
       }
     }
@@ -499,7 +529,7 @@ export class Machine {
       case "pause":
         if (!this.paused) {
           this.paused = true;
-          this.pausedBy = source === "socket" ? "agent" : args.why === "page" ? "page" : "you";
+          this.pausedBy = source === "socket" ? "agent" : args.why === "page" ? "page" : args.why === "flag" ? "flag" : "you";
         }
         this.log("paused", { by: source, why: this.pausedBy });
         return this.state();
@@ -613,14 +643,31 @@ export class Machine {
       case "note": {
         const text = typeof args.text === "string" ? args.text.trim() : "";
         if (!text) throw new Error("A note needs text.");
+        const caseId = typeof args.caseId === "string" ? args.caseId : (this.currentCase()?.id ?? null);
         this.log("note", {
-          caseId:
-            typeof args.caseId === "string"
-              ? args.caseId
-              : (this.currentCase()?.id ?? null),
+          caseId,
           text: text.slice(0, 2000),
           by: source === "hud" ? "you" : args.by === "you" ? "you" : "model",
         });
+        // The person's own note goes with the case's record, so the result and
+        // the page's run line keep it.
+        if (source === "hud" && caseId) this.keepNote(caseId, text.slice(0, 1000));
+        return this.state();
+      }
+      case "leave-out":
+      case "put-back": {
+        const testCase = typeof args.caseId === "string" ? this.findCase(args.caseId) : undefined;
+        if (!testCase) throw new Error(`No case "${String(args.caseId ?? "")}".`);
+        if (this.kit.cases.indexOf(testCase) <= this.caseIndex) {
+          throw new Error(
+            cmd === "leave-out"
+              ? "Only a case that hasn't started can be left out. To end the one running, fail it or skip it."
+              : "The run is already past that case.",
+          );
+        }
+        if (cmd === "leave-out") this.leftOut.add(testCase.id);
+        else this.leftOut.delete(testCase.id);
+        this.log(cmd === "leave-out" ? "case-left-out" : "case-put-back", { caseId: testCase.id, by: source });
         return this.state();
       }
       case "say": {
@@ -844,13 +891,15 @@ export class Machine {
       outcome = this.forcedVerdict ?? this.skipped();
     }
     this.verdicts[testCase.id] = outcome.verdict;
-    const combined = joinNotes(outcome.note, outcome.yourNote);
+    const yourNote = joinNotes(...(this.handNotes[testCase.id] ?? []), outcome.yourNote);
+    delete this.handNotes[testCase.id];
+    const combined = joinNotes(outcome.note, yourNote);
     if (combined) this.verdictNotes[testCase.id] = combined;
     this.records[testCase.id] = {
       verdict: outcome.verdict,
       how: outcome.how,
       note: outcome.note ?? null,
-      yourNote: outcome.yourNote ?? null,
+      yourNote: yourNote || null,
       ...this.tracks,
     };
     this.log("case-end", {
@@ -959,6 +1008,7 @@ export class Machine {
     step: Step,
   ): Promise<"ok" | "skip" | "retry" | "replaced"> {
     const ids = { caseId: testCase?.id ?? null, stepId: step.id };
+    this.passOnce = false;
     this.executing = true;
     this.stepStartedAt = Date.now();
     this.setPhase("running");
@@ -976,7 +1026,7 @@ export class Machine {
           this.log("step-interrupted", ids);
           return "skip";
         }
-        await this.executor.run(scaleAction(actions[index], this.speed));
+        await this.executor.run(scaleAction(actions[index], this.speed), { hold: () => this.holdBeforeActing() });
       }
       this.executing = false;
       this.log("step-done", ids);
@@ -1016,6 +1066,23 @@ export class Machine {
       this.stepStartedAt = null;
       void this.render();
     }
+  }
+
+  // A pause stops an action before it clicks or types, not only between steps,
+  // so a person writing a note keeps the keyboard while the step finishes looking.
+  private async holdBeforeActing(): Promise<"go" | "held" | "interrupted"> {
+    if (this.interrupted()) return "interrupted";
+    if (this.passOnce) {
+      this.passOnce = false;
+      return "go";
+    }
+    if (!this.paused) return "go";
+    await this.holdMidStep();
+    if (this.interrupted()) return "interrupted";
+    // Next step lets this action through once, when it comes back to ask
+    // again; Resume has already let everything go.
+    this.passOnce = this.paused;
+    return "held";
   }
 
   private async holdMidStep(): Promise<void> {
@@ -1149,6 +1216,23 @@ export class Machine {
 
   private interrupted(): boolean {
     return this.stopRequested || this.skipCaseRequested;
+  }
+
+  // The first case from here that isn't left out, or the end of the list.
+  private nextToRun(from: number): number {
+    let index = from;
+    while (index < this.kit.cases.length && this.leftOut.has(this.kit.cases[index].id)) index += 1;
+    return index;
+  }
+
+  private keepNote(caseId: string, text: string): void {
+    const record = this.records[caseId];
+    if (!record) {
+      (this.handNotes[caseId] ??= []).push(text);
+      return;
+    }
+    record.yourNote = joinNotes(record.yourNote, text);
+    this.verdictNotes[caseId] = joinNotes(this.verdictNotes[caseId], text);
   }
 
   private currentCase(): TestCase | undefined {
