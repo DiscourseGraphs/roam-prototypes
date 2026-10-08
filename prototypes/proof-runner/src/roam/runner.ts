@@ -323,8 +323,9 @@ export const playFor = (pause: PauseSetting): { mode: "auto" | "step" | "case"; 
 
 const DWELL_MS = 1200;
 const LEAD_MS = 300;
-// A drawn cursor needs longer than a ring to get to the target before the step acts.
-const CURSOR_LEAD_MS = 600;
+// The run's cursor moves for about 0.7 s at 1×, so the eye can follow it,
+// then rests a beat on the target before the step acts.
+const CURSOR_LEAD_MS = 950;
 
 // What a terminal run (cli.ts) sets before pressing Run: how to play it, and
 // that the run line should say it came from the terminal.

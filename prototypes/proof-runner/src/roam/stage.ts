@@ -89,8 +89,6 @@ export class Stage {
       return;
     }
     if (changed) this.say(SAY[driver]);
-    // The run's cursor fades while the screen isn't the run's.
-    if (this.cursor) this.cursor.style.opacity = driver === "run" ? "1" : ".35";
     if (!this.frame) {
       const frame = document.createElement("div");
       frame.className = "proof-runner-frame";
@@ -108,7 +106,10 @@ export class Stage {
     if (pointer === this.pointer) return;
     this.pointer = pointer;
     if (pointer === "ring") this.hideCursor();
-    else if (this.ringBox) this.ringBox.hidden = true;
+    else {
+      if (this.ringBox) this.ringBox.hidden = true;
+      if (this.live) this.showCursor();
+    }
   }
 
   // A ring on the element a step acts on, following it while it moves; or,
@@ -169,11 +170,19 @@ export class Stage {
     return this.ringOn;
   }
 
-  private moveCursor(element: Element | null, verb: string, leadMs: number): void {
-    if (!element) {
-      if (this.cursorTag) this.cursorTag.hidden = true;
-      return;
+  // The run's cursor stays on screen for the whole run: where it last acted,
+  // or the middle of the window before the first step.
+  private showCursor(): HTMLElement {
+    const cursor = this.ensureCursor();
+    if (!this.cursorAt) {
+      this.cursorAt = { x: Math.round(innerWidth / 2), y: Math.round(innerHeight / 3) };
+      cursor.style.transitionDuration = "0ms";
+      cursor.style.transform = `translate(${this.cursorAt.x}px, ${this.cursorAt.y}px)`;
     }
+    return cursor;
+  }
+
+  private ensureCursor(): HTMLElement {
     if (!document.getElementById(CURSOR_ID)) {
       const style = document.createElement("style");
       style.id = CURSOR_ID;
@@ -193,12 +202,21 @@ export class Stage {
       this.cursor = cursor;
       this.cursorTag = tag;
     }
-    const cursor = this.cursor;
+    return this.cursor;
+  }
+
+  // Moves the cursor to the target over most of leadMs, leaving a beat on the
+  // target before the step acts.
+  private moveCursor(element: Element | null, verb: string, leadMs: number): void {
+    const cursor = this.showCursor();
+    if (!element) {
+      if (this.cursorTag) this.cursorTag.hidden = true;
+      return;
+    }
     const box = element.getBoundingClientRect();
     const to = { x: box.left + box.width / 2, y: box.top + box.height / 2 };
-    // The first time, it starts beside the target rather than flying in from a corner.
-    const from = this.cursorAt ?? { x: to.x - 40, y: to.y + 30 };
-    const glide = Math.max(0, Math.round(leadMs * 0.75));
+    const from = this.cursorAt ?? to;
+    const glide = Math.max(0, Math.round(leadMs * 0.74));
     cursor.hidden = false;
     cursor.classList.remove("click");
     cursor.style.transitionDuration = "0ms";
@@ -271,6 +289,8 @@ export class Stage {
       else document.removeEventListener(type, this.onHover, true);
     }
     if (!on) this.holding = false;
+    if (on && this.pointer === "cursor") this.showCursor();
+    if (!on) this.hideCursor();
   }
 
   private readonly onInput = (event: Event): void => {

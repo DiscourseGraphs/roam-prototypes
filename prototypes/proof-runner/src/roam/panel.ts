@@ -278,7 +278,7 @@ const readPointer = (): PointerSetting => {
   } catch {
     // No storage here: the default.
   }
-  return "ring";
+  return "cursor";
 };
 
 // "2026-10-07 21:40" as "Oct 7".
