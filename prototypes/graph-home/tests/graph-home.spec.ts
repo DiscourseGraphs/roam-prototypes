@@ -1,16 +1,42 @@
 import { act } from "react-dom/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("roamjs-components/util", () => ({
-  runExtension: (setup: unknown) => setup,
-}));
+type Lifecycle = {
+  reactRoots: HTMLElement[];
+  observers: MutationObserver[];
+  unload: () => void;
+};
+
+vi.mock("roamjs-components/util", async () => {
+  const { unmountComponentAtNode } = await import("react-dom");
+  return {
+    runExtension: (setup: () => Promise<Lifecycle>) => async () => {
+      const { reactRoots, observers, unload } = await setup();
+      return {
+        reactRoots,
+        unload: () => {
+          for (const root of reactRoots) {
+            unmountComponentAtNode(root);
+            root.remove();
+          }
+          for (const observer of observers) observer.disconnect();
+          unload();
+        },
+      };
+    },
+  };
+});
 
 import setup from "../src/index";
 
-const mount = setup as unknown as () => Promise<{ unload: () => void }>;
+const mount = setup as unknown as () => Promise<{
+  reactRoots: HTMLElement[];
+  unload: () => void;
+}>;
 const query = vi.fn();
 const openPage = vi.fn();
 let unload: () => void;
+let reactRoots: HTMLElement[];
 
 const click = async (label: string): Promise<void> => {
   const button = Array.from(document.querySelectorAll("nav button")).find(
@@ -39,7 +65,7 @@ beforeEach(async () => {
     </div>
   `;
   await act(async () => {
-    ({ unload } = await mount());
+    ({ reactRoots, unload } = await mount());
   });
 });
 
@@ -52,6 +78,7 @@ afterEach(() => {
 describe("Graph Home", () => {
   it("mounts once on the main Home page and restores the original UI on unload", () => {
     expect(document.querySelectorAll(".dg-graph-home")).toHaveLength(1);
+    expect(reactRoots).toEqual([document.querySelector(".dg-graph-home")]);
     expect(
       document.querySelectorAll(".dg-graph-home-active .kanban-board"),
     ).toHaveLength(1);
@@ -74,6 +101,7 @@ describe("Graph Home", () => {
       title.textContent = "🥾 Home";
     });
     expect(document.querySelectorAll(".dg-graph-home")).toHaveLength(1);
+    expect(reactRoots).toEqual([document.querySelector(".dg-graph-home")]);
   });
 
   it("looks up the signed-in user's homepage and opens it by UID", async () => {

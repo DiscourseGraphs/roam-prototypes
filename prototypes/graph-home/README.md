@@ -15,13 +15,19 @@ Internal prototype for evaluation by Discourse Graphs.
 
 ## Try it locally
 
-From the repository root, run:
+From the repository root, start the build watcher:
 
 ```sh
 pnpm --dir prototypes/graph-home dev
 ```
 
-Load the URL printed by the development server using Roam's developer-extension URL loader, then open **🥾 Home**. The graph needs the linked destination pages to exercise all four shortcuts.
+Once the initial build finishes, serve the artifacts in another terminal:
+
+```sh
+pnpm dlx http-server@14.1.1 prototypes/graph-home/dist -a 127.0.0.1 -p 4173 --cors -c-1
+```
+
+In Roam, use **Load Developer Extensions from URL** with `http://127.0.0.1:4173/`, then open **🥾 Home**. Allow local network access if your browser prompts. The graph needs the linked destination pages to exercise all four shortcuts.
 
 ## Install from a URL
 

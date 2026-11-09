@@ -1,20 +1,19 @@
-import { render, unmountComponentAtNode } from "react-dom";
+import { createElement, Fragment } from "react";
+import { render } from "react-dom";
 import { runExtension } from "roamjs-components/util";
-import { createElement } from "react";
 import { Home, HOME_TITLE } from "./Home";
 import "./styles.css";
 
 const ACTIVE_CLASS = "dg-graph-home-active";
 
 export default runExtension(async () => {
-  let mounted: { page: HTMLElement; root: HTMLDivElement } | undefined;
+  const root = document.createElement("div");
+  root.className = "dg-graph-home";
+  let mountedPage: HTMLElement | null = null;
 
-  const unmount = (): void => {
-    if (!mounted) return;
-    mounted.page.classList.remove(ACTIVE_CLASS);
-    unmountComponentAtNode(mounted.root);
-    mounted.root.remove();
-    mounted = undefined;
+  const clearPage = (): void => {
+    mountedPage?.classList.remove(ACTIVE_CLASS);
+    mountedPage = null;
   };
 
   const sync = (): void => {
@@ -23,17 +22,20 @@ export default runExtension(async () => {
     );
     const title = article?.querySelector(".rm-title-display");
     const homePage = title?.textContent?.trim() === HOME_TITLE ? article : null;
-    if (mounted?.page === homePage && mounted?.root.isConnected) return;
-    unmount();
+    if (mountedPage === homePage && (!homePage || root.isConnected)) return;
+    if (mountedPage) {
+      clearPage();
+      // Clear the page UI while keeping the root registered for extension unload.
+      render(createElement(Fragment), root);
+      root.remove();
+    }
     if (!homePage || !title) return;
 
-    const root = document.createElement("div");
-    root.className = "dg-graph-home";
     const heading = title.closest(".rm-title-display-container") ?? title;
     heading.after(root);
-    mounted = { page: homePage, root };
     render(createElement(Home), root);
     homePage.classList.add(ACTIVE_CLASS);
+    mountedPage = homePage;
   };
 
   const observer = new MutationObserver(sync);
@@ -44,10 +46,5 @@ export default runExtension(async () => {
     characterData: true,
   });
 
-  return {
-    unload: () => {
-      observer.disconnect();
-      unmount();
-    },
-  };
+  return { reactRoots: [root], observers: [observer], unload: clearPage };
 });
