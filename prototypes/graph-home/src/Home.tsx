@@ -1,4 +1,4 @@
-import { Button, Icon, type IconName } from "@blueprintjs/core";
+import { Button, type IconName } from "@blueprintjs/core";
 import React, { useLayoutEffect, useRef, useState } from "react";
 
 export const HOME_TITLE = "🥾 Home";
@@ -103,6 +103,7 @@ export const Home = (): JSX.Element => {
 
   return (
     <nav aria-label="Graph home shortcuts">
+      <p className="dg-graph-home-intro">Jump to a page in this graph.</p>
       <div className="dg-graph-home-links">
         {DESTINATIONS.map((destination) => (
           <Button
@@ -110,9 +111,7 @@ export const Home = (): JSX.Element => {
             key={destination.label}
             minimal
             icon={destination.icon}
-            rightIcon={
-              <Icon className="dg-graph-home-chevron" icon="chevron-right" />
-            }
+            rightIcon="chevron-right"
             aria-disabled={opening !== undefined}
             aria-busy={opening === destination.label}
             onClick={() => void open(destination)}
