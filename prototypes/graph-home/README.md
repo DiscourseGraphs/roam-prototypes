@@ -9,7 +9,7 @@ Internal prototype for evaluation by Discourse Graphs.
 ## Features
 
 - The four shortcuts appear in a 2 × 2 card grid when the Home content area is at least 600 pixels wide. Below that width they appear as directory rows with descriptions. Opening or resizing the Roam sidebar can switch the layout.
-- Open the team front page, Dashboard, My Homepage, or Sync / All Hands from the main **🥾 Home** page.
+- Open the team front page, Dashboard, My Homepage, or Sync / All Hands from the main **🥾 Home** page. Shift-click opens a shortcut in the right sidebar. Ctrl-click or Command-click opens it in a new tab.
 - **My Homepage** looks up the signed-in user's display name and opens the existing <code>&lt;display name&gt;/Home</code> page.
 - The extension hides the two legacy Kanban boards on the main Home page while the launcher is active. Unloading restores the boards. The extension uses read-only graph access.
 

@@ -35,23 +35,36 @@ const mount = setup as unknown as () => Promise<{
 }>;
 const query = vi.fn();
 const openPage = vi.fn();
+const addWindow = vi.fn();
+const openTab = vi.fn();
 let unload: () => void;
 let reactRoots: HTMLElement[];
 
-const click = async (label: string): Promise<void> => {
+const click = async (
+  label: string,
+  modifiers: MouseEventInit = {},
+): Promise<void> => {
   const button = Array.from(document.querySelectorAll("nav button")).find(
     (candidate) => candidate.textContent?.includes(label),
   ) as HTMLButtonElement;
-  await act(async () => button.click());
+  await act(async () => {
+    button.dispatchEvent(
+      new MouseEvent("click", { bubbles: true, ...modifiers }),
+    );
+  });
 };
 
 beforeEach(async () => {
   query.mockReset();
   openPage.mockReset();
+  addWindow.mockReset();
+  openTab.mockReset();
+  vi.stubGlobal("open", openTab);
+  window.history.replaceState(null, "", "/#/app/test-graph/page/graph-home");
   vi.stubGlobal("roamAlphaAPI", {
     user: { uid: () => "user-123" },
     data: { async: { q: query } },
-    ui: { mainWindow: { openPage } },
+    ui: { mainWindow: { openPage }, rightSidebar: { addWindow } },
   });
   document.body.innerHTML = `
     <div class="roam-main">
@@ -121,6 +134,61 @@ describe("Graph Home", () => {
       "Test Person/Home",
     );
     expect(openPage).toHaveBeenCalledWith({ page: { uid: "home-uid" } });
+  });
+
+  it("opens a shortcut in the right sidebar on Shift-click", async () => {
+    query.mockResolvedValueOnce([["dashboard-uid"]]);
+    await click("Dashboard", { shiftKey: true });
+
+    expect(addWindow).toHaveBeenCalledWith({
+      window: { type: "outline", "block-uid": "dashboard-uid" },
+    });
+    expect(openPage).not.toHaveBeenCalled();
+    expect(openTab).not.toHaveBeenCalled();
+  });
+
+  it.each([{ ctrlKey: true }, { metaKey: true }])(
+    "opens a shortcut in a new tab with %o",
+    async (modifiers) => {
+      const tab = {
+        location: { replace: vi.fn() },
+        close: vi.fn(),
+        opener: window,
+      };
+      openTab.mockReturnValueOnce(tab);
+      query.mockImplementationOnce(() => {
+        expect(openTab).toHaveBeenCalledWith("about:blank", "_blank");
+        return Promise.resolve([["dashboard-uid"]]);
+      });
+
+      await click("Dashboard", modifiers);
+
+      expect(tab.opener).toBeNull();
+      expect(tab.location.replace).toHaveBeenCalledWith(
+        `${window.location.origin}/#/app/test-graph/page/dashboard-uid`,
+      );
+      expect(tab.close).not.toHaveBeenCalled();
+      expect(openPage).not.toHaveBeenCalled();
+      expect(addWindow).not.toHaveBeenCalled();
+    },
+  );
+
+  it("closes the new tab if the page cannot be found", async () => {
+    const tab = {
+      location: { replace: vi.fn() },
+      close: vi.fn(),
+      opener: window,
+    };
+    openTab.mockReturnValueOnce(tab);
+    query.mockResolvedValueOnce([]);
+
+    await click("Dashboard", { ctrlKey: true });
+
+    expect(tab.close).toHaveBeenCalledOnce();
+    expect(tab.location.replace).not.toHaveBeenCalled();
+    expect(document.querySelector('[role="alert"]')?.textContent).toContain(
+      "📊 Dashboard",
+    );
   });
 
   it("reports a missing destination and allows retry", async () => {

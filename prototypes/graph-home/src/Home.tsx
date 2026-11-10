@@ -65,20 +65,37 @@ export const Home = (): JSX.Element => {
   const [error, setError] = useState("");
   const [opening, setOpening] = useState<string>();
   const pending = useRef(false);
+  const pendingTab = useRef<Window | null>(null);
   const active = useRef(true);
   useLayoutEffect(
     () => () => {
       active.current = false;
+      pendingTab.current?.close();
+      pendingTab.current = null;
     },
     [],
   );
 
-  const open = async (destination: Destination): Promise<void> => {
+  const open = async (
+    destination: Destination,
+    { shiftKey, ctrlKey, metaKey }: React.MouseEvent,
+  ): Promise<void> => {
     if (pending.current) return;
     pending.current = true;
     setOpening(destination.label);
     setError("");
     try {
+      if (ctrlKey || metaKey) {
+        // Open during the click, before the async page lookup.
+        const tab = window.open("about:blank", "_blank");
+        if (!tab) {
+          setError("Your browser blocked the new tab.");
+          return;
+        }
+        pendingTab.current = tab;
+        tab.opener = null;
+      }
+
       const title = destination.title ?? (await personalHomeTitle());
       if (!active.current) return;
       if (!title) {
@@ -91,11 +108,24 @@ export const Home = (): JSX.Element => {
         setError(`Couldn’t find “${title}” in this graph.`);
         return;
       }
-      await window.roamAlphaAPI.ui.mainWindow.openPage({ page: { uid } });
+      if (pendingTab.current) {
+        const graphUrl = window.location.href.replace(/\/page\/.*$/, "");
+        pendingTab.current.location.replace(`${graphUrl}/page/${uid}`);
+        pendingTab.current = null;
+      } else if (shiftKey) {
+        await window.roamAlphaAPI.ui.rightSidebar.addWindow({
+          // @ts-expect-error Roam accepts block-uid for page outline windows.
+          window: { type: "outline", "block-uid": uid },
+        });
+      } else {
+        await window.roamAlphaAPI.ui.mainWindow.openPage({ page: { uid } });
+      }
     } catch {
       if (active.current)
         setError(`Couldn’t open ${destination.label}. Try again.`);
     } finally {
+      pendingTab.current?.close();
+      pendingTab.current = null;
       pending.current = false;
       if (active.current) setOpening(undefined);
     }
@@ -113,7 +143,7 @@ export const Home = (): JSX.Element => {
             rightIcon="chevron-right"
             aria-disabled={opening !== undefined}
             aria-busy={opening === destination.label}
-            onClick={() => void open(destination)}
+            onClick={(event) => void open(destination, event)}
             text={
               <span className="dg-graph-home-label">
                 <strong>{destination.label}</strong>
