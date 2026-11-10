@@ -55,6 +55,40 @@ importers:
         specifier: 'catalog:'
         version: 4.1.10(@types/node@26.2.0)(jsdom@30.0.1)(msw@2.15.0(@types/node@26.2.0)(typescript@7.0.2))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.17.14)(jiti@1.21.7)(sass@1.103.1)(yaml@2.9.0))
 
+  prototypes/graph-home:
+    dependencies:
+      '@blueprintjs/core':
+        specifier: 3.50.4
+        version: 3.50.4(react-dom@17.0.2(react@17.0.2))(react@17.0.2)
+      react:
+        specifier: 17.0.2
+        version: 17.0.2
+      react-dom:
+        specifier: 17.0.2
+        version: 17.0.2(react@17.0.2)
+      roamjs-components:
+        specifier: 'catalog:'
+        version: 0.89.0(e40df762294264a2983f5727c793bf94)
+      use-sync-external-store:
+        specifier: 'catalog:'
+        version: 1.6.0(react@17.0.2)
+    devDependencies:
+      '@discoursegraphs/extension-base':
+        specifier: workspace:*
+        version: link:../../packages/extension-base
+      '@types/react':
+        specifier: 17.0.39
+        version: 17.0.39
+      '@types/react-dom':
+        specifier: 17.0.13
+        version: 17.0.13
+      jsdom:
+        specifier: 'catalog:'
+        version: 30.0.1
+      vitest:
+        specifier: 'catalog:'
+        version: 4.1.10(@types/node@26.2.0)(jsdom@30.0.1)(msw@2.15.0(@types/node@26.2.0)(typescript@7.0.2))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.25.12)(jiti@1.21.7)(sass@1.103.1)(yaml@2.9.0))
+
   prototypes/loaded-dialog:
     dependencies:
       roamjs-components:
@@ -338,6 +372,13 @@ packages:
 
   '@blueprintjs/colors@4.2.1':
     resolution: {integrity: sha512-Cx7J2YnUuxn+fi+y5XtXnBB7+cFHN4xBrRkaAetp78i3VTCXjUk+d1omrOr8TqbRucUXTdrhbZOUHpzRLFcJpQ==}
+
+  '@blueprintjs/core@3.50.4':
+    resolution: {integrity: sha512-FYGr1ZMH1si2acdZaTI4gqhvwgb0yOWcv7otYdi/tvC4ReId2gsm2i+bDw/eBMYsH+OSFYZT0C6hFvHV3HrkPA==}
+    hasBin: true
+    peerDependencies:
+      react: ^15.3.0 || 16 || 17
+      react-dom: ^15.3.0 || 16 || 17
 
   '@blueprintjs/core@3.54.0':
     resolution: {integrity: sha512-u2c1s6MNn0ocxhnC6CuiG5g3KV6b4cKUvSobznepA9SC3/AL1s3XOvT7DLWoHRv2B/vBOHFYEDzLw2/vlcGGZg==}
@@ -3463,6 +3504,9 @@ packages:
     resolution: {integrity: sha512-Xf0nWe6RseziFMu+Ap9biiUbmplq6S9/p+7w7YXP/JBHhrUDDUhwa+vANyubuqfZWTveU//DYVGsDG7RKL/vEw==}
     engines: {node: '>=0.10.0'}
 
+  resize-observer-polyfill@1.5.1:
+    resolution: {integrity: sha512-LwZrotdHOo12nQuZlHEmtuXdqGoOD0OhaxopaNFxWzInpEgaLWoVuAMbTzixuosCx2nEG58ngzW3vxdWoxIgdg==}
+
   resolve@1.22.12:
     resolution: {integrity: sha512-TyeJ1zif53BPfHootBGwPRYT1RUt6oGWsaQr8UyZW/eAm9bKoijtvruSDEmZHm92CwS9nj7/fWttqPCgzep8CA==}
     engines: {node: '>= 0.4'}
@@ -3876,6 +3920,9 @@ packages:
         optional: true
       '@swc/wasm':
         optional: true
+
+  tslib@1.13.0:
+    resolution: {integrity: sha512-i/6DQjL8Xf3be4K/E6Wgpekn5Qasl1usyw++dAA35Ue5orEn65VIxOA+YvNNl9HV3qv70T7CNwjODHZrLwvd1Q==}
 
   tslib@2.3.1:
     resolution: {integrity: sha512-77EbyPPpMz+FRFRuAFlWMtmgUWGe9UOG2Z25NqCwiIjRhOf5iKGuzSe5P2w1laq+FkRy4p+PCuVkJSGkzTEKVw==}
@@ -4521,6 +4568,23 @@ snapshots:
   '@blueprintjs/colors@4.2.1':
     dependencies:
       tslib: 2.5.3
+
+  '@blueprintjs/core@3.50.4(react-dom@17.0.2(react@17.0.2))(react@17.0.2)':
+    dependencies:
+      '@blueprintjs/colors': 4.2.1
+      '@blueprintjs/icons': 3.33.0
+      '@types/dom4': 2.0.4
+      classnames: 2.5.1
+      dom4: 2.1.6
+      normalize.css: 8.0.1
+      popper.js: 1.16.1
+      react: 17.0.2
+      react-dom: 17.0.2(react@17.0.2)
+      react-lifecycles-compat: 3.0.4
+      react-popper: 1.3.11(react@17.0.2)
+      react-transition-group: 2.9.0(react-dom@17.0.2(react@17.0.2))(react@17.0.2)
+      resize-observer-polyfill: 1.5.1
+      tslib: 1.13.0
 
   '@blueprintjs/core@3.54.0(react-dom@17.0.2(react@17.0.2))(react@17.0.2)':
     dependencies:
@@ -7552,6 +7616,8 @@ snapshots:
 
   require-from-string@2.0.2: {}
 
+  resize-observer-polyfill@1.5.1: {}
+
   resolve@1.22.12:
     dependencies:
       es-errors: 1.3.0
@@ -7681,6 +7747,57 @@ snapshots:
       '@blueprintjs/datetime': 3.24.1(react-dom@17.0.2(react@17.0.2))(react@17.0.2)
       '@blueprintjs/select': 3.19.1(react-dom@17.0.2(react@17.0.2))(react@17.0.2)
       '@samepage/scripts': 0.74.5(@aws-sdk/client-lambda@3.1111.0)(@aws-sdk/client-s3@3.1111.0)(@samepage/testing@0.74.5(@playwright/test@1.29.0)(@testing-library/react@16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@17.0.13)(@types/react@17.0.39)(react-dom@17.0.2(react@17.0.2))(react@17.0.2))(@testing-library/user-event@14.6.4(@testing-library/dom@10.4.1))(@types/jsdom@20.0.1)(c8@7.14.0)(debug@4.4.3)(dotenv@16.6.1)(jsdom@30.0.1)(ts-node@10.9.2(@swc/core@1.16.1)(@types/node@26.2.0)(typescript@7.0.2)))(archiver@5.3.2)(axios@1.20.0(debug@4.4.3))(debug@4.4.3)(dotenv@16.6.1)(esbuild@0.17.14)(patch-package@6.5.1)(tailwindcss@3.3.2(ts-node@10.9.2(@swc/core@1.16.1)(@types/node@26.2.0)(typescript@7.0.2)))(ts-node@10.9.2(@swc/core@1.16.1)(@types/node@26.2.0)(typescript@7.0.2))(zod@4.1.11)
+      '@types/crypto-js': 4.1.1
+      '@types/cytoscape': 3.31.0
+      '@types/file-saver': 2.0.5
+      '@types/jsdom': 20.0.1
+      '@types/marked': 4.3.2
+      '@types/nanoid': 2.0.0
+      '@types/react': 17.0.39
+      '@types/react-dom': 17.0.13
+      '@types/use-sync-external-store': 0.0.3
+      chrono-node: 2.3.0
+      color: 4.2.3
+      crypto-js: 3.1.9-1
+      cytoscape: 3.34.1
+      date-fns: 2.30.0
+      edn-data: 1.2.2
+      file-saver: 2.0.2
+      fuzzy: 0.1.3
+      hast-util-to-html: 7.1.3
+      idb: 6.1.5
+      insect: 5.9.1
+      jsdom: 30.0.1
+      jszip: 3.10.0
+      marked: 4.0.16
+      marked-react: 1.1.2(react@17.0.2)
+      nanoid: 3.3.18
+      react: 17.0.2
+      react-dom: 17.0.2(react@17.0.2)
+      refractor: 3.6.0
+      tslib: 2.8.1
+      use-sync-external-store: 1.6.0(react@17.0.2)
+      xregexp: 5.1.2
+    transitivePeerDependencies:
+      - '@aws-sdk/client-lambda'
+      - '@aws-sdk/client-s3'
+      - '@samepage/testing'
+      - archiver
+      - axios
+      - debug
+      - dotenv
+      - esbuild
+      - patch-package
+      - tailwindcss
+      - ts-node
+      - zod
+
+  roamjs-components@0.89.0(e40df762294264a2983f5727c793bf94):
+    dependencies:
+      '@blueprintjs/core': 3.50.4(react-dom@17.0.2(react@17.0.2))(react@17.0.2)
+      '@blueprintjs/datetime': 3.24.1(react-dom@17.0.2(react@17.0.2))(react@17.0.2)
+      '@blueprintjs/select': 3.19.1(react-dom@17.0.2(react@17.0.2))(react@17.0.2)
+      '@samepage/scripts': 0.74.5(@aws-sdk/client-lambda@3.1111.0)(@aws-sdk/client-s3@3.1111.0)(@samepage/testing@0.74.5(@playwright/test@1.29.0)(@testing-library/react@16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@17.0.13)(@types/react@17.0.39)(react-dom@17.0.2(react@17.0.2))(react@17.0.2))(@testing-library/user-event@14.6.4(@testing-library/dom@10.4.1))(@types/jsdom@20.0.1)(c8@7.14.0)(debug@4.4.3)(dotenv@16.6.1)(jsdom@30.0.1)(ts-node@10.9.2(@swc/core@1.16.1)(@types/node@26.2.0)(typescript@7.0.2)))(archiver@5.3.2)(axios@1.20.0(debug@4.4.3))(debug@4.4.3)(dotenv@16.6.1)(esbuild@0.25.12)(patch-package@6.5.1)(tailwindcss@3.3.2(ts-node@10.9.2(@swc/core@1.16.1)(@types/node@26.2.0)(typescript@7.0.2)))(ts-node@10.9.2(@swc/core@1.16.1)(@types/node@26.2.0)(typescript@7.0.2))(zod@4.1.11)
       '@types/crypto-js': 4.1.1
       '@types/cytoscape': 3.31.0
       '@types/file-saver': 2.0.5
@@ -8188,6 +8305,8 @@ snapshots:
       yn: 3.1.1
     optionalDependencies:
       '@swc/core': 1.16.1
+
+  tslib@1.13.0: {}
 
   tslib@2.3.1: {}
 

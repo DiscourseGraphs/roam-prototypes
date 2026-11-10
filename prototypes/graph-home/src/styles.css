@@ -1,0 +1,191 @@
+/* Theme fallbacks follow the RoamJS UI surface tokens. */
+.dg-graph-home {
+  --home-base-surface: #fff;
+  --home-base-text: #182026;
+  --home-base-muted: #526675;
+  --home-base-border: #d3d4d4;
+  --home-base-hover: #edf2f5;
+  --home-base-focus: #106ba3;
+  --home-base-danger: #a82a30;
+  --home-surface: var(
+    --roamjs-surface,
+    var(--cdt-popover-surface, var(--home-base-surface))
+  );
+  --home-text: var(
+    --roamjs-text,
+    var(--cdt-primary-text, var(--home-base-text))
+  );
+  --home-muted: var(
+    --roamjs-muted,
+    var(--cdt-secondary-text, var(--home-base-muted))
+  );
+  --home-border: var(
+    --roamjs-border,
+    var(--cdt-border, var(--home-base-border))
+  );
+  --home-hover: var(
+    --roamjs-hover,
+    var(--cdt-hover-surface, var(--home-base-hover))
+  );
+  --home-focus: var(--roamjs-focus, var(--cdt-accent, var(--home-base-focus)));
+  --home-danger: var(--roamjs-danger, var(--home-base-danger));
+  container: dg-graph-home / inline-size;
+  margin-block: 4px 28px;
+  color: var(--home-text);
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+:is(.bp3-dark, .roamjs-custom-dark-theme) .dg-graph-home {
+  --home-base-surface: #293742;
+  --home-base-text: #f5f8fa;
+  --home-base-muted: #bbcbd6;
+  --home-base-border: #536878;
+  --home-base-hover: #364856;
+  --home-base-focus: #8abbff;
+  --home-base-danger: #ffb5b8;
+}
+
+/* Match the top-level launcher boards by their links so copied graphs can use their own block UIDs. */
+.dg-graph-home-active
+  > div
+  > .rm-level-0
+  > .roam-block-container
+  > .rm-block-main
+  > .roam-block
+  > span
+  > .rm-full-width
+  > .kanban-board:not(:has(.kanban-column:nth-child(3 of .kanban-column))):is(
+    :has(
+      .kanban-column:nth-child(1 of .kanban-column)
+        .kanban-title
+        [data-link-title="🚪 Discourse graphs front page for team members"]
+    ):has(
+      .kanban-column:nth-child(2 of .kanban-column)
+        .kanban-title
+        [data-link-title="📊 Dashboard"]
+    ),
+    :has(
+      .kanban-column:nth-child(1 of .kanban-column)
+        .kanban-title
+        button[class*="rm-xparser-default-🏠 My Homepage"]
+    ):has(
+      .kanban-column:nth-child(2 of .kanban-column)
+        .kanban-title
+        [data-link-title="Sync / All Hands"]
+    )
+  ) {
+  display: none;
+}
+
+.dg-graph-home .dg-graph-home-links {
+  display: grid;
+  max-width: 800px;
+}
+
+.dg-graph-home nav .bp3-button.dg-graph-home-link {
+  gap: 10px;
+  min-width: 0;
+  min-height: 48px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: var(--home-surface);
+  color: var(--home-text);
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+
+.dg-graph-home nav .dg-graph-home-link + .bp3-button.dg-graph-home-link {
+  border-top: 1px solid var(--home-border);
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+
+.dg-graph-home nav .bp3-button.dg-graph-home-link:hover {
+  background: var(--home-hover);
+  color: var(--home-text);
+}
+
+.dg-graph-home nav .bp3-button.dg-graph-home-link:focus-visible {
+  outline: 2px solid var(--home-focus);
+  outline-offset: 2px;
+  z-index: 1;
+}
+
+.dg-graph-home .dg-graph-home-link > .bp3-button-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.dg-graph-home .dg-graph-home-link > .bp3-icon {
+  flex: none;
+  color: var(--home-muted);
+}
+
+.dg-graph-home .dg-graph-home-label > span {
+  display: block;
+  color: var(--home-muted);
+  font-size: 12px;
+}
+
+@container dg-graph-home (min-width: 600px) {
+  .dg-graph-home .dg-graph-home-links {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
+
+  .dg-graph-home nav .bp3-button.dg-graph-home-link,
+  .dg-graph-home nav .dg-graph-home-link + .bp3-button.dg-graph-home-link {
+    gap: 8px;
+    min-height: 80px;
+    padding: 14px;
+    border: 1px solid var(--home-border);
+    border-radius: 8px;
+  }
+
+  .dg-graph-home .dg-graph-home-label {
+    display: grid;
+    gap: 4px;
+    line-height: 1.4;
+  }
+
+  .dg-graph-home .dg-graph-home-label > span {
+    font-size: inherit;
+  }
+}
+
+@container dg-graph-home (min-width: 900px) {
+  .dg-graph-home .dg-graph-home-links {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    max-width: none;
+  }
+
+  .dg-graph-home nav .bp3-button.dg-graph-home-link {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-rows: auto 1fr;
+    align-items: start;
+    min-height: 130px;
+  }
+
+  .dg-graph-home .dg-graph-home-link > .bp3-icon {
+    margin: 0;
+    justify-self: start;
+  }
+
+  .dg-graph-home .dg-graph-home-link > .bp3-icon:last-child {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .dg-graph-home .dg-graph-home-link > .bp3-button-text {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+}
+
+.dg-graph-home .dg-graph-home-error {
+  margin: 12px 0 0;
+  color: var(--home-danger);
+}
