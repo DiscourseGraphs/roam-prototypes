@@ -103,7 +103,6 @@ export const Home = (): JSX.Element => {
 
   return (
     <nav aria-label="Graph home shortcuts">
-      <p className="dg-graph-home-intro">Jump to a page in this graph.</p>
       <div className="dg-graph-home-links">
         {DESTINATIONS.map((destination) => (
           <Button
