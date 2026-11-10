@@ -155,6 +155,36 @@
   }
 }
 
+@container dg-graph-home (min-width: 900px) {
+  .dg-graph-home .dg-graph-home-links {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    max-width: none;
+  }
+
+  .dg-graph-home nav .bp3-button.dg-graph-home-link {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-rows: auto 1fr;
+    align-items: start;
+    min-height: 130px;
+  }
+
+  .dg-graph-home .dg-graph-home-link > .bp3-icon {
+    margin: 0;
+    justify-self: start;
+  }
+
+  .dg-graph-home .dg-graph-home-link > .bp3-icon:last-child {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .dg-graph-home .dg-graph-home-link > .bp3-button-text {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+}
+
 .dg-graph-home .dg-graph-home-error {
   margin: 12px 0 0;
   color: var(--home-danger);
