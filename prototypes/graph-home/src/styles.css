@@ -47,7 +47,7 @@
   --home-base-danger: #ffb5b8;
 }
 
-/* Match the top-level launcher boards by their links so copied graphs can use their own block UIDs. */
+/* Match top-level legacy launcher boards by their links, including the front-page-only board after Dashboard was removed. */
 .dg-graph-home-active
   > div
   > .rm-level-0
@@ -61,10 +61,13 @@
       .kanban-column:nth-child(1 of .kanban-column)
         .kanban-title
         [data-link-title="🚪 Discourse graphs front page for team members"]
-    ):has(
-      .kanban-column:nth-child(2 of .kanban-column)
-        .kanban-title
-        [data-link-title="📊 Dashboard"]
+    ):is(
+      :not(:has(.kanban-column:nth-child(2 of .kanban-column))),
+      :has(
+        .kanban-column:nth-child(2 of .kanban-column)
+          .kanban-title
+          [data-link-title="📊 Dashboard"]
+      )
     ),
     :has(
       .kanban-column:nth-child(1 of .kanban-column)

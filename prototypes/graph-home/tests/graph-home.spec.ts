@@ -136,6 +136,16 @@ describe("Graph Home", () => {
     expect(openPage).toHaveBeenCalledWith({ page: { uid: "home-uid" } });
   });
 
+  it("opens Dashboard without a legacy Dashboard page block", async () => {
+    expect(
+      document.querySelector('.kanban-board [data-link-title="📊 Dashboard"]'),
+    ).toBeNull();
+    query.mockResolvedValueOnce([["dashboard-uid"]]);
+    await click("Dashboard");
+
+    expect(openPage).toHaveBeenCalledWith({ page: { uid: "dashboard-uid" } });
+  });
+
   it("opens a shortcut in the right sidebar on Shift-click", async () => {
     query.mockResolvedValueOnce([["dashboard-uid"]]);
     await click("Dashboard", { shiftKey: true });
