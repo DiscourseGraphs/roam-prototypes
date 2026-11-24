@@ -71,7 +71,7 @@ const useTaskWrites = () => {
       refresh();
     } catch (cause) {
       logError("could not save the checkbox", cause);
-      setError("Could not save the checkbox. Try again or refresh the tasks.");
+      setError("Could not save the checkbox. Try again or reload the tasks.");
     } finally {
       pending = new Set(pending);
       pending.delete(task.uid);
@@ -174,7 +174,7 @@ const Rows = ({ rows, refs, tasks }: RowsProps) => {
 const LazyRows = ({ rows, tasks }: Omit<RowsProps, "refs">) => {
   const refs = useAsync(() => readDisplayRefs(rows.map((r) => r.shown)), "read block references", [rows]);
   if (refs.kind === "loading") return <div className="rmt-muted">…</div>;
-  if (refs.kind === "failed") return <div role="alert">Could not load task references. Refresh to retry.</div>;
+  if (refs.kind === "failed") return <div role="alert">Could not load task references. Reload to retry.</div>;
   return <Rows rows={rows} refs={refs.value} tasks={tasks} />;
 };
 
@@ -191,10 +191,12 @@ export const MeetingTasks = ({ args }: { args: WidgetArgs }) => {
   };
   return (
     <div className="rmt" aria-busy={state.kind === "loading" || (state.kind === "done" && state.refreshing)}>
-      <button className="rmt-refresh" type="button" onClick={reload}>Refresh</button>
+      <button className="rmt-refresh" type="button" aria-label="Reload tasks" title="Reload tasks" onClick={reload}>
+        <span className="bp3-icon bp3-icon-refresh" aria-hidden="true" />
+      </button>
       {tasks.error && <div role="alert">{tasks.error}</div>}
       {state.kind === "loading" && <div className="rmt-muted">Loading tasks…</div>}
-      {state.kind === "failed" && <div role="alert">Could not load tasks. Refresh to retry.</div>}
+      {state.kind === "failed" && <div role="alert">Could not load tasks. Reload to retry.</div>}
       {state.kind === "done" && (state.value.kind === "empty" ? (
         <div>No tasks to show.
           {args.debug && <div className="rmt-debug">{state.value.reason} load={state.value.ms}ms</div>}

@@ -261,7 +261,9 @@ describe("write-back", () => {
 
   it("retains keyboard focus on Refresh and on a saved task that stays visible", async () => {
     const el = await render([host()]);
-    const refresh = el.querySelector("button")!;
+    const refresh = el.querySelector<HTMLButtonElement>('button[aria-label="Reload tasks"]')!;
+    expect(refresh.textContent).toBe("");
+    expect(refresh.querySelector(".bp3-icon-refresh")).toBeTruthy();
     refresh.focus();
     await act(async () => refresh.click());
     expect(document.activeElement).toBe(refresh);
