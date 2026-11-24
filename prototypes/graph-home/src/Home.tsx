@@ -6,7 +6,8 @@ export const HOME_TITLE = "🥾 Home";
 const DESTINATIONS = [
   {
     label: "Team front page",
-    title: "🚪 Discourse graphs front page for team members",
+    title: "🚪 Front page for team members",
+    fallbackTitle: "🚪 Discourse graphs front page for team members",
     description: "Find team resources and get oriented.",
     icon: "people",
   },
@@ -31,6 +32,7 @@ const DESTINATIONS = [
 ] as const satisfies ReadonlyArray<{
   label: string;
   title: string | null;
+  fallbackTitle?: string;
   description: string;
   icon: IconName;
 }>;
@@ -102,8 +104,12 @@ export const Home = (): JSX.Element => {
         setError("Roam couldn’t identify your user. Try reloading the graph.");
         return;
       }
-      const uid = await findPage(title);
+      let uid = await findPage(title);
       if (!active.current) return;
+      if (!uid && "fallbackTitle" in destination) {
+        uid = await findPage(destination.fallbackTitle);
+        if (!active.current) return;
+      }
       if (!uid) {
         setError(`Couldn’t find “${title}” in this graph.`);
         return;

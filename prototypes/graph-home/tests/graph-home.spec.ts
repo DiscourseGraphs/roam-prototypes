@@ -136,6 +136,35 @@ describe("Graph Home", () => {
     expect(openPage).toHaveBeenCalledWith({ page: { uid: "home-uid" } });
   });
 
+  it("opens the renamed team front page directly", async () => {
+    query.mockResolvedValueOnce([["front-uid"]]);
+    await click("Team front page");
+
+    expect(query).toHaveBeenCalledOnce();
+    expect(query).toHaveBeenCalledWith(
+      expect.stringContaining(":node/title"),
+      "🚪 Front page for team members",
+    );
+    expect(openPage).toHaveBeenCalledWith({ page: { uid: "front-uid" } });
+  });
+
+  it("falls back to the previous front page title in older graphs", async () => {
+    query.mockResolvedValueOnce([]).mockResolvedValueOnce([["old-front-uid"]]);
+    await click("Team front page");
+
+    expect(query).toHaveBeenNthCalledWith(
+      1,
+      expect.stringContaining(":node/title"),
+      "🚪 Front page for team members",
+    );
+    expect(query).toHaveBeenNthCalledWith(
+      2,
+      expect.stringContaining(":node/title"),
+      "🚪 Discourse graphs front page for team members",
+    );
+    expect(openPage).toHaveBeenCalledWith({ page: { uid: "old-front-uid" } });
+  });
+
   it("opens Dashboard without a legacy Dashboard page block", async () => {
     expect(
       document.querySelector('.kanban-board [data-link-title="📊 Dashboard"]'),

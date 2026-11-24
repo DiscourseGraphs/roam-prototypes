@@ -60,7 +60,10 @@
     :has(
       .kanban-column:nth-child(1 of .kanban-column)
         .kanban-title
+        :is(
+        [data-link-title="🚪 Front page for team members"],
         [data-link-title="🚪 Discourse graphs front page for team members"]
+      )
     ):is(
       :not(:has(.kanban-column:nth-child(2 of .kanban-column))),
       :has(
