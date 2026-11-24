@@ -165,20 +165,30 @@ describe("discussion rail", () => {
     expect(host.querySelector("textarea")?.value).toBe("Keep my draft");
   });
 
-  it("resolves and reopens threads through shared metadata", async () => {
+  it("keeps focus inside the compact rail when resolving or reopening hides the thread", async () => {
+    vi.stubGlobal("matchMedia", () => ({
+      matches: true,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    }));
     await mount();
     vi.mocked(fetchDiscussions).mockResolvedValue({
       sources: [source],
       threads: [{ ...snapshot.threads[0], resolved: true }],
     });
+    buttons("Resolve").focus();
     await click("Resolve");
+    expect(document.activeElement).toBe(buttons("Close discussions"));
     expect(setThreadResolved).toHaveBeenCalledWith({
       uid: "root",
       resolved: true,
     });
     expect(host.textContent).toContain("No open discussions");
     await click("Resolved");
+    vi.mocked(fetchDiscussions).mockResolvedValue(snapshot);
+    buttons("Reopen").focus();
     await click("Reopen");
+    expect(document.activeElement).toBe(buttons("Close discussions"));
     expect(setThreadResolved).toHaveBeenLastCalledWith({
       uid: "root",
       resolved: false,

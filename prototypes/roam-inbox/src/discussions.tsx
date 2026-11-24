@@ -333,7 +333,10 @@ export const openDiscussions = async (
       ? document.activeElement
       : null);
   if (context && context.pageUid !== next.pageUid) closeInline();
-  context = next;
+  const expandedThread = inline && inline.trigger === trigger && inline.uid === sourceUid
+    ? inline.mount.querySelector<HTMLElement>('[data-expanded="true"][data-thread-uid]')
+    : null;
+  context = { ...next, threadUid: expandedThread?.dataset.threadUid };
   if (!host) {
     layout = parent;
     parent.classList.add("rmi-discussion-layout");

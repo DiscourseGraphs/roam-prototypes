@@ -160,7 +160,8 @@ current. Drafts are scoped to the graph, user, and comment target. They survive 
 This iteration has one level of discussion replies. Deeper native comments remain
 in Roam but are not expanded recursively in the rail. It does not add reactions,
 mentions, notification delivery, graph-wide discovery, editing/deletion, or a backend.
-Native comment replies do not feed the inbox’s existing addressed-message badge.
+A plain comment reply leaves the Inbox badge unchanged. A reply containing
+`{{[[TODO]]}} [[+Recipient]]` follows the usual addressed-message behavior.
 
 ### Try the local build
 

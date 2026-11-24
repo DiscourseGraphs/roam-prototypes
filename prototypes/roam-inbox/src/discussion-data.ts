@@ -21,6 +21,7 @@ export type DiscussionContext = {
   pageUid: string;
   title: string;
   sourceUid?: string;
+  threadUid?: string;
 };
 export type DiscussionSnapshot = {
   sources: DiscussionSource[];

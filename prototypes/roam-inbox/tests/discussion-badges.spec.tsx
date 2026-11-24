@@ -49,7 +49,7 @@ it("keeps a resolved-only badge across inline, focused rail, and closed views", 
     sourceUid: uid === source.uid ? uid : undefined,
   }));
   vi.mocked(fetchBadgeCounts).mockResolvedValue(new Map([["source", 1]]));
-  vi.mocked(fetchDiscussions).mockResolvedValue({
+  const response = {
     sources: [source],
     threads: [
       {
@@ -63,7 +63,8 @@ it("keeps a resolved-only badge across inline, focused rail, and closed views", 
         replies: [],
       },
     ],
-  });
+  };
+  vi.mocked(fetchDiscussions).mockResolvedValue(response);
   await act(async () => {
     startDiscussions();
   });
@@ -83,6 +84,11 @@ it("keeps a resolved-only badge across inline, focused rail, and closed views", 
       ".rm-block-main + .rmi-discussion-inline [data-thread-uid='native-comment']",
     )?.textContent,
   ).toContain("Resolved comment");
+  // An open sibling would normally win the rail's initial Open filter.
+  vi.mocked(fetchDiscussions).mockResolvedValue({
+    ...response,
+    threads: [{ ...response.threads[0], uid: "other-thread", resolved: false }, ...response.threads],
+  });
   await act(async () => {
     badge.dispatchEvent(
       new MouseEvent("click", { bubbles: true, shiftKey: true }),

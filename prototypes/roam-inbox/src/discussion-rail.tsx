@@ -483,7 +483,7 @@ export const DiscussionRail = ({
   React.useLayoutEffect(() => {
     if (compact && !rail.current?.contains(document.activeElement))
       closeButton.current?.focus({ preventScroll: true });
-  }, [compact]);
+  }, [compact, snapshot]);
   // Apply a badge selection once. Background refreshes must leave the reader’s place alone.
   React.useLayoutEffect(() => {
     if (loading || error || appliedContext.current === context) return;
@@ -494,6 +494,7 @@ export const DiscussionRail = ({
     const matches = (thread: DiscussionThread): boolean =>
       filter === "all" || thread.resolved === (filter === "resolved");
     const first =
+      candidates.find((thread) => thread.uid === context.threadUid) ||
       candidates.find(matches) ||
       (context.sourceUid ? candidates[0] : undefined);
     if (first) {
