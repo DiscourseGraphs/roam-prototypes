@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Keep page inbox tasks visible even if there are no meetings in the lookback window.
+- Show a status when meeting tasks cannot load instead of displaying an empty widget.
+
 ## 0.2.0 - 2026-09-29
 
 Changes found by comparing with the three akamatsulab widgets.

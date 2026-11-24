@@ -299,6 +299,39 @@ describe("what changed in the port", () => {
     expect(el.textContent).toBe("");
   });
 
+  it("keeps page inbox work when there are no meetings", async () => {
+    const scratchPage = U("scratchpg");
+    graph.add("scratch", "{{[[TODO]]}} scratch inbox task", [], { page: scratchPage });
+    window.location.hash = `#/app/discourse-graphs/page/${scratchPage}`;
+    const el = await render([{ "block-uid": "nope" }]);
+    expect(el.textContent).toContain("1 open item");
+    expect(texts(el, "primary")).toEqual([]);
+    await openSecondary(el);
+    expect(texts(el, "secondary")).toEqual(["scratch inbox task"]);
+  });
+
+  it("keeps inbox work but excludes meeting tasks when the lookback is empty", async () => {
+    const el = await render([host(), "1"]);
+    expect(el.textContent).toContain("4 older meetings not shown");
+    expect(texts(el, "primary")).toEqual([]);
+    await openSecondary(el);
+    expect(texts(el, "secondary")).toEqual([
+      "#Karola Kirsanow track OKR 1 items",
+      "page-level inbox task, under no meeting",
+    ]);
+  });
+
+  it("distinguishes a failed graph read from an empty widget without debug mode", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      api.data.async.pull.mockRejectedValueOnce(new Error("test read failure"));
+      const el = await render([host()]);
+      expect(el.querySelector('[role="status"]')?.textContent).toContain("Could not load meeting tasks.");
+    } finally {
+      error.mockRestore();
+    }
+  });
+
   it("shares page-wide reads between widgets on the same page", async () => {
     await render([host()]);
     await render([host()]);

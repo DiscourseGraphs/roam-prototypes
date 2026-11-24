@@ -172,7 +172,11 @@ export const MeetingTasks = ({ args }: { args: WidgetArgs }) => {
 
   if (state.kind === "loading") return <div className="rmt-muted">Loading tasks…</div>;
   if (state.kind === "failed")
-    return args.debug ? <div className="rmt-debug">meeting-tasks: failed to load (see console)</div> : null;
+    return (
+      <div className="rmt-muted" role="status">
+        Could not load meeting tasks.{args.debug && " See the console for details."}
+      </div>
+    );
   const loaded = state.value;
   if (loaded.kind === "empty")
     return args.debug ? (
