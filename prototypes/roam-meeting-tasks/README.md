@@ -36,7 +36,10 @@ The mode is detected from the widget's position. A `page` argument shows page mo
 In both modes:
 
 - Checkboxes write `{{[[TODO]]}}` / `{{[[DONE]]}}` back to the task's own block. A task often shows
-  in two widgets at once; checking it in one updates the other.
+  in two widgets at once. Both disable its checkbox while saving and reload after the write.
+  Each save reads the current block text before changing its task marker.
+- Use **Refresh** after editing tasks elsewhere or to retry a failed load. An empty widget also
+  has a Refresh button. If a checkbox save fails, the widget shows an error and you can retry.
 - Items are listed newest meeting first, and in outline order within a meeting.
 - A DONE item stays visible for 14 days, then ages out.
 - Clicking an item opens it. Shift-click opens it in the right sidebar.
