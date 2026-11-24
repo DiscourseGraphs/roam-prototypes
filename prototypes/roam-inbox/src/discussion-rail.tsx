@@ -104,7 +104,10 @@ const Composer = ({
   };
 
   return (
-    <div className="rmi-discussion-composer">
+    <div
+      className="rmi-discussion-composer"
+      data-resting={!isNew && !text && !posting && !error && canAddComments()}
+    >
       <TextArea
         fill
         rows={2}
@@ -659,7 +662,7 @@ export const DiscussionRail = ({
         <Button
           minimal
           small
-          icon="plus"
+          icon={composing ? "cross" : "plus"}
           elementRef={composeButton}
           aria-expanded={composing}
           text={composing ? "Cancel" : "New thread"}
@@ -726,7 +729,7 @@ export const DiscussionRail = ({
                 <Thread
                   key={t.uid}
                   thread={t}
-                  selected={t.source.uid === selectedSource}
+                  selected={t.uid === focusTarget?.uid}
                   expanded={expanded.has(t.uid)}
                   reload={reload}
                   toggle={() =>
@@ -742,7 +745,7 @@ export const DiscussionRail = ({
             </SourceGroup>
           ))
         ) : (
-          !error && (
+          !error && !composing && (
             <div className="rmi-discussion-empty">
               <strong>
                 {filter === "resolved"
@@ -751,21 +754,8 @@ export const DiscussionRail = ({
                     ? "No discussions yet"
                     : "No open discussions"}
               </strong>
-              <span>
-                {filter === "resolved"
-                  ? "Threads appear here when you resolve them."
-                  : snapshot.sources.length
-                    ? "Choose a block and start a conversation."
-                    : "Add a block to this page to start a discussion."}
-              </span>
-              {filter !== "resolved" && snapshot.sources.length > 0 && (
-                <Button
-                  outlined
-                  small
-                  icon="plus"
-                  text="Start a discussion"
-                  onClick={() => setComposing(true)}
-                />
+              {!snapshot.sources.length && filter !== "resolved" && (
+                <span>Add a block to this page to start a discussion.</span>
               )}
             </div>
           )

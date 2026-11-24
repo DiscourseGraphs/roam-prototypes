@@ -2,6 +2,9 @@
 
 ## 0.7.0-beta.1 - Unreleased
 
+- Empty replies take one line until focused. Drafts keep the full editor open, and the page rail marks the selected thread with a thin rule.
+- Start a thread from the rail toolbar. Empty filters show a single status line.
+
 - Replaced thread action labels with a persistent expand/collapse chevron and compact resolve/reopen controls. The resolve control appears on hover or focus, and stays visible on touch.
 
 - Added a page discussion rail with separate topics, native comment replies, and shared resolve/reopen status.
