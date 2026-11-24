@@ -547,7 +547,15 @@ export const DiscussionRail = ({
           '[aria-label="Close discussions"]',
         );
     const scroll = rail.current.querySelector(".rmi-discussion-scroll");
-    if (scroll) scroll.scrollTop = 0;
+    if (scroll) {
+      scroll.scrollTop = 0;
+      if (target && scroll.contains(target)) {
+        const viewport = scroll.getBoundingClientRect();
+        const article = target.getBoundingClientRect();
+        if (article.bottom > viewport.bottom)
+          scroll.scrollTop = Math.max(0, article.top - viewport.top);
+      }
+    }
     target?.focus({ preventScroll: true });
   }, [focusTarget]);
 
