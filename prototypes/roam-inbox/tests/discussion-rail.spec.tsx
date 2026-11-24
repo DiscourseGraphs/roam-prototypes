@@ -148,6 +148,17 @@ describe("discussion rail", () => {
     );
   });
 
+  it("can cancel composition when the final source disappears", async () => {
+    await mount();
+    await click("New thread");
+    vi.mocked(fetchDiscussions).mockResolvedValue({ sources: [], threads: [] });
+    await click("Refresh discussions");
+    expect(host.textContent).toContain("Add a block");
+    expect(buttons("Cancel").disabled).toBe(false);
+    await click("Cancel");
+    expect(buttons("New thread").disabled).toBe(true);
+  });
+
   it("retains a rejected reply, and keeps its draft when switching filters", async () => {
     vi.mocked(postNativeComment).mockRejectedValueOnce(
       new Error("Permission denied"),

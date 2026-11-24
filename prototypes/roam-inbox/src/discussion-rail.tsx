@@ -666,7 +666,7 @@ export const DiscussionRail = ({
           elementRef={composeButton}
           aria-expanded={composing}
           text={composing ? "Cancel" : "New thread"}
-          disabled={loading || !snapshot.sources.length}
+          disabled={!composing && (loading || !snapshot.sources.length)}
           onClick={() => setComposing(!composing)}
         />
       </div>
@@ -677,7 +677,7 @@ export const DiscussionRail = ({
             <Button minimal small text="Retry" onClick={() => void reload()} />
           </div>
         )}
-        {composing && (
+        {composing && snapshot.sources.length > 0 && (
           <section
             className="rmi-discussion-new"
             aria-label="Start a discussion"
@@ -745,7 +745,7 @@ export const DiscussionRail = ({
             </SourceGroup>
           ))
         ) : (
-          !error && !composing && (
+          !error && (!composing || !snapshot.sources.length) && (
             <div className="rmi-discussion-empty">
               <strong>
                 {filter === "resolved"
