@@ -2,6 +2,8 @@
 
 ## 0.7.0-beta.1 - Unreleased
 
+- Replaced thread action labels with a persistent expand/collapse chevron and compact resolve/reopen controls. The resolve control appears on hover or focus, and stays visible on touch.
+
 - Added a page discussion rail with separate topics, native comment replies, and shared resolve/reopen status.
 - Open discussions from the command palette, a block’s Plugins menu, or the existing inbox panel.
 - Discussions use Roam’s typography, link blue, and indented reply guides. Comment badges align at the right edge of each row, with the current source highlighted.

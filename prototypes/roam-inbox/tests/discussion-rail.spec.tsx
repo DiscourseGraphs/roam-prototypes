@@ -2,7 +2,7 @@ import React from "react";
 import ReactDOM from "react-dom";
 import { act, Simulate } from "react-dom/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { clearDiscussionDrafts, DiscussionRail } from "~/discussion-rail";
+import { clearDiscussionDrafts, DiscussionRail, InlineDiscussions } from "~/discussion-rail";
 import {
   fetchDiscussions,
   postNativeComment,
@@ -193,6 +193,39 @@ describe("discussion rail", () => {
       uid: "root",
       resolved: false,
     });
+  });
+
+  it("keeps quiet thread controls accessible in the rail and inline", async () => {
+    const verifyControls = async () => {
+      const collapse = buttons("Collapse thread");
+      expect(collapse.getAttribute("data-tooltip")).toBe("Collapse thread");
+      expect(collapse.querySelector(".bp3-button-text")).toBeNull();
+      expect(collapse.getAttribute("aria-expanded")).toBe("true");
+      const resolve = buttons("Resolve");
+      expect(resolve.getAttribute("data-tooltip")).toBe("Resolve thread");
+      expect(resolve.querySelector(".bp3-button-text")).toBeNull();
+      resolve.focus();
+      expect(document.activeElement).toBe(resolve);
+      await click("Collapse thread");
+      expect(buttons("Expand thread").getAttribute("aria-expanded")).toBe("false");
+      await click("Expand thread");
+      expect(host.querySelector("textarea")).not.toBeNull();
+    };
+    await mount();
+    await verifyControls();
+    act(() => ReactDOM.unmountComponentAtNode(host));
+    await act(async () => {
+      ReactDOM.render(
+        <InlineDiscussions
+          threads={snapshot.threads}
+          reload={async () => {}}
+          onOpenPage={() => {}}
+          onClose={() => {}}
+        />,
+        host,
+      );
+    });
+    await verifyControls();
   });
 
   it("groups threads under one source link and puts the selected source first", async () => {

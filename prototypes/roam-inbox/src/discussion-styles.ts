@@ -52,8 +52,17 @@ export const DISCUSSION_CSS = `
 .rmi-discussion-content { overflow-wrap:anywhere; white-space:pre-wrap; }
 .rmi-discussion-content img { max-width:100%; height:auto; }
 .rmi-discussion-nested { padding-left:10px; margin:5px 0; border-left:1px solid var(--d-line); }
-.rmi-discussion-actions { display:flex; justify-content:flex-start; flex-wrap:wrap; gap:6px; margin:4px 0 0 -4px; }
-.rmi-discussion-actions .bp3-button { color:var(--d-muted); min-height:26px; }
+.rmi-discussion-actions { display:flex; align-items:center; align-self:center; gap:2px; margin-inline-start:auto; }
+.rmi-discussion-actions .bp3-button { position:relative; color:var(--d-muted); min-width:26px; min-height:26px; padding:3px; }
+.rmi-discussion-actions [data-tooltip]:is(:hover,:focus-visible)::after { content:attr(data-tooltip); position:absolute; z-index:1; inset-block-start:calc(100% + 3px); inset-inline-end:0; padding:4px 7px; border:1px solid var(--d-line); border-radius:4px; color:var(--d-text); background:var(--d-bg); white-space:nowrap; pointer-events:none; }
+.rmi-discussion-reply-count { color:var(--d-muted); font-size:11px; margin-top:5px; }
+@media (hover:hover) and (pointer:fine) {
+  .rmi-discussion-thread:not(:hover):not(:focus-within) .rmi-discussion-resolve:not([data-busy="true"]) { opacity:0; pointer-events:none; }
+}
+@media (any-pointer:coarse), (hover:none) {
+  .rmi-discussion-thread:not(:hover):not(:focus-within) .rmi-discussion-resolve:not([data-busy="true"]) { opacity:1; pointer-events:auto; }
+  .rmi-discussion-actions .bp3-button { min-width:32px; min-height:32px; }
+}
 .rmi-discussion-replies { margin:8px 0 2px 2px; padding:2px 0 2px 12px; border-inline-start:1px solid var(--d-line); display:grid; gap:10px; }
 .rmi-discussion-composer { border:1px solid var(--d-line); background:var(--roamjs-input,var(--d-bg)); border-radius:3px; padding:7px 8px; }
 .rmi-discussion-composer:focus-within { border-color:var(--d-accent); box-shadow:0 0 0 1px var(--d-accent); }

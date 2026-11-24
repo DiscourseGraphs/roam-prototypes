@@ -46,8 +46,10 @@ const RoamText = ({
 
 const Comment = ({
   comment,
+  actions,
 }: {
   comment: DiscussionComment;
+  actions?: React.ReactNode;
 }): React.ReactElement => (
   <div className="rmi-discussion-message">
     <div className="rmi-discussion-message-body">
@@ -63,6 +65,7 @@ const Comment = ({
         >
           {comment.time ? relTime(comment.time) : "Unknown time"}
         </time>
+        {actions}
       </div>
       <RoamText content={comment} />
     </div>
@@ -200,6 +203,8 @@ const Thread = ({
       if (alive.current) setBusy(false);
     }
   };
+  const toggleLabel = expanded ? "Collapse thread" : "Expand thread";
+  const resolveLabel = thread.resolved ? "Reopen" : "Resolve";
   return (
     <article
       className={`rmi-discussion-thread${selected ? " rmi-discussion-selected" : ""}`}
@@ -208,35 +213,40 @@ const Thread = ({
       tabIndex={-1}
     >
       {thread.resolved && (
-        <div className="rmi-discussion-resolved">✓ Resolved</div>
+        <div className="rmi-discussion-resolved">Resolved</div>
       )}
-      <Comment comment={thread} />
-      <div className="rmi-discussion-actions">
-        <Button
-          minimal
-          small
-          icon={expanded ? "chevron-down" : "comment"}
-          text={
-            expanded
-              ? "Collapse"
-              : thread.replies.length
-                ? `${thread.replies.length} ${thread.replies.length === 1 ? "reply" : "replies"}`
-                : thread.resolved
-                  ? "View thread"
-                  : "Write a reply"
-          }
-          aria-expanded={expanded}
-          onClick={toggle}
-        />
-        <Button
-          minimal
-          small
-          icon={thread.resolved ? "undo" : "tick"}
-          text={thread.resolved ? "Reopen" : "Resolve"}
-          loading={busy}
-          onClick={() => void resolve()}
-        />
-      </div>
+      <Comment
+        comment={thread}
+        actions={
+          <div className="rmi-discussion-actions">
+            <Button
+              minimal
+              small
+              className="rmi-discussion-resolve"
+              icon={thread.resolved ? "undo" : "tick"}
+              aria-label={resolveLabel}
+              data-tooltip={thread.resolved ? "Reopen thread" : "Resolve thread"}
+              data-busy={busy}
+              loading={busy}
+              onClick={() => void resolve()}
+            />
+            <Button
+              minimal
+              small
+              icon={expanded ? "chevron-up" : "chevron-down"}
+              aria-label={toggleLabel}
+              data-tooltip={toggleLabel}
+              aria-expanded={expanded}
+              onClick={toggle}
+            />
+          </div>
+        }
+      />
+      {!expanded && thread.replies.length > 0 && (
+        <div className="rmi-discussion-reply-count">
+          {thread.replies.length} {thread.replies.length === 1 ? "reply" : "replies"}
+        </div>
+      )}
       {expanded && (
         <div className="rmi-discussion-replies">
           {thread.replies.map((reply) => (
