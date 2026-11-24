@@ -8,6 +8,7 @@
     "moduleResolution": "bundler",
     "lib": ["DOM", "ES2022"],
     "strict": true,
+    "jsx": "react",
     "esModuleInterop": true,
     "skipLibCheck": true,
     "noEmit": true,

@@ -34,16 +34,16 @@ about 4 per month per person, so volume was never the problem. Three things were
    into a backlog.
 
 This fixes all three. The picker makes the `+` prefix invisible. The extension owns the query, so no
-setup is required. The badge tracks *new since you looked*, while the checkbox keeps meaning
-*handled*.
+setup is required. The badge tracks _new since you looked_, while the checkbox keeps meaning
+_handled_.
 
 ## The two channels
 
-| you write | means | shows up in | badges? |
-| --- | --- | --- | --- |
-| `{{[[TODO]]}} [[+Name]]` (`/message`) | **addressed to** that person | their **Messages** tab | yes |
-| `[[+Name]]` with no checkbox | cc / FYI | their **Mentions** tab | no |
-| `{{[[TODO]]}} #[[Name]]` (`/task`) | **assigned work** | their **Tasks** tab | no |
+| you write                             | means                        | shows up in            | badges? |
+| ------------------------------------- | ---------------------------- | ---------------------- | ------- |
+| `{{[[TODO]]}} [[+Name]]` (`/message`) | **addressed to** that person | their **Messages** tab | yes     |
+| `[[+Name]]` with no checkbox          | cc / FYI                     | their **Mentions** tab | no      |
+| `{{[[TODO]]}} #[[Name]]` (`/task`)    | **assigned work**            | their **Tasks** tab    | no      |
 
 The `+` is an addressing operator, not an accident. It is what separates "here is a message for
 you" from "this block is about you". That distinction was never written down anywhere, which is how
@@ -67,7 +67,8 @@ can be imported by one:
 
 ```js
 (async () => {
-  const url = "https://discoursegraphs.com/releases/prototypes/roam-inbox/extension.js";
+  const url =
+    "https://discoursegraphs.com/releases/prototypes/roam-inbox/extension.js";
   const globalKey = "__roamInboxExtension";
 
   const previous = window[globalKey];
@@ -75,9 +76,13 @@ can be imported by one:
 
   const module = await import(`${url}?v=${Date.now()}`);
   const extension = module.default;
-  if (!extension?.onload) throw new Error("The loaded module is not a Roam extension.");
+  if (!extension?.onload)
+    throw new Error("The loaded module is not a Roam extension.");
 
-  await extension.onload({ extensionAPI: undefined, extension: { version: "roam/js" } });
+  await extension.onload({
+    extensionAPI: undefined,
+    extension: { version: "roam/js" },
+  });
   window[globalKey] = extension;
 })().catch((error) => console.error("Could not load Roam Inbox:", error));
 ```
@@ -91,7 +96,7 @@ bundle and both paths look the same.
 - **A fresh browser starts at zero, not at your backlog.** Everything already in your inbox is
   recorded as seen the first time the extension runs in a browser, so you get a clean badge instead
   of an accusatory 24. The panel still lists everything, and the icon carries a small muted dot so a
-  non-empty inbox is still discoverable. A *number* is reserved for what is genuinely new, because a
+  non-empty inbox is still discoverable. A _number_ is reserved for what is genuinely new, because a
   permanent count of everything open stops reading as a signal.
 - **Addressing an existing block counts as a new message.** Most messages on `dg-team` are not
   typed into a brand-new bullet. Someone adds `[[+You]]` to a bullet that is already there, such as
@@ -100,7 +105,7 @@ bundle and both paths look the same.
 - **Messages you address to yourself do count.** `[[+You]]` is how several people already keep a
   personal todo queue. Measured on `dg-team`, 12 of the 68 open messages are self-addressed, and
   they are deliberate reminders, not noise. An earlier version filtered them out of the badge and
-  silently under-reported those inboxes. You still will not get a *toast* for something you just
+  silently under-reported those inboxes. You still will not get a _toast_ for something you just
   typed; that exclusion lives at the toast.
 - **Opening the panel clears the badge but keeps the blue "new" marks** for that viewing, so you can
   still see what arrived while you were away.
@@ -112,6 +117,64 @@ bundle and both paths look the same.
 - **What you have seen lives in `localStorage`, not the graph.** Writing it on every panel open
   would churn edit-times and pollute the recency signals the team's weekly activity review reads.
   The cost is that it is per-browser.
+
+## Native discussions beta (0.7.0-beta.1)
+
+This beta adds a page discussion rail alongside the existing inbox. To try it before
+merge, use the preview URL posted on the pull request in a scratch graph. Unload the
+stable Inbox in that graph before loading the preview.
+
+- Open the command palette and choose **Roam Inbox: Open page discussions**.
+- To start at a particular block, right-click its bullet and choose **Plugins →
+  Roam Inbox: Discuss block**, or use **Roam Inbox: Discuss focused block**.
+- The inbox panel also offers **Page discussions**, and each row has **Discuss**.
+  The original **Reply** action still creates an addressed child block, as before.
+- Choose **New thread**, select a source block, and post. Replies go to that topic.
+  Use **Open**, **All**, and **Resolved** to browse, and **Resolve/Reopen** to update status.
+- Click a source quote to open its block in Roam’s existing right sidebar.
+- Each source block with comments shows its total thread count, including resolved threads.
+  Click the comment badge to show or hide its threads below the block. Shift-click to focus
+  its discussion in the page rail. The inline **Page discussions** button also works on touch screens.
+  An open panel stays put while you work on the page. Click another badge to select its discussion in the panel. Close it with the × or with Escape while the panel has focus. Both views share native comments, replies, and resolution.
+- `await roamInbox.discuss()` opens discussions for the current page;
+  `await roamInbox.discuss("block-uid")` starts at a particular block.
+
+### Native storage and compatibility
+
+All conversation text uses `roamAlphaAPI.data.block.addComment`. Roam stores comments
+under a `[[roam/comments]]` outline on the source page, grouped by date and author.
+The children of a native source-reference container are independent topics. A reply
+is a native comment on the topic’s own UID. This preserves the actual writer and
+Roam timestamps, and leaves all conversation text available without this extension.
+Existing native source comments appear automatically.
+
+Shared resolution uses the topic block’s `:block/props` map, under
+`roam-inbox.resolved` and `roam-inbox.resolvedAt`. It does not modify comment text,
+check off an inbox message, or delete anything. Other block properties are retained.
+Without the extension, the conversation remains readable but its resolution status
+has no native UI. Concurrent property edits follow Roam’s ordinary last-writer behavior.
+
+Page reads, a pull watch, and a 15-second visible-tab fallback refresh keep the rail
+current. Drafts are scoped to the graph, user, and comment target. They survive a reload in the same browser tab when session storage is available. Posting clears the draft after Roam confirms the write. Closing a discussion or switching filters preserves it. The rail follows main-window page navigation and floats above the page on desktop and fills the screen on phones. The existing Roam right sidebar remains available separately.
+
+This iteration has one level of discussion replies. Deeper native comments remain
+in Roam but are not expanded recursively in the rail. It does not add reactions,
+mentions, notification delivery, graph-wide discovery, editing/deletion, or a backend.
+A plain comment reply leaves the Inbox badge unchanged. A reply containing
+`{{[[TODO]]}} [[+Recipient]]` follows the usual addressed-message behavior.
+
+### Try the local build
+
+From the repository root:
+
+```sh
+pnpm install --ignore-scripts
+pnpm --dir prototypes/roam-inbox build
+```
+
+In Roam Depot’s developer mode, load the local **`prototypes/roam-inbox/dist`** folder.
+The folder includes `extension.js` and its README. It does not require a hosted URL
+or a pushed branch. Unload an older Roam Inbox instance before testing this copy.
 
 ## Customization
 
@@ -154,7 +217,7 @@ graph. `live.ts` triggers refreshes. `lifecycle.ts` is load and unload, and `ind
   that reference `Me`, the `/task` channel. A refresh that finishes after a newer one started, or
   after unload, drops its result rather than overwriting fresher state.
 - **"New" is tracked by message uid, not by timestamp.** A message becomes addressed to you when
-  someone *edits* a block to add `[[+You]]`, and that block can be any age. An earlier build compared
+  someone _edits_ a block to add `[[+You]]`, and that block can be any age. An earlier build compared
   `:create/time` against a "last looked" clock, so a message added to an existing bullet arrived
   already read. Measured on `dg-team`: 65 open messages with create-times spanning Dec 2024 to Jul
   2026, so the whole standing backlog was permanently uncountable. `:edit/time` is not the fix
@@ -197,6 +260,8 @@ From the repository root, `pnpm --dir prototypes/roam-inbox test`, `typecheck`, 
   as the roam/js loader block does. It skips until you have run `pnpm build`.
 - `tests/interop.spec.ts` guards the source against default imports from `roamjs-components` and
   the legacy top-level `roamAlphaAPI` aliases.
+- `tests/discussion-data.spec.ts` covers native comment grouping, reply targets, errors, and property-preserving resolution.
+- `tests/discussion-rail.spec.tsx` covers posting, retained drafts, filters, resolution, retry, and cleanup.
 - `pnpm typecheck` is opt-in; the repository has no shared typecheck step.
 
 ## Relationship to the sibling prototypes
