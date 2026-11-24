@@ -49,6 +49,19 @@ describe("native discussion reads", () => {
     expect(result[0].children[0].string).toBe("A list item");
   });
 
+  it("queries visible embedded UIDs separately from their host page", async () => {
+    const api = installFakeRoam();
+    const query = vi
+      .spyOn(api.data.async, "q")
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([["embedded", "((embedded))", 2]]);
+    expect(await fetchBadgeCounts("host-page", ["embedded"])).toEqual(
+      new Map([["embedded", 2]]),
+    );
+    expect(query.mock.calls[1][1]).toEqual(["embedded"]);
+    expect(query.mock.calls[1][0]).not.toContain(":block/page");
+  });
+
   it("reads closed-page counts without loading reply content or counting prose references", async () => {
     const api = installFakeRoam();
     const query = vi.spyOn(api.data.async, "q").mockResolvedValue([

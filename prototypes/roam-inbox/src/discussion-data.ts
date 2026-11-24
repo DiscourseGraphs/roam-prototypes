@@ -40,22 +40,33 @@ const CONTAINER = `[:block/uid :block/string
 const COMMENT_REFERENCE = `[?container :block/refs ?source]
   [?author :block/children ?container] [?date :block/children ?author]
   [?comments :block/children ?date] [?comments :block/string "[[roam/comments]]"]`;
-const NATIVE_CONTAINERS = `[?page :block/uid ?pageUid] [?source :block/page ?page]
-  ${COMMENT_REFERENCE}
+const SOURCE_CONTAINERS = `${COMMENT_REFERENCE}
   (not-join [?source] [?source :block/parents ?root] [?root :block/string "[[roam/comments]]"])`;
+
+const NATIVE_CONTAINERS = `[?page :block/uid ?pageUid] [?source :block/page ?page] ${SOURCE_CONTAINERS}`;
 
 export const Q_PAGE_COMMENTS = `[:find (pull ?source [:block/uid :block/string :block/order])
   (pull ?container ${CONTAINER}) :in $ ?pageUid :where ${NATIVE_CONTAINERS}]`;
 
-const Q_BADGE_COUNTS = `[:find ?uid ?reference (count-distinct ?thread) :in $ ?pageUid :where
-  ${NATIVE_CONTAINERS} [?source :block/uid ?uid] [?container :block/string ?reference]
-  [?container :block/children ?thread]]`;
+const BADGE_COUNT_CLAUSES = `${SOURCE_CONTAINERS} [?source :block/uid ?uid]
+  [?container :block/string ?reference] [?container :block/children ?thread]`;
+const COUNT = "[:find ?uid ?reference (count-distinct ?thread)";
+const Q_BADGE_COUNTS = `${COUNT} :in $ ?pageUid :where [?page :block/uid ?pageUid]
+  [?source :block/page ?page] ${BADGE_COUNT_CLAUSES}]`;
+const Q_EMBED_COUNTS = `${COUNT} :in $ [?uid ...] :where [?source :block/uid ?uid]
+  ${BADGE_COUNT_CLAUSES}]`;
 
-// The closed page needs counts only. Fetch comment bodies and replies when a view opens.
+// Keep closed-page reads lightweight, including blocks rendered from other pages.
 export const fetchBadgeCounts = async (
   pageUid: string,
+  embeddedUids: string[] = [],
 ): Promise<Map<string, number>> => {
-  const rows = await window.roamAlphaAPI.data.async.q(Q_BADGE_COUNTS, pageUid);
+  const api = window.roamAlphaAPI.data.async;
+  const results = await Promise.all([
+    api.q(Q_BADGE_COUNTS, pageUid),
+    embeddedUids.length ? api.q(Q_EMBED_COUNTS, embeddedUids) : [],
+  ]);
+  const rows = results.flat();
   const counts = new Map<string, number>();
   for (const [uid, reference, count] of rows) {
     if (

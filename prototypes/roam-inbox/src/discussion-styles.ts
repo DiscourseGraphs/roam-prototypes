@@ -84,6 +84,8 @@ export const DISCUSSION_CSS = `
 .rmi-inline-header strong { font-size:12px; }
 .rmi-discussion-inline .rmi-inline-header .bp3-button.bp3-minimal { color:var(--d-accent); }
 .rmi-discussion-badge { display:inline-flex; order:1; flex:none; align-self:flex-start; margin-inline-start:auto; padding-inline-start:3px; }
+/* Leave the embedded block's native hover controls clickable. */
+.rm-block-main:has(> [id^="block-input-embed-"]) > .rmi-discussion-badge { margin-inline-end:64px; }
 @media(min-width:651px) {
   .rmi-discussion-layout .rmi-discussion-badge { position:sticky; right:var(--rmi-badge-inset,0px); border-radius:3px; background:var(--d-bg); }
 }

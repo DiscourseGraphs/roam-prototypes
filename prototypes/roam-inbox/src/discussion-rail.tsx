@@ -494,26 +494,48 @@ export const DiscussionRail = ({
     if (compact && !rail.current?.contains(document.activeElement))
       closeButton.current?.focus({ preventScroll: true });
   }, [compact, snapshot]);
+  const addressedThread =
+    React.useMemo(
+      () =>
+        context.sourceUid &&
+        snapshot.threads.find(
+          (thread) =>
+            thread.uid === context.sourceUid ||
+            thread.replies.some((reply) => reply.uid === context.sourceUid),
+        ),
+      [context.sourceUid, snapshot.threads],
+    ) || undefined;
+  const selectedSource = addressedThread?.source.uid ?? context.sourceUid;
   // Apply a badge selection once. Background refreshes must leave the reader’s place alone.
   React.useLayoutEffect(() => {
     if (loading || error || appliedContext.current === context) return;
     appliedContext.current = context;
     const candidates = snapshot.threads.filter(
-      (t) => !context.sourceUid || t.source.uid === context.sourceUid,
+      (t) => !selectedSource || t.source.uid === selectedSource,
     );
     const matches = (thread: DiscussionThread): boolean =>
       filter === "all" || thread.resolved === (filter === "resolved");
     const first =
+      addressedThread ||
       candidates.find((thread) => thread.uid === context.threadUid) ||
       candidates.find(matches) ||
-      (context.sourceUid ? candidates[0] : undefined);
+      (selectedSource ? candidates[0] : undefined);
     if (first) {
       if (!matches(first)) setFilter(first.resolved ? "resolved" : "open");
       setExpanded((before) => new Set([...before, first.uid]));
     }
-    if (context.sourceUid && !composing) setPreferredSource(context.sourceUid);
-    setFocusTarget({ uid: context.sourceUid ? first?.uid : undefined });
-  }, [loading, error, context, snapshot, filter, composing]);
+    if (selectedSource && !composing) setPreferredSource(selectedSource);
+    setFocusTarget({ uid: selectedSource ? first?.uid : undefined });
+  }, [
+    loading,
+    error,
+    context,
+    snapshot,
+    filter,
+    composing,
+    addressedThread,
+    selectedSource,
+  ]);
 
   React.useLayoutEffect(() => {
     if (!focusTarget || !rail.current) return;
@@ -540,8 +562,7 @@ export const DiscussionRail = ({
     else groups.set(thread.source.uid, [thread]);
   }
   const orderedGroups = [...groups].sort(
-    ([a], [b]) =>
-      Number(b === context.sourceUid) - Number(a === context.sourceUid),
+    ([a], [b]) => Number(b === selectedSource) - Number(a === selectedSource),
   );
   const composeButton = React.useRef<HTMLButtonElement | null>(null);
   const openCount = snapshot.threads.filter((t) => !t.resolved).length;
@@ -697,7 +718,7 @@ export const DiscussionRail = ({
                 <Thread
                   key={t.uid}
                   thread={t}
-                  selected={t.source.uid === context.sourceUid}
+                  selected={t.source.uid === selectedSource}
                   expanded={expanded.has(t.uid)}
                   reload={reload}
                   toggle={() =>

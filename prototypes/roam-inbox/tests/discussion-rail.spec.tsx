@@ -213,7 +213,7 @@ describe("discussion rail", () => {
     };
     await mount();
     await verifyControls();
-    act(() => ReactDOM.unmountComponentAtNode(host));
+    act(() => { ReactDOM.unmountComponentAtNode(host); });
     await act(async () => {
       ReactDOM.render(
         <InlineDiscussions
@@ -227,6 +227,26 @@ describe("discussion rail", () => {
     });
     await verifyControls();
   });
+  it.each(["addressed-topic", "addressed-reply"])(
+    "opens the owning thread for %s",
+    async (uid) => {
+      const addressed = {
+        ...snapshot.threads[0],
+        uid: "addressed-topic",
+        resolved: true,
+        replies: [{ ...snapshot.threads[0], uid: "addressed-reply" }],
+      };
+      vi.mocked(fetchDiscussions).mockResolvedValue({
+        sources: [source],
+        threads: [snapshot.threads[0], addressed],
+      });
+      await mount(uid);
+      expect(document.activeElement?.getAttribute("data-thread-uid")).toBe(
+        addressed.uid,
+      );
+      expect(buttons("Resolved").getAttribute("aria-pressed")).toBe("true");
+    },
+  );
 
   it("groups threads under one source link and puts the selected source first", async () => {
     vi.mocked(fetchDiscussions).mockResolvedValue({

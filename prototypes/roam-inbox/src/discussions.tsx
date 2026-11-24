@@ -42,7 +42,7 @@ let disposeCommands: (() => void)[] = [];
 let counts = new Map<string, number>();
 let inlineError = "";
 let returnFocus: HTMLElement | null = null;
-let visiblePageUid: string | undefined;
+let embeddedKey = "";
 let snapshot: DiscussionSnapshot = { sources: [], threads: [] };
 type Badge = { uid: string; mount: HTMLElement; count: number };
 const badges = new Map<HTMLElement, Badge>();
@@ -63,11 +63,16 @@ const closeInline = (): void => {
   inline = null;
 };
 
-const rememberSnapshot = (next: DiscussionSnapshot): void => {
-  snapshot = next;
-  counts = new Map();
-  for (const { source } of next.threads)
-    counts.set(source.uid, (counts.get(source.uid) || 0) + 1);
+const embeddedBlockUids = (): string[] => {
+  const uids = new Set<string>();
+  document
+    .querySelectorAll('.roam-article [id^="block-input-embed-"]')
+    .forEach((input) => {
+      const uid =
+        input.closest<HTMLElement>("[data-block-uid]")?.dataset.blockUid;
+      if (uid) uids.add(uid);
+    });
+  return [...uids].sort();
 };
 
 const dismissInline = (): void => {
@@ -239,6 +244,8 @@ const scheduleBadges = (): void => {
       refreshVisiblePage();
     }
     if (inline && !inline.mount.isConnected) closeInline();
+    if (JSON.stringify(embeddedBlockUids()) !== embeddedKey)
+      refreshVisiblePage();
     reconcileBadges();
   }, 100);
 };
@@ -305,11 +312,7 @@ const renderRail = (): void => {
       context={context}
       onClose={dismissRail}
       onSnapshot={(next) => {
-        if (pageUid !== visiblePageUid) return;
-        refreshSequence += 1;
-        rememberSnapshot(next);
-        renderInline();
-        scheduleBadges();
+        void refreshPage({ pageUid, snapshot: next });
       }}
     />,
     host,
@@ -332,10 +335,18 @@ export const openDiscussions = async (
     (document.activeElement instanceof HTMLElement
       ? document.activeElement
       : null);
-  if (context && context.pageUid !== next.pageUid) closeInline();
-  const expandedThread = inline && inline.trigger === trigger && inline.uid === sourceUid
-    ? inline.mount.querySelector<HTMLElement>('[data-expanded="true"][data-thread-uid]')
-    : null;
+  if (
+    context &&
+    context.pageUid !== next.pageUid &&
+    inline?.trigger !== trigger
+  )
+    closeInline();
+  const expandedThread =
+    inline && inline.trigger === trigger && inline.uid === sourceUid
+      ? inline.mount.querySelector<HTMLElement>(
+          '[data-expanded="true"][data-thread-uid]',
+        )
+      : null;
   context = { ...next, threadUid: expandedThread?.dataset.threadUid };
   if (!host) {
     layout = parent;
@@ -384,7 +395,10 @@ const openSafely = (uid?: string, trigger?: HTMLElement): void => {
   });
 };
 
-const refreshPage = async (): Promise<void> => {
+const refreshPage = async (rail?: {
+  pageUid: string;
+  snapshot: DiscussionSnapshot;
+}): Promise<void> => {
   const mine = ++refreshSequence;
   try {
     const pageOrBlock =
@@ -392,17 +406,22 @@ const refreshPage = async (): Promise<void> => {
     if (!pageOrBlock || mine !== refreshSequence) return;
     const page = await resolveDiscussionContext(pageOrBlock);
     if (mine !== refreshSequence) return;
-    visiblePageUid = page.pageUid;
-    if (inline) {
-      const next = await fetchDiscussions(page.pageUid);
-      if (mine !== refreshSequence) return;
-      rememberSnapshot(next);
-    } else {
-      const next = await fetchBadgeCounts(page.pageUid);
-      if (mine !== refreshSequence) return;
-      counts = next;
-      snapshot = { sources: [], threads: [] };
-    }
+    const embeds = embeddedBlockUids();
+    embeddedKey = JSON.stringify(embeds);
+    const selected = inline;
+    const owner = selected
+      ? await resolveDiscussionContext(selected.uid)
+      : undefined;
+    const [nextCounts, nextSnapshot] = await Promise.all([
+      fetchBadgeCounts(page.pageUid, embeds),
+      owner &&
+        (owner.pageUid === rail?.pageUid
+          ? rail.snapshot
+          : fetchDiscussions(owner.pageUid)),
+    ]);
+    if (mine !== refreshSequence) return;
+    counts = nextCounts;
+    snapshot = nextSnapshot || { sources: [], threads: [] };
     inlineError = "";
     renderInline();
     reconcileBadges();
@@ -429,9 +448,10 @@ const onNavigation = (): void => {
   const reopenRail = Boolean(host);
   closeDiscussions();
   closeInline();
-  rememberSnapshot({ sources: [], threads: [] });
+  counts.clear();
+  snapshot = { sources: [], threads: [] };
   reconcileBadges();
-  visiblePageUid = undefined;
+  embeddedKey = "";
   if (reopenRail) openSafely();
   refreshVisiblePage();
 };
@@ -479,13 +499,14 @@ export const stopDiscussions = (): void => {
   window.clearInterval(refreshTimer);
   document.removeEventListener("visibilitychange", refreshVisiblePage);
   closeInline();
-  rememberSnapshot({ sources: [], threads: [] });
+  counts.clear();
+  snapshot = { sources: [], threads: [] };
   returnFocus = null;
   observer?.disconnect();
   observer = null;
   if (badgeTimer !== undefined) window.clearTimeout(badgeTimer);
   badgeTimer = undefined;
-  visiblePageUid = undefined;
+  embeddedKey = "";
   for (const row of badges.keys()) removeBadge(row);
   closeDiscussions();
   for (const dispose of disposeCommands) {
