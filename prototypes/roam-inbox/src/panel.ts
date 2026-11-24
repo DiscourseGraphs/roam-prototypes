@@ -1,10 +1,19 @@
 /* The inbox panel: Messages / Mentions / Tasks, with Open, Reply, and Done
  * on every row. Opens under the badge and repaints itself on every inbox
  * change while open. */
+import { openDiscussions } from "~/discussions";
 import { markDone, open, replyTo } from "~/actions";
 import { BADGE_ID, logError } from "~/config";
 import { el, onPress } from "~/dom";
-import { loadSeen, markSeen, myAddress, refreshLists, state, subscribe, unreadMessages } from "~/inbox";
+import {
+  loadSeen,
+  markSeen,
+  myAddress,
+  refreshLists,
+  state,
+  subscribe,
+  unreadMessages,
+} from "~/inbox";
 import { prettify, relTime } from "~/text";
 import { attachTooltip } from "~/tooltip";
 
@@ -53,13 +62,26 @@ const renderPanel = (): void => {
   const tabs = el("div", "rmi-tabs");
   for (const [key, label] of TABS) {
     const n = state[key].length;
-    const t = el("div", "rmi-tab" + (tab === key ? " rmi-tab-on" : ""), n ? `${label} ${n}` : label);
+    const t = el(
+      "div",
+      "rmi-tab" + (tab === key ? " rmi-tab-on" : ""),
+      n ? `${label} ${n}` : label,
+    );
     onPress(t, () => {
       tab = key;
       renderPanel();
     });
     tabs.appendChild(t);
   }
+  const discussions = el("button", "rmi-act", "Page discussions");
+  discussions.type = "button";
+  discussions.addEventListener("click", () => {
+    closePanel();
+    void openDiscussions().catch((e) =>
+      logError("could not open discussions", e),
+    );
+  });
+  tabs.appendChild(discussions);
   panelEl.appendChild(tabs);
 
   const list = el("div", "rmi-list");
@@ -70,7 +92,8 @@ const renderPanel = (): void => {
   for (const row of rows) {
     // Matches the badge exactly (see unreadMessages). The second half catches
     // anything that lands while the panel is already open.
-    const isNew = tab === "messages" && (panelNew.has(row.uid) || !seen.has(row.uid));
+    const isNew =
+      tab === "messages" && (panelNew.has(row.uid) || !seen.has(row.uid));
     const item = el("div", "rmi-row" + (isNew ? " rmi-new" : ""));
 
     const meta = el("div", "rmi-meta");
@@ -78,7 +101,11 @@ const renderPanel = (): void => {
     meta.appendChild(document.createTextNode(` · ${relTime(row.time)}`));
     item.appendChild(meta);
 
-    const text = el("div", "rmi-text", prettify(row.string, address) || "(no text)");
+    const text = el(
+      "div",
+      "rmi-text",
+      prettify(row.string, address) || "(no text)",
+    );
     onPress(text, () => open(row.uid));
     item.appendChild(text);
 
@@ -87,7 +114,11 @@ const renderPanel = (): void => {
     // A top-level block's parent is its page; do not show the title twice.
     const page = prettify(row.page, address);
     const parent = row.parent === row.page ? "" : prettify(row.parent, address);
-    const ctx = el("div", "rmi-ctx", [page, parent].filter(Boolean).join(" › "));
+    const ctx = el(
+      "div",
+      "rmi-ctx",
+      [page, parent].filter(Boolean).join(" › "),
+    );
     item.appendChild(ctx);
     attachTooltip(ctx, () => ctx.textContent || "");
 
@@ -101,6 +132,12 @@ const renderPanel = (): void => {
     act("Reply", () => {
       closePanel();
       void replyTo(row).catch((e) => logError("reply failed", e));
+    });
+    act("Discuss", () => {
+      closePanel();
+      void openDiscussions(row.uid).catch((e) =>
+        logError("could not open discussion", e),
+      );
     });
     if (tab !== "mentions") {
       act("✓ Done", () => {
@@ -125,14 +162,17 @@ const openPanel = (): void => {
   panelEl = el("div", "rmi-panel");
   document.body.appendChild(panelEl);
   const btn = document.getElementById(BADGE_ID);
-  const r = btn ? btn.getBoundingClientRect() : { bottom: 44, right: window.innerWidth - 14 };
+  const r = btn
+    ? btn.getBoundingClientRect()
+    : { bottom: 44, right: window.innerWidth - 14 };
   panelEl.style.top = `${r.bottom + 6}px`;
   panelEl.style.right = `${Math.max(8, window.innerWidth - r.right - 4)}px`;
   renderPanel();
 
   const onDown = (e: MouseEvent) => {
     const target = e.target as Node;
-    if (panelEl && !panelEl.contains(target) && !btn?.contains(target)) closePanel();
+    if (panelEl && !panelEl.contains(target) && !btn?.contains(target))
+      closePanel();
   };
   const onKey = (e: KeyboardEvent) => {
     if (e.key === "Escape") closePanel();

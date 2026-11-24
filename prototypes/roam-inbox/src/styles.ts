@@ -75,7 +75,7 @@ export const CSS = `
                 0 8px 24px rgba(16,22,26,.2);
   }
   .rmi-tabs {
-    display: flex; gap: 4px; padding: 8px 10px 0; flex: 0 0 auto;
+    display: flex; flex-wrap: wrap; gap: 4px; padding: 8px 10px 0; flex: 0 0 auto;
     border-bottom: 1px solid rgba(16,22,26,.1);
   }
   .rmi-tab {
