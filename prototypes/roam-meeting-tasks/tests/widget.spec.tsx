@@ -251,7 +251,7 @@ describe("write-back", () => {
     });
     await clickBox(primaryRow(a, /Trang Doan/));
     const other = primaryRow(b, /Trang Doan/).querySelector("input")!;
-    expect(other.disabled).toBe(true);
+    expect(other.getAttribute("aria-disabled")).toBe("true");
     await act(async () => other.click());
     expect(api.data.block.update).toHaveBeenCalledTimes(1);
     await act(async () => finish());
@@ -259,12 +259,28 @@ describe("write-back", () => {
     expect(primaryRow(b, /edited elsewhere/).getAttribute("data-done")).toBe("true");
   });
 
+  it("retains keyboard focus on Refresh and on a saved task that stays visible", async () => {
+    const el = await render([host()]);
+    const refresh = el.querySelector("button")!;
+    refresh.focus();
+    await act(async () => refresh.click());
+    expect(document.activeElement).toBe(refresh);
+    const row = primaryRow(el, /Trang Doan/);
+    const box = row.querySelector("input")!;
+    box.focus();
+    await clickBox(row);
+    expect(box.checked).toBe(true);
+    expect(document.activeElement).toBe(box);
+  });
+
   it("drops a completed task from an open-only section after saving", async () => {
     graph.blocks.get(U("m1"))!.children.push(U("host"));
     const el = await render([host()]);
     await openSecondary(el);
     const row = [...el.querySelectorAll(".rmt-row")].find(r => r.textContent?.includes("page-level inbox"))!;
+    row.querySelector("input")!.focus();
     await clickBox(row);
+    expect(document.activeElement).toBe(el.querySelector("button"));
     expect(texts(el, "secondary").join(" ")).not.toContain("page-level inbox");
     expect(texts(el, "secondary").length).toBeGreaterThan(0);
   });

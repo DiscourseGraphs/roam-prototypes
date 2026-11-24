@@ -15,7 +15,7 @@ import { displayText, isDone } from "~/text";
 
 /* ── state ─────────────────────────────────────────────────────────────── */
 
-type Async<T> = { kind: "loading" } | { kind: "failed" } | { kind: "done"; value: T };
+type Async<T> = { kind: "loading" } | { kind: "failed" } | { kind: "done"; value: T; refreshing: boolean };
 
 /* Run `load` after render, and again when `deps` change. A result that
  * arrives after the component unmounted or reloaded is dropped. */
@@ -23,9 +23,9 @@ const useAsync = <T,>(load: () => Promise<T>, what: string, deps: React.Dependen
   const [state, setState] = React.useState<Async<T>>({ kind: "loading" });
   React.useEffect(() => {
     let live = true;
-    setState({ kind: "loading" });
+    setState((prev) => prev.kind === "done" ? { ...prev, refreshing: true } : { kind: "loading" });
     load().then(
-      (value) => live && setState({ kind: "done", value }),
+      (value) => live && setState({ kind: "done", value, refreshing: false }),
       (error) => {
         logError(`could not ${what}`, error);
         if (live) setState({ kind: "failed" });
@@ -109,6 +109,14 @@ const BlockLink = ({ uid, className, children }: { uid: string; className: strin
 type RowProps = { row: Row; saving: boolean; text: string; toggle: (task: Block, done: boolean) => void };
 
 const TaskRow = React.memo(({ row, saving, text, toggle }: RowProps) => {
+  const box = React.useRef<HTMLInputElement>(null);
+  React.useLayoutEffect(() => {
+    const input = box.current;
+    const refreshButton = input?.closest(".rmt")?.querySelector<HTMLButtonElement>(".rmt-refresh");
+    return () => {
+      if (input && document.activeElement === input) refreshButton?.focus();
+    };
+  }, []);
   const done = isDone(row.task.string);
   return (
     <div className="rmt-row" data-done={done ? "true" : "false"}>
@@ -116,7 +124,8 @@ const TaskRow = React.memo(({ row, saving, text, toggle }: RowProps) => {
         type="checkbox"
         className="rmt-check"
         checked={done}
-        disabled={saving}
+        ref={box}
+        aria-disabled={saving || undefined}
         onChange={(e) => toggle(row.task, e.target.checked)}
       />
       {row.meeting ? (
@@ -180,26 +189,37 @@ export const MeetingTasks = ({ args }: { args: WidgetArgs }) => {
     tasks.clearError();
     refresh();
   };
-  const refreshButton = <button type="button" onClick={reload}>Refresh</button>;
-
-  if (state.kind === "loading") return <div className="rmt-muted">Loading tasks…</div>;
-  if (state.kind === "failed") return <div role="alert">Could not load tasks. {refreshButton}</div>;
-  const loaded = state.value;
-  if (loaded.kind === "empty") return (
-    <div className="rmt">No tasks to show. {refreshButton}
-      {args.debug && <div className="rmt-debug">{loaded.reason} load={loaded.ms}ms</div>}
+  return (
+    <div className="rmt" aria-busy={state.kind === "loading" || (state.kind === "done" && state.refreshing)}>
+      <button className="rmt-refresh" type="button" onClick={reload}>Refresh</button>
+      {tasks.error && <div role="alert">{tasks.error}</div>}
+      {state.kind === "loading" && <div className="rmt-muted">Loading tasks…</div>}
+      {state.kind === "failed" && <div role="alert">Could not load tasks. Refresh to retry.</div>}
+      {state.kind === "done" && (state.value.kind === "empty" ? (
+        <div>No tasks to show.
+          {args.debug && <div className="rmt-debug">{state.value.reason} load={state.value.ms}ms</div>}
+        </div>
+      ) : (
+        <TaskList loaded={state.value} args={args} open={open} setOpen={setOpen} tasks={tasks} />
+      ))}
     </div>
   );
+};
 
+const TaskList = ({ loaded, args, open, setOpen, tasks }: {
+  loaded: Extract<Awaited<ReturnType<typeof loadWidget>>, { kind: "view" }>;
+  args: WidgetArgs;
+  open: boolean;
+  setOpen: React.Dispatch<React.SetStateAction<boolean>>;
+  tasks: ReturnType<typeof useTaskWrites>;
+}) => {
   const { view, refs } = loaded;
   const openCount = view.primary
     .concat(view.secondary)
     .filter((r) => !isDone(r.task.string)).length;
 
   return (
-    <div className="rmt">
-      {refreshButton}
-      {tasks.error && <div role="alert">{tasks.error}</div>}
+    <>
       <div className="rmt-count">
         {openCount} {openCount === 1 ? "open item" : "open items"}
       </div>
@@ -246,6 +266,6 @@ export const MeetingTasks = ({ args }: { args: WidgetArgs }) => {
           {view.debug} load={loaded.ms}ms
         </div>
       )}
-    </div>
+    </>
   );
 };
