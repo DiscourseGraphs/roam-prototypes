@@ -22,7 +22,7 @@ const HOST_ID = "rmi-discussion-host";
 const STYLE_ID = "rmi-discussion-style";
 const PAGE_COMMAND = "Roam Inbox: Open page discussions";
 const BLOCK_COMMAND = "Roam Inbox: Discuss focused block";
-const CONTEXT_COMMAND = "Roam Inbox: Discuss block";
+const CONTEXT_COMMAND = "Add comment";
 
 let host: HTMLDivElement | null = null;
 let layout: HTMLElement | null = null;
@@ -337,6 +337,7 @@ const renderRail = (): void => {
 export const openDiscussions = async (
   sourceUid?: string,
   trigger?: HTMLElement,
+  composeComment = false,
 ): Promise<void> => {
   const mine = ++sequence;
   const owner = generation;
@@ -384,7 +385,7 @@ export const openDiscussions = async (
           '[data-expanded="true"][data-thread-uid]',
         )
       : null;
-  context = { ...next, threadUid: expandedThread?.dataset.threadUid };
+  context = { ...next, composeComment, threadUid: expandedThread?.dataset.threadUid };
   if (!host) {
     layout = parent;
     parent.classList.add("rmi-discussion-layout");
@@ -423,8 +424,8 @@ const command = (
   });
 };
 
-const openSafely = (uid?: string, trigger?: HTMLElement): void => {
-  void openDiscussions(uid, trigger).catch((error) => {
+const openSafely = (uid?: string, trigger?: HTMLElement, composeComment = false): void => {
+  void openDiscussions(uid, trigger, composeComment).catch((error) => {
     logError("could not open discussions", error);
     window.alert(
       error instanceof Error ? error.message : "Could not open discussions.",
@@ -526,9 +527,10 @@ export const startDiscussions = (): void => {
   command(ui.commandPalette as CommandApi, BLOCK_COMMAND, () =>
     openSafely(ui.getFocusedBlock()?.["block-uid"]),
   );
-  command(ui.blockContextMenu as CommandApi, CONTEXT_COMMAND, (ctx) =>
-    openSafely(ctx?.["block-uid"]),
-  );
+  command(ui.blockContextMenu as CommandApi, CONTEXT_COMMAND, (ctx) => {
+    const uid = ctx?.["block-uid"];
+    if (uid) openSafely(uid, undefined, true);
+  });
   if (typeof IntersectionObserver !== "undefined") {
     viewport = new IntersectionObserver(
       (entries) => {

@@ -23,6 +23,7 @@ export type DiscussionContext = {
   title: string;
   sourceUid?: string;
   threadUid?: string;
+  composeComment?: boolean;
   outlineUid?: string;
   outlineTitle?: string;
   nativeStorage?: boolean;
@@ -208,7 +209,7 @@ export const resolveDiscussionContext = async (
   const target = uid || (await api.ui.mainWindow.getOpenPageOrBlockUid());
   if (!target)
     throw new Error(
-      "Open a page, or choose Discuss block from a block’s menu.",
+      "Open a page, or choose Add comment from a block’s menu.",
     );
   const pulled = await api.data.async.pull(
     "[:block/uid :block/string :node/title {:block/parents [:block/uid :block/string]} {:block/page [:block/uid :node/title]}]",
