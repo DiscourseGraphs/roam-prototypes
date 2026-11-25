@@ -2,9 +2,14 @@ import React from "react";
 import ReactDOM from "react-dom";
 import { act, Simulate } from "react-dom/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { clearDiscussionDrafts, DiscussionRail, InlineDiscussions } from "~/discussion-rail";
+import {
+  clearDiscussionDrafts,
+  DiscussionRail,
+  InlineDiscussions,
+} from "~/discussion-rail";
 import {
   fetchDiscussions,
+  findDiscussionSources,
   postNativeComment,
   setThreadResolved,
   type DiscussionSnapshot,
@@ -14,6 +19,7 @@ import { installFakeRoam } from "./fixtures";
 vi.mock("~/discussion-data", async (original) => ({
   ...(await original<typeof import("~/discussion-data")>()),
   fetchDiscussions: vi.fn(),
+  findDiscussionSources: vi.fn(),
   postNativeComment: vi.fn(),
   setThreadResolved: vi.fn(),
   canAddComments: () => true,
@@ -77,6 +83,7 @@ beforeEach(() => {
   host = document.createElement("div");
   document.body.appendChild(host);
   vi.mocked(fetchDiscussions).mockResolvedValue(structuredClone(snapshot));
+  vi.mocked(findDiscussionSources).mockResolvedValue([source]);
   vi.mocked(postNativeComment).mockResolvedValue(undefined);
   vi.mocked(setThreadResolved).mockResolvedValue(undefined);
 });
@@ -90,6 +97,26 @@ afterEach(() => {
 });
 
 describe("discussion rail", () => {
+  it("renders 25 summaries at a time while keeping older selected threads reachable", async () => {
+    const threads = Array.from({ length: 31 }, (_, i) => ({
+      ...snapshot.threads[0],
+      uid: "topic-" + i,
+    }));
+    vi.mocked(fetchDiscussions).mockResolvedValue({
+      sources: [source],
+      threads,
+    });
+    await mount("topic-30");
+    expect(host.querySelectorAll("[data-thread-uid]")).toHaveLength(26);
+    expect(
+      host
+        .querySelector('[data-thread-uid="topic-30"]')
+        ?.getAttribute("data-expanded"),
+    ).toBe("true");
+    await click("Load more discussions");
+    expect(host.querySelectorAll("[data-thread-uid]")).toHaveLength(31);
+  });
+
   it("posts replies to the topic UID and new threads to the source UID", async () => {
     await mount();
     type("Reply text");
@@ -151,12 +178,13 @@ describe("discussion rail", () => {
   it("can cancel composition when the final source disappears", async () => {
     await mount();
     await click("New thread");
+    vi.mocked(findDiscussionSources).mockResolvedValue([]);
     vi.mocked(fetchDiscussions).mockResolvedValue({ sources: [], threads: [] });
     await click("Refresh discussions");
-    expect(host.textContent).toContain("Add a block");
+    expect(host.textContent).toContain("No matching source blocks");
     expect(buttons("Cancel").disabled).toBe(false);
     await click("Cancel");
-    expect(buttons("New thread").disabled).toBe(true);
+    expect(buttons("New thread").disabled).toBe(false);
   });
 
   it("retains a rejected reply, and keeps its draft when switching filters", async () => {
@@ -218,13 +246,17 @@ describe("discussion rail", () => {
       resolve.focus();
       expect(document.activeElement).toBe(resolve);
       await click("Collapse thread");
-      expect(buttons("Expand thread").getAttribute("aria-expanded")).toBe("false");
+      expect(buttons("Expand thread").getAttribute("aria-expanded")).toBe(
+        "false",
+      );
       await click("Expand thread");
       expect(host.querySelector("textarea")).not.toBeNull();
     };
     await mount();
     await verifyControls();
-    act(() => { ReactDOM.unmountComponentAtNode(host); });
+    act(() => {
+      ReactDOM.unmountComponentAtNode(host);
+    });
     await act(async () => {
       ReactDOM.render(
         <InlineDiscussions
@@ -322,7 +354,7 @@ describe("discussion rail", () => {
     expect(host.querySelector('[role="alert"]')).toBeNull();
   });
 
-  it("ignores an in-flight load after unmount and disposes its pull watch", async () => {
+  it("ignores an in-flight load after unmount and does not register a recursive page watch", async () => {
     let finish: (value: DiscussionSnapshot) => void = () => {};
     vi.mocked(fetchDiscussions).mockReturnValueOnce(
       new Promise((resolve) => {
@@ -330,7 +362,7 @@ describe("discussion rail", () => {
       }),
     );
     const changed = vi.fn();
-    const remove = vi.spyOn(window.roamAlphaAPI.data, "removePullWatch");
+    const watch = vi.spyOn(window.roamAlphaAPI.data, "addPullWatch");
     await act(async () => {
       ReactDOM.render(
         <DiscussionRail
@@ -348,6 +380,6 @@ describe("discussion rail", () => {
       finish(snapshot);
     });
     expect(changed).not.toHaveBeenCalled();
-    expect(remove).toHaveBeenCalledTimes(1);
+    expect(watch).not.toHaveBeenCalled();
   });
 });

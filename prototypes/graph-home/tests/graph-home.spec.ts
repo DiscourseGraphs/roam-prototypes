@@ -95,7 +95,9 @@ describe("Graph Home", () => {
     expect(
       document.querySelectorAll(".dg-graph-home-active .kanban-board"),
     ).toHaveLength(1);
-    expect(document.querySelectorAll("nav button")).toHaveLength(4);
+    expect(
+      Array.from(document.querySelectorAll("nav button strong"), (label) => label.textContent),
+    ).toEqual(["Team front page", "My Homepage", "Sync / All Hands"]);
 
     act(() => unload());
     expect(document.querySelector(".dg-graph-home")).toBeNull();
@@ -165,22 +167,12 @@ describe("Graph Home", () => {
     expect(openPage).toHaveBeenCalledWith({ page: { uid: "old-front-uid" } });
   });
 
-  it("opens Dashboard without a legacy Dashboard page block", async () => {
-    expect(
-      document.querySelector('.kanban-board [data-link-title="📊 Dashboard"]'),
-    ).toBeNull();
-    query.mockResolvedValueOnce([["dashboard-uid"]]);
-    await click("Dashboard");
-
-    expect(openPage).toHaveBeenCalledWith({ page: { uid: "dashboard-uid" } });
-  });
-
   it("opens a shortcut in the right sidebar on Shift-click", async () => {
-    query.mockResolvedValueOnce([["dashboard-uid"]]);
-    await click("Dashboard", { shiftKey: true });
+    query.mockResolvedValueOnce([["all-hands-uid"]]);
+    await click("Sync / All Hands", { shiftKey: true });
 
     expect(addWindow).toHaveBeenCalledWith({
-      window: { type: "outline", "block-uid": "dashboard-uid" },
+      window: { type: "outline", "block-uid": "all-hands-uid" },
     });
     expect(openPage).not.toHaveBeenCalled();
     expect(openTab).not.toHaveBeenCalled();
@@ -197,14 +189,14 @@ describe("Graph Home", () => {
       openTab.mockReturnValueOnce(tab);
       query.mockImplementationOnce(() => {
         expect(openTab).toHaveBeenCalledWith("about:blank", "_blank");
-        return Promise.resolve([["dashboard-uid"]]);
+        return Promise.resolve([["all-hands-uid"]]);
       });
 
-      await click("Dashboard", modifiers);
+      await click("Sync / All Hands", modifiers);
 
       expect(tab.opener).toBeNull();
       expect(tab.location.replace).toHaveBeenCalledWith(
-        `${window.location.origin}/#/app/test-graph/page/dashboard-uid`,
+        `${window.location.origin}/#/app/test-graph/page/all-hands-uid`,
       );
       expect(tab.close).not.toHaveBeenCalled();
       expect(openPage).not.toHaveBeenCalled();
@@ -221,27 +213,27 @@ describe("Graph Home", () => {
     openTab.mockReturnValueOnce(tab);
     query.mockResolvedValueOnce([]);
 
-    await click("Dashboard", { ctrlKey: true });
+    await click("Sync / All Hands", { ctrlKey: true });
 
     expect(tab.close).toHaveBeenCalledOnce();
     expect(tab.location.replace).not.toHaveBeenCalled();
     expect(document.querySelector('[role="alert"]')?.textContent).toContain(
-      "📊 Dashboard",
+      "Sync / All Hands",
     );
   });
 
   it("reports a missing destination and allows retry", async () => {
-    query.mockResolvedValueOnce([]).mockResolvedValueOnce([["dashboard-uid"]]);
-    await click("Dashboard");
+    query.mockResolvedValueOnce([]).mockResolvedValueOnce([["all-hands-uid"]]);
+    await click("Sync / All Hands");
 
     expect(document.querySelector('[role="alert"]')?.textContent).toContain(
-      "📊 Dashboard",
+      "Sync / All Hands",
     );
     expect(openPage).not.toHaveBeenCalled();
 
-    await click("Dashboard");
+    await click("Sync / All Hands");
     expect(document.querySelector('[role="alert"]')).toBeNull();
-    expect(openPage).toHaveBeenCalledWith({ page: { uid: "dashboard-uid" } });
+    expect(openPage).toHaveBeenCalledWith({ page: { uid: "all-hands-uid" } });
   });
 
   it("ignores navigation results after the launcher unloads", async () => {
@@ -252,11 +244,11 @@ describe("Graph Home", () => {
           finishLookup = resolve;
         }),
     );
-    await click("Dashboard");
+    await click("Sync / All Hands");
 
     await act(async () => {
       unload();
-      finishLookup([["dashboard-uid"]]);
+      finishLookup([["all-hands-uid"]]);
     });
     expect(openPage).not.toHaveBeenCalled();
   });

@@ -87,7 +87,10 @@ it("keeps a resolved-only badge across inline, focused rail, and closed views", 
   // An open sibling would normally win the rail's initial Open filter.
   vi.mocked(fetchDiscussions).mockResolvedValue({
     ...response,
-    threads: [{ ...response.threads[0], uid: "other-thread", resolved: false }, ...response.threads],
+    threads: [
+      { ...response.threads[0], uid: "other-thread", resolved: false },
+      ...response.threads,
+    ],
   });
   await act(async () => {
     badge.dispatchEvent(
@@ -161,7 +164,7 @@ it("keeps both rendered copies interactive while the panel visits another page",
   };
   vi.mocked(fetchBadgeCounts).mockResolvedValue(new Map([["source", 1]]));
   vi.mocked(fetchDiscussions).mockImplementation(async (pageUid) =>
-    pageUid === "page-a"
+    pageUid === "page-a" || pageUid === "source"
       ? { sources: [source], threads: [topic] }
       : { sources: [], threads: [] },
   );
@@ -189,7 +192,7 @@ it("keeps both rendered copies interactive while the panel visits another page",
   await act(async () => {
     await openDiscussions("remote");
   });
-  expect(fetchDiscussions).toHaveBeenCalledWith("page-b");
+  expect(fetchDiscussions).toHaveBeenCalledWith("page-b", "page");
   await act(async () => {
     window.dispatchEvent(new Event("rmi-native-discussions-changed"));
   });
@@ -211,4 +214,57 @@ it("keeps both rendered copies interactive while the panel visits another page",
   expect(document.activeElement).toBe(embed);
   act(stopDiscussions);
   expect(document.querySelector(".rmi-discussion-badge")).toBeNull();
+});
+
+it("queries only near-viewport source UIDs, including embeds, in batches of at most 100", async () => {
+  const api = installFakeRoam();
+  Object.assign(api.ui, {
+    mainWindow: { getOpenPageOrBlockUid: () => "archive" },
+  });
+  const rows = Array.from(
+    { length: 200 },
+    (_, i) =>
+      `<div data-block-uid="source-${i}"><div class="rm-block-text" id="block-input-embed-window-source-${i}"></div></div>`,
+  ).join("");
+  document.body.innerHTML = `<main class="roam-article">${rows}</main>`;
+  let enter: (entries: Partial<IntersectionObserverEntry>[]) => void = () => {};
+  const disconnect = vi.fn();
+  vi.stubGlobal(
+    "IntersectionObserver",
+    class {
+      constructor(callback: typeof enter) {
+        enter = callback;
+      }
+      observe() {}
+      unobserve() {}
+      disconnect = disconnect;
+    },
+  );
+  vi.mocked(fetchBadgeCounts).mockResolvedValue(new Map());
+  vi.useFakeTimers();
+  try {
+    await act(async () => {
+      startDiscussions();
+    });
+    expect(fetchBadgeCounts).not.toHaveBeenCalled();
+    const visible = Array.from(
+      document.querySelectorAll(".rm-block-text"),
+    ).slice(0, 105);
+    await act(async () => {
+      enter(visible.map((target) => ({ target, isIntersecting: true })));
+      await vi.advanceTimersByTimeAsync(105);
+    });
+    const batches = vi
+      .mocked(fetchBadgeCounts)
+      .mock.calls.map(([uids]) => uids);
+    expect(batches.map((batch) => batch.length)).toEqual([100, 5]);
+    expect(new Set(batches.flat())).toEqual(
+      new Set(visible.map((node) => node.parentElement!.dataset.blockUid)),
+    );
+    expect(fetchDiscussions).not.toHaveBeenCalled();
+    act(stopDiscussions);
+    expect(disconnect).toHaveBeenCalledOnce();
+  } finally {
+    vi.useRealTimers();
+  }
 });

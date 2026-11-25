@@ -14,6 +14,6 @@ export default defineConfig({
     restoreMocks: true,
     // Spec files, not test files: the repository root's `node --test` picks
     // up dot-test dot-ts files itself and cannot resolve vitest or the alias.
-    include: ["tests/**/*.spec.ts", "tests/**/*.spec.tsx"],
+    include: ["tests/**/*.spec.ts", "tests/**/*.spec.tsx", "tests/**/*.spec.js"],
   },
 });

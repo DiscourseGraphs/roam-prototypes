@@ -8,10 +8,10 @@ Internal prototype for evaluation by Discourse Graphs.
 
 ## Features
 
-- The four shortcuts appear in one row when the Home content area is at least 900 pixels wide, in a 2 × 2 grid from 600 to 899 pixels, and as directory rows below 600 pixels. Opening or resizing the Roam sidebar can switch the layout.
-- Open the team front page, Dashboard, My Homepage, or Sync / All Hands from the main **🥾 Home** page. Shift-click opens a shortcut in the right sidebar. Ctrl-click or Command-click opens it in a new tab.
+- The three shortcuts appear in one row when the Home content area is at least 900 pixels wide, in a two-column grid from 600 to 899 pixels, and as directory rows below 600 pixels. Opening or resizing the Roam sidebar can switch the layout.
+- Open the team front page, My Homepage, or Sync / All Hands from the main **🥾 Home** page. Shift-click opens a shortcut in the right sidebar. Ctrl-click or Command-click opens it in a new tab.
 - **My Homepage** looks up the signed-in user's display name and opens the existing <code>&lt;display name&gt;/Home</code> page.
-- The extension hides matching legacy launcher boards on the main Home page while active, including the front-page-only board after the old Dashboard block was removed. Dashboard remains a launcher shortcut. Unloading restores existing boards. The extension uses read-only graph access.
+- The extension hides matching legacy launcher boards on the main Home page while active, including the front-page-only board after the old Dashboard block was removed. Dashboard is separate and is not shown in the launcher. Unloading restores existing boards. The extension uses read-only graph access.
 
 ## Install from a URL
 

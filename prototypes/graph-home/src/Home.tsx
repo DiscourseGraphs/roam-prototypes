@@ -12,12 +12,6 @@ const DESTINATIONS = [
     icon: "people",
   },
   {
-    label: "Dashboard",
-    title: "📊 Dashboard",
-    description: "Open the shared project dashboard.",
-    icon: "dashboard",
-  },
-  {
     label: "My Homepage",
     title: null,
     description: "Go to your personal page in this graph.",

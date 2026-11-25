@@ -3,6 +3,10 @@ import { Button, HTMLSelect, Icon, Spinner, TextArea } from "@blueprintjs/core";
 import {
   canAddComments,
   fetchDiscussions,
+  loadThreadContent,
+  loadDiscussionLabels,
+  findDiscussionSources,
+  type DiscussionSource,
   setThreadResolved,
   type CommentContent,
   type DiscussionComment,
@@ -187,6 +191,44 @@ const Thread = ({
     },
     [],
   );
+  const [details, setDetails] =
+    React.useState<Awaited<ReturnType<typeof loadThreadContent>>>();
+  React.useEffect(() => {
+    if (!expanded || !thread.summary) return;
+    let current = true;
+    setDetails(undefined);
+    setError("");
+    loadThreadContent(thread.uid)
+      .then((result) => {
+        if (current) setDetails(result);
+      })
+      .catch(() => {
+        if (current) setError("Could not load thread content.");
+      });
+    return () => {
+      current = false;
+    };
+  }, [thread, expanded]);
+  // A native reply lives under a container referencing this topic. Watch
+  // that one hop while reading the topic; unrelated outline edits stay idle.
+  React.useEffect(() => {
+    if (!expanded) return;
+    const data = window.roamAlphaAPI.data;
+    const pattern =
+      "[:block/string :block/props {:block/_refs [{:block/children [:block/uid :block/string]}]}]";
+    const entity = `[:block/uid ${JSON.stringify(thread.uid)}]`;
+    const changed = () => {
+      if (!document.hidden) void reload();
+    };
+    try {
+      data.addPullWatch(pattern, entity, changed);
+    } catch {
+      return;
+    }
+    return () => {
+      data.removePullWatch(pattern, entity, changed);
+    };
+  }, [thread.uid, expanded, reload]);
   const resolve = async (): Promise<void> => {
     if (updating.current) return;
     updating.current = true;
@@ -219,7 +261,11 @@ const Thread = ({
         <div className="rmi-discussion-resolved">Resolved</div>
       )}
       <Comment
-        comment={thread}
+        comment={
+          expanded && details
+            ? { ...thread, children: details.children }
+            : thread
+        }
         actions={
           <div className="rmi-discussion-actions">
             <Button
@@ -228,7 +274,9 @@ const Thread = ({
               className="rmi-discussion-resolve"
               icon={thread.resolved ? "undo" : "tick"}
               aria-label={resolveLabel}
-              data-tooltip={thread.resolved ? "Reopen thread" : "Resolve thread"}
+              data-tooltip={
+                thread.resolved ? "Reopen thread" : "Resolve thread"
+              }
               data-busy={busy}
               loading={busy}
               onClick={() => void resolve()}
@@ -247,14 +295,17 @@ const Thread = ({
       />
       {!expanded && thread.replies.length > 0 && (
         <div className="rmi-discussion-reply-count">
-          {thread.replies.length} {thread.replies.length === 1 ? "reply" : "replies"}
+          {thread.replies.length}{" "}
+          {thread.replies.length === 1 ? "reply" : "replies"}
         </div>
       )}
       {expanded && (
         <div className="rmi-discussion-replies">
-          {thread.replies.map((reply) => (
-            <Comment key={reply.uid} comment={reply} />
-          ))}
+          {(thread.summary ? details?.replies || [] : thread.replies).map(
+            (reply) => (
+              <Comment key={reply.uid} comment={reply} />
+            ),
+          )}
           {thread.resolved ? (
             <div className="rmi-discussion-note">
               Reopen this thread to continue the discussion.
@@ -395,14 +446,16 @@ export const DiscussionRail = ({
   const [filter, setFilter] = React.useState<Filter>("open");
   const [expanded, setExpanded] = React.useState<Set<string>>(new Set());
   const [preferredSource, setPreferredSource] = React.useState(
-    context.sourceUid,
+    context.sourceUid || context.outlineUid,
   );
-  const sourceUid = snapshot.sources.some(
-    (source) => source.uid === preferredSource,
-  )
-    ? preferredSource
-    : snapshot.sources[0]?.uid;
   const [composing, setComposing] = React.useState(false);
+  const [search, setSearch] = React.useState("");
+  const [findingSources, setFindingSources] = React.useState(false);
+  const [options, setOptions] = React.useState<DiscussionSource[]>([]);
+  const [limit, setLimit] = React.useState(25);
+  const sourceUid = options.some((s) => s.uid === preferredSource)
+    ? preferredSource
+    : options[0]?.uid;
   const [loading, setLoading] = React.useState(true);
   const [refreshing, setRefreshing] = React.useState(false);
   const [error, setError] = React.useState("");
@@ -420,7 +473,10 @@ export const DiscussionRail = ({
     reading.current = true;
     setRefreshing(true);
     try {
-      const next = await fetchDiscussions(context.pageUid);
+      const next = await fetchDiscussions(
+        context.outlineUid || context.pageUid,
+        context.outlineUid ? "outline" : "page",
+      );
       if (!alive.current || mine !== seq.current) return;
       setSnapshot(next);
       setError("");
@@ -437,50 +493,71 @@ export const DiscussionRail = ({
         setRefreshing(false);
       }
     }
-  }, [context.pageUid]);
+  }, [context.pageUid, context.outlineUid]);
 
   React.useEffect(() => {
     alive.current = true;
     void reload();
     const timer = window.setInterval(() => {
       if (!document.hidden && !reading.current) void reload();
-    }, 15000);
+    }, 60000);
     const visible = (): void => {
       if (!document.hidden && !reading.current) void reload();
     };
     document.addEventListener("visibilitychange", visible);
-    let watching = false;
-    const pattern = "[{:block/children ...}]";
-    const entity = `[:block/uid ${JSON.stringify(context.pageUid)}]`;
-    const changed = (): void => {
-      if (!document.hidden && !reading.current) void reload();
-    };
     const written = (): void => {
       void reload();
     };
     window.addEventListener(DISCUSSIONS_CHANGED, written);
-    try {
-      window.roamAlphaAPI.data.addPullWatch(pattern, entity, changed);
-      watching = true;
-    } catch {
-      /* polling remains available */
-    }
     return () => {
       alive.current = false;
       seq.current += 1;
       window.clearInterval(timer);
       document.removeEventListener("visibilitychange", visible);
       window.removeEventListener(DISCUSSIONS_CHANGED, written);
-      if (watching) {
-        try {
-          window.roamAlphaAPI.data.removePullWatch(pattern, entity, changed);
-        } catch {
-          /* graph may have closed */
-        }
-      }
     };
   }, [context.pageUid, reload]);
 
+  const addressedThread =
+    React.useMemo(
+      () =>
+        context.sourceUid &&
+        snapshot.threads.find(
+          (thread) =>
+            thread.uid === context.sourceUid ||
+            thread.replies.some((reply) => reply.uid === context.sourceUid),
+        ),
+      [context.sourceUid, snapshot.threads],
+    ) || undefined;
+  const selectedSource = addressedThread?.source.uid ?? context.sourceUid;
+  React.useEffect(() => {
+    if (!composing) return;
+    let current = true;
+    setFindingSources(true);
+    const load = () =>
+      findDiscussionSources(
+        { ...context, sourceUid: selectedSource },
+        search.trim(),
+      )
+        .then((rows) => {
+          if (!current) return;
+          setFindingSources(false);
+          setOptions(rows);
+        })
+        .catch(() => {
+          if (current) {
+            setOptions([]);
+            setFindingSources(false);
+            setError("Could not load source blocks.");
+          }
+        });
+    const timer = search ? window.setTimeout(load, 200) : undefined;
+    if (!search) void load();
+    return () => {
+      current = false;
+      window.clearTimeout(timer);
+    };
+  }, [composing, context, search, snapshot, selectedSource]);
   const rail = React.useRef<HTMLElement>(null);
   const [compact, setCompact] = React.useState(
     () => window.matchMedia?.("(max-width:650px)").matches || false,
@@ -497,18 +574,6 @@ export const DiscussionRail = ({
     if (compact && !rail.current?.contains(document.activeElement))
       closeButton.current?.focus({ preventScroll: true });
   }, [compact, snapshot]);
-  const addressedThread =
-    React.useMemo(
-      () =>
-        context.sourceUid &&
-        snapshot.threads.find(
-          (thread) =>
-            thread.uid === context.sourceUid ||
-            thread.replies.some((reply) => reply.uid === context.sourceUid),
-        ),
-      [context.sourceUid, snapshot.threads],
-    ) || undefined;
-  const selectedSource = addressedThread?.source.uid ?? context.sourceUid;
   // Apply a badge selection once. Background refreshes must leave the reader’s place alone.
   React.useLayoutEffect(() => {
     if (loading || error || appliedContext.current === context) return;
@@ -562,12 +627,48 @@ export const DiscussionRail = ({
     target?.focus({ preventScroll: true });
   }, [focusTarget]);
 
-  const threads = snapshot.threads.filter(
-    (t) =>
-      filter === "all" || (filter === "resolved" ? t.resolved : !t.resolved),
+  const threads = React.useMemo(
+    () =>
+      snapshot.threads.filter(
+        (t) =>
+          filter === "all" ||
+          (filter === "resolved" ? t.resolved : !t.resolved),
+      ),
+    [snapshot, filter],
   );
+  const visible = React.useMemo(() => {
+    const result = threads.slice(0, limit);
+    const target = threads.find((t) => t.uid === focusTarget?.uid);
+    if (target && !result.includes(target)) result.push(target);
+    return result;
+  }, [threads, limit, focusTarget?.uid]);
+  const [labels, setLabels] = React.useState(new Map<string, string>());
+  React.useEffect(() => {
+    const uids = new Set(
+      visible.filter((t) => t.summary).flatMap((t) => [t.uid, t.source.uid]),
+    );
+    if (!uids.size) return;
+    let active = true;
+    loadDiscussionLabels([...uids])
+      .then((next) => {
+        if (active) setLabels(next);
+      })
+      .catch(() => {
+        if (active) setError("Could not load discussion labels.");
+      });
+    return () => {
+      active = false;
+    };
+  }, [visible]);
   const groups = new Map<string, DiscussionThread[]>();
-  for (const thread of threads) {
+  for (const row of visible) {
+    const thread = row.summary
+      ? {
+          ...row,
+          string: labels.get(row.uid) || "",
+          source: { ...row.source, string: labels.get(row.source.uid) || "" },
+        }
+      : row;
     const group = groups.get(thread.source.uid);
     if (group) group.push(thread);
     else groups.set(thread.source.uid, [thread]);
@@ -591,7 +692,7 @@ export const DiscussionRail = ({
         if (!compact || event.key !== "Tab") return;
         const controls = Array.from(
           event.currentTarget.querySelectorAll<HTMLElement>(
-            'button:not(:disabled),a[href],textarea:not(:disabled),select:not(:disabled),[tabindex="0"]',
+            'button:not(:disabled),a[href],input:not(:disabled),textarea:not(:disabled),select:not(:disabled),[tabindex="0"]',
           ),
         ).filter((el) => el.getClientRects().length > 0);
         const first = controls[0],
@@ -605,13 +706,15 @@ export const DiscussionRail = ({
         }
       }}
       className="rmi-discussion-rail"
-      aria-label="Page discussions"
+      aria-label={
+        context.outlineUid ? "Outline discussions" : "Page discussions"
+      }
     >
       <header className="rmi-discussion-header">
         <div>
           <h2>
             <Icon icon="chat" iconSize={16} aria-hidden="true" />
-            Discussions
+            {context.outlineUid ? "Outline discussions" : "Discussions"}
           </h2>
           <div className="rmi-discussion-page">{context.title}</div>
         </div>
@@ -666,8 +769,11 @@ export const DiscussionRail = ({
           elementRef={composeButton}
           aria-expanded={composing}
           text={composing ? "Cancel" : "New thread"}
-          disabled={!composing && (loading || !snapshot.sources.length)}
-          onClick={() => setComposing(!composing)}
+          disabled={!composing && loading}
+          onClick={() => {
+            setSearch("");
+            setComposing(!composing);
+          }}
         />
       </div>
       <div className="rmi-discussion-scroll">
@@ -677,7 +783,7 @@ export const DiscussionRail = ({
             <Button minimal small text="Retry" onClick={() => void reload()} />
           </div>
         )}
-        {composing && snapshot.sources.length > 0 && (
+        {composing && (
           <section
             className="rmi-discussion-new"
             aria-label="Start a discussion"
@@ -685,18 +791,28 @@ export const DiscussionRail = ({
             <label htmlFor="rmi-discussion-source-select">
               Comment on a block
             </label>
+            <input
+              className="bp3-input"
+              aria-label="Search source blocks"
+              placeholder="Search this outline…"
+              value={search}
+              onChange={(e) => setSearch(e.currentTarget.value)}
+            />
+            {!findingSources && !options.length && (
+              <p>No matching source blocks.</p>
+            )}
             <HTMLSelect
               id="rmi-discussion-source-select"
               fill
               autoFocus
               value={sourceUid || ""}
               onChange={(e) => setPreferredSource(e.currentTarget.value)}
-              options={snapshot.sources.map((s) => ({
+              options={options.map((s) => ({
                 value: s.uid,
                 label: prettify(s.string, null).slice(0, 100) || "Empty block",
               }))}
             />
-            {sourceUid && (
+            {sourceUid && !findingSources && (
               <Composer
                 key={`new:${sourceUid}`}
                 uid={sourceUid}
@@ -745,7 +861,8 @@ export const DiscussionRail = ({
             </SourceGroup>
           ))
         ) : (
-          !error && (!composing || !snapshot.sources.length) && (
+          !error &&
+          !composing && (
             <div className="rmi-discussion-empty">
               <strong>
                 {filter === "resolved"
@@ -754,11 +871,15 @@ export const DiscussionRail = ({
                     ? "No discussions yet"
                     : "No open discussions"}
               </strong>
-              {!snapshot.sources.length && filter !== "resolved" && (
-                <span>Add a block to this page to start a discussion.</span>
-              )}
             </div>
           )
+        )}
+        {threads.length > limit && (
+          <Button
+            minimal
+            text="Load more discussions"
+            onClick={() => setLimit(limit + 25)}
+          />
         )}
       </div>
     </aside>

@@ -163,7 +163,7 @@
 
 @container dg-graph-home (min-width: 900px) {
   .dg-graph-home .dg-graph-home-links {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     max-width: none;
   }
 
