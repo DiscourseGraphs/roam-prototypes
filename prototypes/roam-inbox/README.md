@@ -131,7 +131,7 @@ topics; choose **Load more discussions** for older topics. **New thread** opens
 the source picker. Type to search deeper in the current outline.
 
 - Open the command palette and choose **Roam Inbox: Open page discussions**.
-- To comment on a block, right-click its bullet and choose **Plugins → Add comment**.
+- To comment on a block, right-click its bullet and choose **Extensions → Add comment**.
   Type your comment and choose **Post thread**. To browse the focused block’s
   discussions, use **Roam Inbox: Discuss focused block**.
 - The inbox panel also offers **Page discussions**, and each row has **Discuss**.
