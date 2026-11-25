@@ -124,6 +124,12 @@ This beta adds a page discussion rail alongside the existing inbox. To try it be
 merge, use the preview URL posted on the pull request in a scratch graph. Unload the
 stable Inbox in that graph before loading the preview.
 
+On a page, the rail shows discussions across that page. When zoomed into a block,
+**Outline discussions** includes the focused block and its descendants. Clicking a
+badge inline loads that source's threads and replies. The rail starts with 25
+topics; choose **Load more discussions** for older topics. **New thread** opens
+the source picker. Type to search deeper in the current outline.
+
 - Open the command palette and choose **Roam Inbox: Open page discussions**.
 - To start at a particular block, right-click its bullet and choose **Plugins →
   Roam Inbox: Discuss block**, or use **Roam Inbox: Discuss focused block**.
@@ -154,8 +160,9 @@ check off an inbox message, or delete anything. Other block properties are retai
 Without the extension, the conversation remains readable but its resolution status
 has no native UI. Concurrent property edits follow Roam’s ordinary last-writer behavior.
 
-Page reads, a pull watch, and a 15-second visible-tab fallback refresh keep the rail
-current. Drafts are scoped to the graph, user, and comment target. They survive a reload in the same browser tab when session storage is available. Posting clears the draft after Roam confirms the write. Closing a discussion or switching filters preserves it. The rail follows main-window page navigation and floats above the page on desktop and fills the screen on phones. The existing Roam right sidebar remains available separately.
+Expanded topics watch their own text, resolution, and native reply containers.
+The rail refreshes after local writes, on returning to the tab, and every 60 seconds
+while visible. Badge queries batch sources near the viewport. Drafts are scoped to the graph, user, and comment target. They survive a reload in the same browser tab when session storage is available. Posting clears the draft after Roam confirms the write. Closing a discussion or switching filters preserves it. The rail follows main-window page navigation and floats above the page on desktop and fills the screen on phones. The existing Roam right sidebar remains available separately.
 
 This iteration has one level of discussion replies. Deeper native comments remain
 in Roam but are not expanded recursively in the rail. It does not add reactions,

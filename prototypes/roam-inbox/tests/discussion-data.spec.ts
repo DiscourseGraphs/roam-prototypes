@@ -6,7 +6,7 @@ import {
   isResolved,
   postNativeComment,
   Q_PAGE_COMMENTS,
-  Q_PAGE_SOURCES,
+  Q_INLINE_COMMENTS,
   Q_REPLY_COMMENTS,
   resolveDiscussionContext,
   setThreadResolved,
@@ -53,13 +53,12 @@ describe("native discussion reads", () => {
     const api = installFakeRoam();
     const query = vi
       .spyOn(api.data.async, "q")
-      .mockResolvedValueOnce([])
       .mockResolvedValueOnce([["embedded", "((embedded))", 2]]);
-    expect(await fetchBadgeCounts("host-page", ["embedded"])).toEqual(
+    expect(await fetchBadgeCounts(["embedded"])).toEqual(
       new Map([["embedded", 2]]),
     );
-    expect(query.mock.calls[1][1]).toEqual(["embedded"]);
-    expect(query.mock.calls[1][0]).not.toContain(":block/page");
+    expect(query.mock.calls[0][1]).toEqual(["embedded"]);
+    expect(query.mock.calls[0][0]).not.toContain(":block/page");
   });
 
   it("reads closed-page counts without loading reply content or counting prose references", async () => {
@@ -68,7 +67,9 @@ describe("native discussion reads", () => {
       ["source", "((source))", 3],
       ["source", "Mention ((source))", 2],
     ]);
-    expect(await fetchBadgeCounts("page")).toEqual(new Map([["source", 3]]));
+    expect(await fetchBadgeCounts(["source"])).toEqual(
+      new Map([["source", 3]]),
+    );
     expect(query).toHaveBeenCalledTimes(1);
     expect(query.mock.calls[0][0]).not.toContain("(pull");
     for (const nativeQuery of [
@@ -87,8 +88,7 @@ describe("native discussion reads", () => {
     const query = vi
       .spyOn(api.data.async, "q")
       .mockImplementation(async (q, ...args) => {
-        if (q === Q_PAGE_SOURCES) return [[source]];
-        if (q === Q_PAGE_COMMENTS)
+        if (q === Q_INLINE_COMMENTS)
           return [
             [
               source,
@@ -122,15 +122,15 @@ describe("native discussion reads", () => {
         }
         throw new Error("Unexpected query");
       });
-    const result = await fetchDiscussions("page");
+    const result = await fetchDiscussions("source", "inline");
     expect(result.threads.map((t) => t.uid)).toEqual(["root", "root2"]);
     expect(result.threads[0].replies.map((r) => r.uid)).toEqual([
       "reply-first",
       "reply-later",
     ]);
     expect(result.threads[1].resolved).toBe(true);
-    expect(query).toHaveBeenCalledTimes(3);
-    expect(query).toHaveBeenCalledWith(Q_PAGE_COMMENTS, "page");
+    expect(query).toHaveBeenCalledTimes(2);
+    expect(query).toHaveBeenCalledWith(Q_INLINE_COMMENTS, "source");
   });
 
   it("surfaces graph-read failures rather than presenting an empty discussion", async () => {
@@ -149,6 +149,7 @@ describe("native discussion reads", () => {
     await expect(resolveDiscussionContext("source")).resolves.toEqual({
       pageUid: "page",
       title: "Notes",
+      outlineTitle: "Source",
       sourceUid: "source",
     });
     await expect(resolveDiscussionContext("deleted")).rejects.toThrow(

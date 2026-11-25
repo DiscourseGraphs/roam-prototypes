@@ -10,6 +10,7 @@ import {
   fetchDiscussions,
   DISCUSSIONS_CHANGED,
   fetchBadgeCounts,
+  existingBlockUids,
   resolveDiscussionContext,
   type DiscussionContext,
   type DiscussionSnapshot,
@@ -42,7 +43,7 @@ let disposeCommands: (() => void)[] = [];
 let counts = new Map<string, number>();
 let inlineError = "";
 let returnFocus: HTMLElement | null = null;
-let embeddedKey = "";
+let visibleKey = "";
 let snapshot: DiscussionSnapshot = { sources: [], threads: [] };
 type Badge = { uid: string; mount: HTMLElement; count: number };
 const badges = new Map<HTMLElement, Badge>();
@@ -63,16 +64,42 @@ const closeInline = (): void => {
   inline = null;
 };
 
-const embeddedBlockUids = (): string[] => {
-  const uids = new Set<string>();
-  document
-    .querySelectorAll('.roam-article [id^="block-input-embed-"]')
-    .forEach((input) => {
-      const uid =
-        input.closest<HTMLElement>("[data-block-uid]")?.dataset.blockUid;
-      if (uid) uids.add(uid);
-    });
-  return [...uids].sort();
+const inputSelector = ".rm-block-text[id], .rm-block__input[id]";
+const observedInputs = new Set<HTMLElement>();
+const visibleInputs = new Set<HTMLElement>();
+let viewport: IntersectionObserver | undefined;
+let matchingUids = new Set<string>();
+const candidatesFor = (input: HTMLElement): string[] => {
+  const explicit =
+    input.closest<HTMLElement>("[data-block-uid]")?.dataset.blockUid;
+  if (explicit) return [explicit];
+  if (!input.id.startsWith("block-input-"))
+    return [input.id.replace(/^(?:block-|embed-)/, "")];
+  // Window prefixes and imported UIDs can both contain hyphens.
+  const parts = input.id.slice("block-input-".length).split("-");
+  return parts.map((_, i) => parts.slice(i).join("-")).filter(Boolean);
+};
+const inputUid = (input: HTMLElement) => {
+  const candidates = candidatesFor(input);
+  return candidates.length === 1
+    ? candidates[0]
+    : candidates.find((uid) => matchingUids.has(uid));
+};
+
+const visitInputs = (root: Element, visit: (input: HTMLElement) => void) => {
+  if (root.matches(inputSelector)) visit(root as HTMLElement);
+  root.querySelectorAll<HTMLElement>(inputSelector).forEach(visit);
+};
+const observeInput = (input: HTMLElement) => {
+  if (observedInputs.has(input) || !input.closest(".roam-article")) return;
+  observedInputs.add(input);
+  if (viewport) viewport.observe(input);
+  else visibleInputs.add(input);
+};
+const forgetInput = (input: HTMLElement) => {
+  if (input.isConnected || !observedInputs.delete(input)) return;
+  viewport?.unobserve(input);
+  visibleInputs.delete(input);
 };
 
 const dismissInline = (): void => {
@@ -84,7 +111,7 @@ const dismissInline = (): void => {
 
 const refreshInline = async (): Promise<void> => {
   if (host) window.dispatchEvent(new Event(DISCUSSIONS_CHANGED));
-  else await refreshPage();
+  else await loadInline();
 };
 
 const renderInline = (): void => {
@@ -104,7 +131,7 @@ const renderInline = (): void => {
             minimal
             small
             text="Retry"
-            onClick={() => void refreshPage()}
+            onClick={() => void loadInline()}
           />
         </div>
       )}
@@ -143,7 +170,7 @@ const toggleInline = (uid: string, trigger: HTMLElement): void => {
     inline = { uid, mount, trigger };
     inlineError = "";
     renderInline();
-    void refreshPage();
+    void loadInline();
   }
   reconcileBadges();
 };
@@ -196,27 +223,15 @@ const reconcileBadges = (): void => {
     if (
       !badge.mount.isConnected ||
       !counts.has(badge.uid) ||
-      !input?.id.endsWith(badge.uid)
+      !input ||
+      inputUid(input as HTMLElement) !== badge.uid
     )
       removeBadge(row);
   }
   if (!counts.size) return;
-  // Roam prefixes input IDs with the render location. Imported block UIDs can vary in length.
-  const lengths = Array.from(
-    new Set(Array.from(counts.keys(), (uid) => uid.length)),
-  ).sort((a, b) => b - a);
-  const inputs = document.querySelectorAll<HTMLElement>(
-    ".roam-article .rm-block-text[id], .roam-article .rm-block__input[id]",
-  );
-  inputs.forEach((input) => {
-    const length = lengths.find(
-      (size) =>
-        counts.has(input.id.slice(-size)) &&
-        (input.id.length === size ||
-          input.id.charAt(input.id.length - size - 1) === "-"),
-    );
-    if (length === undefined) return;
-    const uid = input.id.slice(-length);
+  visibleInputs.forEach((input) => {
+    const uid = inputUid(input);
+    if (!uid || !counts.has(uid)) return;
     const row = input.closest<HTMLElement>(".rm-block-main");
     if (!row) return;
     let badge = badges.get(row);
@@ -244,8 +259,7 @@ const scheduleBadges = (): void => {
       refreshVisiblePage();
     }
     if (inline && !inline.mount.isConnected) closeInline();
-    if (JSON.stringify(embeddedBlockUids()) !== embeddedKey)
-      refreshVisiblePage();
+    if (viewportKey() !== visibleKey) refreshVisiblePage();
     reconcileBadges();
   }, 100);
 };
@@ -305,14 +319,15 @@ const dismissRail = (): void => {
 
 const renderRail = (): void => {
   if (!host || !context) return;
-  const pageUid = context.pageUid;
+
   ReactDOM.render(
     <DiscussionRail
-      key={context.pageUid}
+      key={context.outlineUid || context.pageUid}
       context={context}
       onClose={dismissRail}
-      onSnapshot={(next) => {
-        void refreshPage({ pageUid, snapshot: next });
+      onSnapshot={() => {
+        refreshVisiblePage();
+        if (inline) void loadInline();
       }}
     />,
     host,
@@ -325,7 +340,29 @@ export const openDiscussions = async (
 ): Promise<void> => {
   const mine = ++sequence;
   const owner = generation;
-  const next = await resolveDiscussionContext(sourceUid);
+  const currentUid =
+    await window.roamAlphaAPI.ui.mainWindow?.getOpenPageOrBlockUid();
+  const next = await resolveDiscussionContext(
+    sourceUid || currentUid || undefined,
+  );
+  const view =
+    currentUid && sourceUid && currentUid !== sourceUid
+      ? await resolveDiscussionContext(currentUid)
+      : currentUid
+        ? next
+        : undefined;
+  if (
+    view?.sourceUid &&
+    !view.nativeStorage &&
+    view.pageUid === next.pageUid &&
+    (!sourceUid ||
+      sourceUid === view.sourceUid ||
+      next.ancestors?.includes(view.sourceUid))
+  ) {
+    next.outlineUid = view.sourceUid;
+    next.title = view.outlineTitle || view.title;
+    if (!sourceUid) next.sourceUid = undefined;
+  }
   if (mine !== sequence || owner !== generation) return;
   const parent = document.querySelector<HTMLElement>(".roam-body-main");
   if (!parent) throw new Error("Roam’s main page is not available yet.");
@@ -395,51 +432,72 @@ const openSafely = (uid?: string, trigger?: HTMLElement): void => {
   });
 };
 
-const refreshPage = async (rail?: {
-  pageUid: string;
-  snapshot: DiscussionSnapshot;
-}): Promise<void> => {
-  const mine = ++refreshSequence;
+const viewportKey = () =>
+  JSON.stringify(Array.from(visibleInputs, (input) => candidatesFor(input)));
+
+const loadInline = async () => {
+  const selected = inline;
+  if (!selected) return;
   try {
-    const pageOrBlock =
-      await window.roamAlphaAPI.ui.mainWindow?.getOpenPageOrBlockUid();
-    if (!pageOrBlock || mine !== refreshSequence) return;
-    const page = await resolveDiscussionContext(pageOrBlock);
-    if (mine !== refreshSequence) return;
-    const embeds = embeddedBlockUids();
-    embeddedKey = JSON.stringify(embeds);
-    const selected = inline;
-    const owner = selected
-      ? await resolveDiscussionContext(selected.uid)
-      : undefined;
-    const [nextCounts, nextSnapshot] = await Promise.all([
-      fetchBadgeCounts(page.pageUid, embeds),
-      owner &&
-        (owner.pageUid === rail?.pageUid
-          ? rail.snapshot
-          : fetchDiscussions(owner.pageUid)),
-    ]);
-    if (mine !== refreshSequence) return;
-    counts = nextCounts;
-    snapshot = nextSnapshot || { sources: [], threads: [] };
+    const result = await fetchDiscussions(selected.uid, "inline");
+    if (inline !== selected) return;
+    snapshot = result;
     inlineError = "";
-    renderInline();
-    reconcileBadges();
   } catch (error) {
-    if (mine !== refreshSequence) return;
-    if (inline) {
-      inlineError = "Could not refresh these discussions.";
-      renderInline();
-    }
-    logError("could not refresh discussions", error);
+    if (inline !== selected) return;
+    inlineError = "Could not refresh these discussions.";
+    logError("could not refresh inline discussions", error);
   }
+  renderInline();
 };
 
+const refreshPage = async () => {
+  const mine = ++refreshSequence;
+  visibleKey = viewportKey();
+  const inputs = Array.from(visibleInputs, candidatesFor);
+  const ambiguous = [
+    ...new Set(inputs.filter((list) => list.length > 1).flat()),
+  ];
+  const existing = new Set<string>();
+  for (let i = 0; i < ambiguous.length; i += 100) {
+    const found = await existingBlockUids(ambiguous.slice(i, i + 100));
+    if (mine !== refreshSequence) return;
+    found.forEach((uid) => existing.add(uid));
+  }
+  const targets = new Set<string>();
+  for (const list of inputs) {
+    const uid =
+      list.length === 1
+        ? list[0]
+        : list.find((candidate) => existing.has(candidate));
+    if (uid) targets.add(uid);
+  }
+  if (inline) {
+    // Scrolling through a long conversation can take its source button outside
+    // the observed viewport while both the button and the discussion stay mounted.
+    existing.add(inline.uid);
+    targets.add(inline.uid);
+  }
+  const uids = [...targets];
+  const nextCounts = new Map<string, number>();
+  for (let i = 0; i < uids.length; i += 100) {
+    const batch = await fetchBadgeCounts(uids.slice(i, i + 100));
+    if (mine !== refreshSequence) return;
+    for (const [uid, count] of batch) nextCounts.set(uid, count);
+  }
+  matchingUids = existing;
+  counts = nextCounts;
+  reconcileBadges();
+};
 const refreshVisiblePage = (): void => {
-  if (!document.hidden)
-    void refreshPage().catch((e) =>
-      logError("could not load discussion badges", e),
-    );
+  if (document.hidden) return;
+  void refreshPage().catch((e) =>
+    logError("could not load discussion badges", e),
+  );
+};
+const refreshChanged = () => {
+  refreshVisiblePage();
+  if (!host && !document.hidden) void loadInline();
 };
 
 const onNavigation = (): void => {
@@ -451,7 +509,7 @@ const onNavigation = (): void => {
   counts.clear();
   snapshot = { sources: [], threads: [] };
   reconcileBadges();
-  embeddedKey = "";
+  visibleKey = "";
   if (reopenRail) openSafely();
   refreshVisiblePage();
 };
@@ -471,25 +529,52 @@ export const startDiscussions = (): void => {
   command(ui.blockContextMenu as CommandApi, CONTEXT_COMMAND, (ctx) =>
     openSafely(ctx?.["block-uid"]),
   );
+  if (typeof IntersectionObserver !== "undefined") {
+    viewport = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          const input = entry.target as HTMLElement;
+          if (!observedInputs.has(input)) continue;
+          if (entry.isIntersecting) visibleInputs.add(input);
+          else visibleInputs.delete(input);
+        }
+        scheduleBadges();
+      },
+      { rootMargin: "200px" },
+    );
+  }
+  document
+    .querySelectorAll(".roam-article")
+    .forEach((root) => visitInputs(root, observeInput));
   observer = new MutationObserver((mutations) => {
-    if (
-      mutations.some(
-        ({ target }) =>
-          target instanceof Element &&
-          !target.closest(
-            ".rmi-discussion-badge,.rmi-discussion-inline,#rmi-discussion-host",
-          ) &&
-          (target.closest(".roam-article") ||
-            target.querySelector(".roam-article")),
+    let relevant = false;
+    for (const mutation of mutations) {
+      if (
+        (mutation.target as Element).closest?.(
+          ".rmi-discussion-badge,.rmi-discussion-inline,#rmi-discussion-host",
+        )
       )
-    )
-      scheduleBadges();
+        continue;
+      relevant = true;
+      for (const node of Array.from(mutation.addedNodes)) {
+        if (node instanceof Element) visitInputs(node, observeInput);
+      }
+      for (const node of Array.from(mutation.removedNodes)) {
+        if (node instanceof Element) visitInputs(node, forgetInput);
+      }
+    }
+    if (relevant) scheduleBadges();
   });
-  observer.observe(document.body, { childList: true, subtree: true });
+  observer.observe(document.body, {
+    childList: true,
+    subtree: true,
+    attributes: true,
+    attributeFilter: ["id", "data-block-uid"],
+  });
   window.addEventListener("hashchange", onNavigation);
-  window.addEventListener(DISCUSSIONS_CHANGED, refreshVisiblePage);
+  window.addEventListener(DISCUSSIONS_CHANGED, refreshChanged);
   document.addEventListener("visibilitychange", refreshVisiblePage);
-  refreshTimer = window.setInterval(refreshVisiblePage, 15000);
+  refreshTimer = window.setInterval(refreshChanged, 60000);
   refreshVisiblePage();
 };
 
@@ -502,11 +587,15 @@ export const stopDiscussions = (): void => {
   counts.clear();
   snapshot = { sources: [], threads: [] };
   returnFocus = null;
+  viewport?.disconnect();
+  viewport = undefined;
+  visibleInputs.clear();
+  observedInputs.clear();
   observer?.disconnect();
   observer = null;
   if (badgeTimer !== undefined) window.clearTimeout(badgeTimer);
   badgeTimer = undefined;
-  embeddedKey = "";
+  visibleKey = "";
   for (const row of badges.keys()) removeBadge(row);
   closeDiscussions();
   for (const dispose of disposeCommands) {
@@ -518,7 +607,7 @@ export const stopDiscussions = (): void => {
   }
   disposeCommands = [];
   window.removeEventListener("hashchange", onNavigation);
-  window.removeEventListener(DISCUSSIONS_CHANGED, refreshVisiblePage);
+  window.removeEventListener(DISCUSSIONS_CHANGED, refreshChanged);
   document.getElementById(STYLE_ID)?.remove();
   clearDiscussionDrafts();
 };
