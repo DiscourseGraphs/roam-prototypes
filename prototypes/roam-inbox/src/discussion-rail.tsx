@@ -518,12 +518,27 @@ export const DiscussionRail = ({
     };
   }, [context.pageUid, reload]);
 
+  const addressedThread =
+    React.useMemo(
+      () =>
+        context.sourceUid &&
+        snapshot.threads.find(
+          (thread) =>
+            thread.uid === context.sourceUid ||
+            thread.replies.some((reply) => reply.uid === context.sourceUid),
+        ),
+      [context.sourceUid, snapshot.threads],
+    ) || undefined;
+  const selectedSource = addressedThread?.source.uid ?? context.sourceUid;
   React.useEffect(() => {
     if (!composing) return;
     let current = true;
     setFindingSources(true);
     const load = () =>
-      findDiscussionSources(context, search.trim())
+      findDiscussionSources(
+        { ...context, sourceUid: selectedSource },
+        search.trim(),
+      )
         .then((rows) => {
           if (!current) return;
           setFindingSources(false);
@@ -542,7 +557,7 @@ export const DiscussionRail = ({
       current = false;
       window.clearTimeout(timer);
     };
-  }, [composing, context, search, snapshot]);
+  }, [composing, context, search, snapshot, selectedSource]);
   const rail = React.useRef<HTMLElement>(null);
   const [compact, setCompact] = React.useState(
     () => window.matchMedia?.("(max-width:650px)").matches || false,
@@ -559,18 +574,6 @@ export const DiscussionRail = ({
     if (compact && !rail.current?.contains(document.activeElement))
       closeButton.current?.focus({ preventScroll: true });
   }, [compact, snapshot]);
-  const addressedThread =
-    React.useMemo(
-      () =>
-        context.sourceUid &&
-        snapshot.threads.find(
-          (thread) =>
-            thread.uid === context.sourceUid ||
-            thread.replies.some((reply) => reply.uid === context.sourceUid),
-        ),
-      [context.sourceUid, snapshot.threads],
-    ) || undefined;
-  const selectedSource = addressedThread?.source.uid ?? context.sourceUid;
   // Apply a badge selection once. Background refreshes must leave the reader’s place alone.
   React.useLayoutEffect(() => {
     if (loading || error || appliedContext.current === context) return;

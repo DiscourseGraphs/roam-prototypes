@@ -1,6 +1,5 @@
 import React from "react";
 import ReactDOM from "react-dom";
-import { getUidsFromId } from "roamjs-components/dom";
 import { Button } from "@blueprintjs/core";
 import {
   clearDiscussionDrafts,
@@ -11,6 +10,7 @@ import {
   fetchDiscussions,
   DISCUSSIONS_CHANGED,
   fetchBadgeCounts,
+  existingBlockUids,
   resolveDiscussionContext,
   type DiscussionContext,
   type DiscussionSnapshot,
@@ -68,11 +68,23 @@ const inputSelector = ".rm-block-text[id], .rm-block__input[id]";
 const observedInputs = new Set<HTMLElement>();
 const visibleInputs = new Set<HTMLElement>();
 let viewport: IntersectionObserver | undefined;
-const inputUid = (input: HTMLElement) =>
-  input.closest<HTMLElement>("[data-block-uid]")?.dataset.blockUid ||
-  (input.id.startsWith("block-input-")
-    ? getUidsFromId(input.id).blockUid
-    : input.id.replace(/^(?:block-|embed-)/, ""));
+let matchingUids = new Set<string>();
+const candidatesFor = (input: HTMLElement): string[] => {
+  const explicit =
+    input.closest<HTMLElement>("[data-block-uid]")?.dataset.blockUid;
+  if (explicit) return [explicit];
+  if (!input.id.startsWith("block-input-"))
+    return [input.id.replace(/^(?:block-|embed-)/, "")];
+  // Window prefixes and imported UIDs can both contain hyphens.
+  const parts = input.id.slice("block-input-".length).split("-");
+  return parts.map((_, i) => parts.slice(i).join("-")).filter(Boolean);
+};
+const inputUid = (input: HTMLElement) => {
+  const candidates = candidatesFor(input);
+  return candidates.length === 1
+    ? candidates[0]
+    : candidates.find((uid) => matchingUids.has(uid));
+};
 
 const visitInputs = (root: Element, visit: (input: HTMLElement) => void) => {
   if (root.matches(inputSelector)) visit(root as HTMLElement);
@@ -211,14 +223,15 @@ const reconcileBadges = (): void => {
     if (
       !badge.mount.isConnected ||
       !counts.has(badge.uid) ||
-      !input?.id.endsWith(badge.uid)
+      !input ||
+      inputUid(input as HTMLElement) !== badge.uid
     )
       removeBadge(row);
   }
   if (!counts.size) return;
   visibleInputs.forEach((input) => {
     const uid = inputUid(input);
-    if (!counts.has(uid)) return;
+    if (!uid || !counts.has(uid)) return;
     const row = input.closest<HTMLElement>(".rm-block-main");
     if (!row) return;
     let badge = badges.get(row);
@@ -246,7 +259,7 @@ const scheduleBadges = (): void => {
       refreshVisiblePage();
     }
     if (inline && !inline.mount.isConnected) closeInline();
-    if (JSON.stringify(visibleUids()) !== visibleKey) refreshVisiblePage();
+    if (viewportKey() !== visibleKey) refreshVisiblePage();
     reconcileBadges();
   }, 100);
 };
@@ -340,6 +353,7 @@ export const openDiscussions = async (
         : undefined;
   if (
     view?.sourceUid &&
+    !view.nativeStorage &&
     view.pageUid === next.pageUid &&
     (!sourceUid ||
       sourceUid === view.sourceUid ||
@@ -418,11 +432,8 @@ const openSafely = (uid?: string, trigger?: HTMLElement): void => {
   });
 };
 
-const visibleUids = () => {
-  const uids = new Set(Array.from(visibleInputs, inputUid));
-  if (inline) uids.add(inline.uid);
-  return [...uids].sort();
-};
+const viewportKey = () =>
+  JSON.stringify(Array.from(visibleInputs, (input) => candidatesFor(input)));
 
 const loadInline = async () => {
   const selected = inline;
@@ -442,14 +453,34 @@ const loadInline = async () => {
 
 const refreshPage = async () => {
   const mine = ++refreshSequence;
-  const uids = visibleUids();
-  visibleKey = JSON.stringify(uids);
+  visibleKey = viewportKey();
+  const inputs = Array.from(visibleInputs, candidatesFor);
+  const ambiguous = [
+    ...new Set(inputs.filter((list) => list.length > 1).flat()),
+  ];
+  const existing = new Set<string>();
+  for (let i = 0; i < ambiguous.length; i += 100) {
+    const found = await existingBlockUids(ambiguous.slice(i, i + 100));
+    if (mine !== refreshSequence) return;
+    found.forEach((uid) => existing.add(uid));
+  }
+  const targets = new Set<string>();
+  for (const list of inputs) {
+    const uid =
+      list.length === 1
+        ? list[0]
+        : list.find((candidate) => existing.has(candidate));
+    if (uid) targets.add(uid);
+  }
+  if (inline) targets.add(inline.uid);
+  const uids = [...targets];
   const nextCounts = new Map<string, number>();
   for (let i = 0; i < uids.length; i += 100) {
     const batch = await fetchBadgeCounts(uids.slice(i, i + 100));
     if (mine !== refreshSequence) return;
     for (const [uid, count] of batch) nextCounts.set(uid, count);
   }
+  matchingUids = existing;
   counts = nextCounts;
   reconcileBadges();
 };

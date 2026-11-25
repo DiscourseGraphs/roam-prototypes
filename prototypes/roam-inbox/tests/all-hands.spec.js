@@ -57,7 +57,7 @@ function archive() {
   }
   const meeting = block("meeting", 1);
   const agenda = block("agenda", meeting);
-  const selected = block("selected", agenda);
+  const selected = block("legacy-selected-2026", agenda);
   for (let i = 2; i < 127; i++) block("meeting-" + i, meeting);
   const sources = [
     selected,
@@ -105,7 +105,7 @@ it("renders seven archive topics, one focused meeting topic, and reads only the 
   api.ui.mainWindow = { getOpenPageOrBlockUid: () => route };
   vi.stubGlobal("CSS", { escape: (uid) => uid });
   document.body.innerHTML =
-    '<main class="roam-body-main"><div class="roam-article"><div class="rm-block-main" data-block-uid="selected"><div class="rm-block-text" id="block-selected">Selected source</div></div></div></main>';
+    '<main class="roam-body-main"><div class="roam-article"><div class="rm-block-main" ><div class="rm-block-text" id="block-input-graph-body-outline-legacy-selected-2026">Selected source</div></div></div></main>';
   expect(ds.q('[:find (count ?b) . :where [?b "block/page" 1]]', db)).toBe(
     27671,
   );
@@ -138,16 +138,22 @@ it("renders seven archive topics, one focused meeting topic, and reads only the 
     title: "Synthetic archive",
   };
   expect(
-    (await findDiscussionSources(context, "selected")).map((s) => s.uid),
-  ).toEqual(["selected"]);
+    (await findDiscussionSources(context, "legacy-selected-2026")).map(
+      (s) => s.uid,
+    ),
+  ).toEqual(["legacy-selected-2026"]);
   expect(await findDiscussionSources(context, "filler")).toEqual([]);
   expect(
     (await findDiscussionSources(context, "")).some((s) => s.uid === "meeting"),
   ).toBe(true);
   expect(
-    (await findDiscussionSources({ ...context, sourceUid: "selected" }, ""))[0]
-      .uid,
-  ).toBe("selected");
+    (
+      await findDiscussionSources(
+        { ...context, sourceUid: "legacy-selected-2026" },
+        "",
+      )
+    )[0].uid,
+  ).toBe("legacy-selected-2026");
   expect(
     (
       await findDiscussionSources(
@@ -161,6 +167,30 @@ it("renders seven archive topics, one focused meeting topic, and reads only the 
     document.querySelector('[aria-label="Refresh discussions"]').click();
   });
   expect(topics()).toHaveLength(1);
+  route = "reply";
+  await act(async () => {
+    window.dispatchEvent(new Event("hashchange"));
+  });
+  const selectedTopic = () =>
+    document.querySelector(
+      '.rmi-discussion-rail [data-thread-uid="target-thread"][data-expanded="true"]',
+    );
+  expect(selectedTopic()?.textContent).toContain("Meeting reply");
+  await act(async () => {
+    document.querySelector('[aria-label="Close discussions"]').click();
+  });
+  await act(async () => {
+    await openDiscussions();
+  });
+  expect(selectedTopic()?.textContent).toContain("Meeting reply");
+  await act(async () => {
+    [...document.querySelectorAll(".rmi-discussion-rail button")]
+      .find((b) => b.textContent === "New thread")
+      .click();
+  });
+  expect(document.querySelector(".rmi-discussion-rail select").value).toBe(
+    "legacy-selected-2026",
+  );
   await act(async () => {
     document.querySelector('[aria-label="Close discussions"]').click();
   });
@@ -174,7 +204,7 @@ it("renders seven archive topics, one focused meeting topic, and reads only the 
   ).toContain("Meeting reply");
   expect(pulls).toEqual([]);
   expect(reads).toEqual([
-    { query: Q_INLINE_COMMENTS, inputs: ["selected"] },
+    { query: Q_INLINE_COMMENTS, inputs: ["legacy-selected-2026"] },
     { query: Q_REPLY_COMMENTS, inputs: [["target-thread"]] },
   ]);
 }, 30000);

@@ -25,6 +25,7 @@ export type DiscussionContext = {
   threadUid?: string;
   outlineUid?: string;
   outlineTitle?: string;
+  nativeStorage?: boolean;
   ancestors?: string[];
 };
 export type DiscussionSnapshot = {
@@ -69,6 +70,14 @@ export const Q_INLINE_COMMENTS = `[:find (pull ?source [:block/uid :block/string
 const Q_BADGES = `[:find ?uid ?reference (count-distinct ?thread) :in $ [?uid ...]
   :where [?source :block/uid ?uid] ${SOURCE_CONTAINERS}
   [?container :block/string ?reference] [?container :block/children ?thread]]`;
+
+export const existingBlockUids = async (candidates: string[]) => {
+  const rows = await window.roamAlphaAPI.data.async.q(
+    "[:find ?uid :in $ [?uid ...] :where [?b :block/uid ?uid]]",
+    candidates,
+  );
+  return rows.map(([uid]) => String(uid));
+};
 
 export const fetchBadgeCounts = async (
   uids: string[],
@@ -202,7 +211,7 @@ export const resolveDiscussionContext = async (
       "Open a page, or choose Discuss block from a block’s menu.",
     );
   const pulled = await api.data.async.pull(
-    "[:block/uid :block/string :node/title {:block/parents [:block/uid]} {:block/page [:block/uid :node/title]}]",
+    "[:block/uid :block/string :node/title {:block/parents [:block/uid :block/string]} {:block/page [:block/uid :node/title]}]",
     [":block/uid", target],
   );
   if (!pick(pulled, "block/uid"))
@@ -216,6 +225,9 @@ export const resolveDiscussionContext = async (
     pageUid,
     title: pick<string>(page, "node/title") || "Untitled",
     sourceUid: title ? undefined : target,
+    nativeStorage: pick<unknown[]>(pulled, "block/parents")?.some(
+      (parent) => pick(parent, "block/string") === "[[roam/comments]]",
+    ),
     ancestors: pick<unknown[]>(pulled, "block/parents")?.map(
       (n) => pick<string>(n, "block/uid") || "",
     ),
