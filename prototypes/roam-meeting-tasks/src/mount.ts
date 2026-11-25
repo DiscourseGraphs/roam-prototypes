@@ -65,7 +65,7 @@ export const mount = (el: Element, argv: unknown): void => {
   if (existing?.key === key) return;
   const root = existing?.root ?? createRoot(el);
   mounted.set(el, { root, key });
-  root.render(React.createElement(MeetingTasks, { args }));
+  root.render(React.createElement(MeetingTasks, { key, args }));
   sweepTimer ??= window.setInterval(sweep, SWEEP_MS);
 };
 

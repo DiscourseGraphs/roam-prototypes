@@ -10,12 +10,12 @@ import type { WidgetArgs } from "~/args";
 import { logError, MAX_REF_HOPS } from "~/config";
 import { loadWidget, readDisplayRefs } from "~/load";
 import type { Block, Row } from "~/model";
-import { graphName, openInSidebar, writeString } from "~/roam";
-import { displayText, isDone, withDone } from "~/text";
+import { forgetReads, graphName, openInSidebar, setTaskDone } from "~/roam";
+import { displayText, isDone } from "~/text";
 
 /* ── state ─────────────────────────────────────────────────────────────── */
 
-type Async<T> = { kind: "loading" } | { kind: "failed" } | { kind: "done"; value: T };
+type Async<T> = { kind: "loading" } | { kind: "failed" } | { kind: "done"; value: T; refreshing: boolean };
 
 /* Run `load` after render, and again when `deps` change. A result that
  * arrives after the component unmounted or reloaded is dropped. */
@@ -23,9 +23,9 @@ const useAsync = <T,>(load: () => Promise<T>, what: string, deps: React.Dependen
   const [state, setState] = React.useState<Async<T>>({ kind: "loading" });
   React.useEffect(() => {
     let live = true;
-    setState({ kind: "loading" });
+    setState((prev) => prev.kind === "done" ? { ...prev, refreshing: true } : { kind: "loading" });
     load().then(
-      (value) => live && setState({ kind: "done", value }),
+      (value) => live && setState({ kind: "done", value, refreshing: false }),
       (error) => {
         logError(`could not ${what}`, error);
         if (live) setState({ kind: "failed" });
@@ -40,41 +40,45 @@ const useAsync = <T,>(load: () => Promise<T>, what: string, deps: React.Dependen
   return state;
 };
 
-// A task often shows in two widgets at once (the page-level one and a
-// meeting's "last meeting" slot). A toggle in one is announced to all.
-const WRITTEN = "roam-meeting-tasks:written";
-type Written = { uid: string; string: string };
-const announce = (detail: Written): void => {
-  window.dispatchEvent(new CustomEvent<Written>(WRITTEN, { detail }));
+// All roots share the read generation and the pending target UIDs, including
+// widgets mounted while a write is in flight.
+const listeners = new Set<() => void>();
+const subscribe = (listener: () => void) => {
+  listeners.add(listener);
+  return () => { listeners.delete(listener); };
+};
+const notify = () => listeners.forEach((listener) => listener());
+let generation = 0;
+const getGeneration = () => generation;
+const refresh = () => {
+  forgetReads();
+  generation++;
+  notify();
 };
 
-/* The current text of each task, and the one way to toggle a checkbox:
- * update every widget at once, write, and put the text back if the write
- * fails. `toggle` never changes identity, so unchanged rows skip rendering. */
-const useTaskStrings = () => {
-  const [strings, setStrings] = React.useState<Record<string, string>>({});
-  const latest = React.useRef(strings);
-  latest.current = strings;
-  React.useEffect(() => {
-    const onWritten = (e: Event) => {
-      const { uid, string } = (e as CustomEvent<Written>).detail;
-      setStrings((prev) => ({ ...prev, [uid]: string }));
-    };
-    window.addEventListener(WRITTEN, onWritten);
-    return () => window.removeEventListener(WRITTEN, onWritten);
+let pending = new Set<string>();
+const getPending = () => pending;
+const useTaskWrites = () => {
+  const saving = React.useSyncExternalStore(subscribe, getPending);
+  const [error, setError] = React.useState("");
+  const toggle = React.useCallback(async (task: Block, done: boolean) => {
+    if (pending.has(task.uid)) return;
+    pending = new Set(pending).add(task.uid);
+    notify();
+    setError("");
+    try {
+      await setTaskDone(task.uid, done);
+      refresh();
+    } catch (cause) {
+      logError("could not save the checkbox", cause);
+      setError("Could not save the checkbox. Try again or reload the tasks.");
+    } finally {
+      pending = new Set(pending);
+      pending.delete(task.uid);
+      notify();
+    }
   }, []);
-  const current = React.useCallback((task: Block) => strings[task.uid] ?? task.string, [strings]);
-  const toggle = React.useCallback((task: Block, done: boolean) => {
-    const before = latest.current[task.uid] ?? task.string;
-    const next = withDone(before, done);
-    if (next === before) return;
-    announce({ uid: task.uid, string: next });
-    writeString(task.uid, next).catch((error) => {
-      logError("could not save the checkbox", error);
-      announce({ uid: task.uid, string: before });
-    });
-  }, []);
-  return { current, toggle };
+  return { saving, toggle, error, clearError: () => setError("") };
 };
 
 /* ── rows ──────────────────────────────────────────────────────────────── */
@@ -102,16 +106,26 @@ const BlockLink = ({ uid, className, children }: { uid: string; className: strin
   </a>
 );
 
-type RowProps = { row: Row; string: string; text: string; toggle: (task: Block, done: boolean) => void };
+type RowProps = { row: Row; saving: boolean; text: string; toggle: (task: Block, done: boolean) => void };
 
-const TaskRow = React.memo(({ row, string, text, toggle }: RowProps) => {
-  const done = isDone(string);
+const TaskRow = React.memo(({ row, saving, text, toggle }: RowProps) => {
+  const box = React.useRef<HTMLInputElement>(null);
+  React.useLayoutEffect(() => {
+    const input = box.current;
+    const refreshButton = input?.closest(".rmt")?.querySelector<HTMLButtonElement>(".rmt-refresh");
+    return () => {
+      if (input && document.activeElement === input) refreshButton?.focus();
+    };
+  }, []);
+  const done = isDone(row.task.string);
   return (
     <div className="rmt-row" data-done={done ? "true" : "false"}>
       <input
         type="checkbox"
         className="rmt-check"
         checked={done}
+        ref={box}
+        aria-disabled={saving || undefined}
         onChange={(e) => toggle(row.task, e.target.checked)}
       />
       {row.meeting ? (
@@ -131,7 +145,7 @@ const TaskRow = React.memo(({ row, string, text, toggle }: RowProps) => {
 type RowsProps = {
   rows: Row[];
   refs: Map<string, Block>;
-  tasks: ReturnType<typeof useTaskStrings>;
+  tasks: ReturnType<typeof useTaskWrites>;
 };
 
 const Rows = ({ rows, refs, tasks }: RowsProps) => {
@@ -146,7 +160,7 @@ const Rows = ({ rows, refs, tasks }: RowsProps) => {
         <TaskRow
           key={row.task.uid}
           row={row}
-          string={tasks.current(row.task)}
+          saving={tasks.saving.has(row.task.uid)}
           text={texts[i]}
           toggle={tasks.toggle}
         />
@@ -160,34 +174,54 @@ const Rows = ({ rows, refs, tasks }: RowsProps) => {
 const LazyRows = ({ rows, tasks }: Omit<RowsProps, "refs">) => {
   const refs = useAsync(() => readDisplayRefs(rows.map((r) => r.shown)), "read block references", [rows]);
   if (refs.kind === "loading") return <div className="rmt-muted">…</div>;
-  return <Rows rows={rows} refs={refs.kind === "done" ? refs.value : new Map()} tasks={tasks} />;
+  if (refs.kind === "failed") return <div role="alert">Could not load task references. Reload to retry.</div>;
+  return <Rows rows={rows} refs={refs.value} tasks={tasks} />;
 };
 
 /* ── the widget ────────────────────────────────────────────────────────── */
 
 export const MeetingTasks = ({ args }: { args: WidgetArgs }) => {
-  const state = useAsync(() => loadWidget(args), "load", [args]);
+  const revision = React.useSyncExternalStore(subscribe, getGeneration);
+  const state = useAsync(() => loadWidget(args), "load", [args, revision]);
   const [open, setOpen] = React.useState(false);
-  const tasks = useTaskStrings();
+  const tasks = useTaskWrites();
+  const reload = () => {
+    tasks.clearError();
+    refresh();
+  };
+  return (
+    <div className="rmt" aria-busy={state.kind === "loading" || (state.kind === "done" && state.refreshing)}>
+      <button className="rmt-refresh" type="button" aria-label="Reload tasks" title="Reload tasks" onClick={reload}>
+        <span className="bp3-icon bp3-icon-refresh" aria-hidden="true" />
+      </button>
+      {tasks.error && <div role="alert">{tasks.error}</div>}
+      {state.kind === "loading" && <div className="rmt-muted">Loading tasks…</div>}
+      {state.kind === "failed" && <div role="alert">Could not load tasks. Reload to retry.</div>}
+      {state.kind === "done" && (state.value.kind === "empty" ? (
+        <div>No tasks to show.
+          {args.debug && <div className="rmt-debug">{state.value.reason} load={state.value.ms}ms</div>}
+        </div>
+      ) : (
+        <TaskList loaded={state.value} args={args} open={open} setOpen={setOpen} tasks={tasks} />
+      ))}
+    </div>
+  );
+};
 
-  if (state.kind === "loading") return <div className="rmt-muted">Loading tasks…</div>;
-  if (state.kind === "failed")
-    return args.debug ? <div className="rmt-debug">meeting-tasks: failed to load (see console)</div> : null;
-  const loaded = state.value;
-  if (loaded.kind === "empty")
-    return args.debug ? (
-      <div className="rmt-debug">
-        meeting-tasks: {loaded.reason} load={loaded.ms}ms
-      </div>
-    ) : null;
-
+const TaskList = ({ loaded, args, open, setOpen, tasks }: {
+  loaded: Extract<Awaited<ReturnType<typeof loadWidget>>, { kind: "view" }>;
+  args: WidgetArgs;
+  open: boolean;
+  setOpen: React.Dispatch<React.SetStateAction<boolean>>;
+  tasks: ReturnType<typeof useTaskWrites>;
+}) => {
   const { view, refs } = loaded;
   const openCount = view.primary
     .concat(view.secondary)
-    .filter((r) => !isDone(tasks.current(r.task))).length;
+    .filter((r) => !isDone(r.task.string)).length;
 
   return (
-    <div className="rmt">
+    <>
       <div className="rmt-count">
         {openCount} {openCount === 1 ? "open item" : "open items"}
       </div>
@@ -234,6 +268,6 @@ export const MeetingTasks = ({ args }: { args: WidgetArgs }) => {
           {view.debug} load={loaded.ms}ms
         </div>
       )}
-    </div>
+    </>
   );
 };

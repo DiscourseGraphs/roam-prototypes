@@ -52,7 +52,6 @@ export const loadWidget = async (args: WidgetArgs, now = Date.now()): Promise<Lo
   if (!pageUid) return empty("no page uid");
 
   const meetings = selectMeetings(await readMeetingRows(pageUid));
-  if (!meetings.length) return empty("no meetings found");
 
   const plan = planWindow({
     meetings,
@@ -61,7 +60,6 @@ export const loadWidget = async (args: WidgetArgs, now = Date.now()): Promise<Lo
     lookbackDays: args.lookbackDays,
     now,
   });
-  if (!plan.scan.length) return empty(`no meetings within ${args.lookbackDays} days`);
 
   // Headers live one or two levels under a meeting, so meetings are read two
   // levels deep and only the headers in full.

@@ -208,8 +208,7 @@ describe("write-back", () => {
     const { block } = api.data.block.update.mock.calls[0][0];
     expect(block.uid).toBe(U("t1"));
     expect(block.string).toMatch(/^\{\{\[\[DONE\]\]\}\}/);
-    expect(box.checked).toBe(true);
-    expect(row.getAttribute("data-done")).toBe("true");
+    expect(primaryRow(el, /Trang Doan/).getAttribute("data-done")).toBe("true");
     expect(el.querySelector(".rmt-count")?.textContent).toBe("5 open items");
   });
 
@@ -234,6 +233,58 @@ describe("write-back", () => {
     });
     await vi.waitFor(() => expect(box.checked).toBe(was));
     expect(errors).toHaveBeenCalled();
+    expect(el.querySelector('[role="alert"]')?.textContent).toContain("Could not save");
+    await clickBox(primaryRow(el, /Trang Doan/));
+    expect(el.querySelector('[role="alert"]')).toBeNull();
+    expect(primaryRow(el, /Trang Doan/).getAttribute("data-done")).toBe("true");
+  });
+
+  it("reads the current source and locks a pending task across widgets", async () => {
+    const a = await render([host()]);
+    const b = await render([host()]);
+    const task = graph.blocks.get(U("t1"))!;
+    task.string = "{{TODO}} edited elsewhere";
+    let finish!: () => void;
+    api.data.block.update.mockImplementationOnce(async ({ block }) => {
+      await new Promise<void>((resolve) => { finish = resolve; });
+      task.string = block.string;
+    });
+    await clickBox(primaryRow(a, /Trang Doan/));
+    const other = primaryRow(b, /Trang Doan/).querySelector("input")!;
+    expect(other.getAttribute("aria-disabled")).toBe("true");
+    await act(async () => other.click());
+    expect(api.data.block.update).toHaveBeenCalledTimes(1);
+    await act(async () => finish());
+    expect(task.string).toBe("{{DONE}} edited elsewhere");
+    expect(primaryRow(b, /edited elsewhere/).getAttribute("data-done")).toBe("true");
+  });
+
+  it("retains keyboard focus on Refresh and on a saved task that stays visible", async () => {
+    const el = await render([host()]);
+    const refresh = el.querySelector<HTMLButtonElement>('button[aria-label="Reload tasks"]')!;
+    expect(refresh.textContent).toBe("");
+    expect(refresh.querySelector(".bp3-icon-refresh")).toBeTruthy();
+    refresh.focus();
+    await act(async () => refresh.click());
+    expect(document.activeElement).toBe(refresh);
+    const row = primaryRow(el, /Trang Doan/);
+    const box = row.querySelector("input")!;
+    box.focus();
+    await clickBox(row);
+    expect(box.checked).toBe(true);
+    expect(document.activeElement).toBe(box);
+  });
+
+  it("drops a completed task from an open-only section after saving", async () => {
+    graph.blocks.get(U("m1"))!.children.push(U("host"));
+    const el = await render([host()]);
+    await openSecondary(el);
+    const row = [...el.querySelectorAll(".rmt-row")].find(r => r.textContent?.includes("page-level inbox"))!;
+    row.querySelector("input")!.focus();
+    await clickBox(row);
+    expect(document.activeElement).toBe(el.querySelector("button"));
+    expect(texts(el, "secondary").join(" ")).not.toContain("page-level inbox");
+    expect(texts(el, "secondary").length).toBeGreaterThan(0);
   });
 
   it("updates every widget showing the same task", async () => {
@@ -293,10 +344,32 @@ describe("ordering and wrappers", () => {
 });
 
 describe("what changed in the port", () => {
-  it("renders nothing, not an error, on a page with no meetings", async () => {
-    window.location.hash = "#/app/discourse-graphs/page/EMPTYxxxx";
+  it("refreshes an empty, meeting-free page to show a newly added inbox task", async () => {
+    const page = "EMPTYxxxx";
+    window.location.hash = `#/app/discourse-graphs/page/${page}`;
     const el = await render([{ "block-uid": "nope" }]);
-    expect(el.textContent).toBe("");
+    expect(el.textContent).toContain("No tasks to show");
+    graph.add("newtask", "{{TODO}} fresh inbox task", [], { page });
+    await act(async () => el.querySelector("button")!.click());
+    await openSecondary(el);
+    expect(texts(el, "secondary")).toEqual(["fresh inbox task"]);
+  });
+
+  it("keeps the inbox while excluding every meeting outside the lookback", async () => {
+    const el = await render([host(), "1"]);
+    await openSecondary(el);
+    expect(texts(el, "secondary")).toContain("page-level inbox task, under no meeting");
+    expect(texts(el).join(" ")).not.toContain("ancient item");
+  });
+
+  it("retries a failed graph read outside debug mode", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    api.data.async.pull.mockRejectedValueOnce(new Error("offline"));
+    const el = await render([host()]);
+    expect(el.querySelector('[role="alert"]')?.textContent).toContain("Could not load tasks");
+    await act(async () => el.querySelector("button")!.click());
+    expect(primaryRow(el, /Trang Doan/)).toBeTruthy();
+    expect(el.querySelector('[role="alert"]')).toBeNull();
   });
 
   it("shares page-wide reads between widgets on the same page", async () => {

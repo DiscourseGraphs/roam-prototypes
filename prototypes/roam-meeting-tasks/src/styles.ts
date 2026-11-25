@@ -9,7 +9,20 @@ const CSS = `
      stylesheet is present, which is exactly when the extension is loaded. */
   .${FALLBACK_CLASS} { display: none; }
 
-  .rmt { font-size: 13px; line-height: 1.45; }
+  .rmt { display: flow-root; font-size: 13px; line-height: 1.45; }
+  .rmt .rmt-refresh {
+    float: right; display: grid; place-items: center; width: 24px; height: 24px;
+    margin-left: 4px; padding: 0; border: 0; border-radius: 3px;
+    background: transparent; color: inherit; cursor: pointer;
+  }
+  .rmt-refresh .bp3-icon::before { font-size: 12px; }
+  @media (hover: hover) and (pointer: fine) {
+    .rmt:not(:hover):not(:focus-within) .rmt-refresh { opacity: 0; }
+  }
+  @media (any-pointer: coarse) {
+    .rmt:not(:hover):not(:focus-within) .rmt-refresh { opacity: 1; }
+    .rmt .rmt-refresh { width: 44px; height: 44px; }
+  }
   .rmt-muted { font-size: 12px; opacity: 0.5; }
   .rmt-count { font-size: 12px; opacity: 0.7; margin-bottom: 2px; }
   .rmt-heading {

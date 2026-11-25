@@ -13,7 +13,7 @@
  */
 import { SHARE_MS } from "~/config";
 import type { Block, MeetingRow, PageTask, TreeNode } from "~/model";
-import { isSticky } from "~/text";
+import { hasMarker, isSticky, withDone } from "~/text";
 
 type Pulled = Record<string, unknown>;
 
@@ -229,9 +229,12 @@ export const readBlocks = (uids: readonly string[]): Promise<Map<string, Block>>
 
 /* ── writes ────────────────────────────────────────────────────────────── */
 
-export const writeString = async (uid: string, string: string): Promise<void> => {
-  await api().data.block.update({ block: { uid, string } });
-  forgetReads();
+export const setTaskDone = async (uid: string, done: boolean): Promise<void> => {
+  const block = await api().data.async.pull("[:block/string]", byUid(uid));
+  const current = str(block?.[":block/string"]);
+  if (!hasMarker(current)) throw new Error("The task was deleted or its checkbox was removed.");
+  const string = withDone(current, done);
+  if (string !== current) await api().data.block.update({ block: { uid, string } });
 };
 
 export const openInSidebar = async (uid: string): Promise<void> => {
