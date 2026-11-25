@@ -22,6 +22,7 @@
     "@types/node": "^22.0.0",
     "@types/react": "17.0.39",
     "@types/react-dom": "17.0.13",
+    "datascript": "1.7.8",
     "jsdom": "catalog:",
     "typescript": "^5.9.0",
     "vitest": "catalog:"

@@ -129,6 +129,9 @@ importers:
       '@types/react-dom':
         specifier: 17.0.13
         version: 17.0.13
+      datascript:
+        specifier: 1.7.8
+        version: 1.7.8
       jsdom:
         specifier: 'catalog:'
         version: 30.0.1
@@ -2207,6 +2210,10 @@ packages:
   data-urls@7.0.0:
     resolution: {integrity: sha512-23XHcCF+coGYevirZceTVD7NdJOqVn+49IHyxgszm+JIiHLoB2TkmPtsYkNWT1pvRSGkc35L6NHs0yHkN2SumA==}
     engines: {node: ^20.19.0 || ^22.12.0 || >=24.0.0}
+
+  datascript@1.7.8:
+    resolution: {integrity: sha512-PFJNAbcUgVxkLGXBbvkEqTAvcRWCLuw/PibWuLuwaZhXAgI5xx7p9l9FHHFCqKoDODenzhfLKuQJ8987ShsNqg==}
+    engines: {node: '>=0.8.22'}
 
   date-fns@2.30.0:
     resolution: {integrity: sha512-fnULvOpxnC5/Vg3NCiWelDsLiUc9bRwAPs/+LfTLNvetFCtCTN+yQz15C/fs4AwX1R9K5GLtLfn8QW+dWisaAw==}
@@ -6168,6 +6175,8 @@ snapshots:
       whatwg-url: 16.0.1
     transitivePeerDependencies:
       - '@noble/hashes'
+
+  datascript@1.7.8: {}
 
   date-fns@2.30.0:
     dependencies:

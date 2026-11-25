@@ -15,6 +15,7 @@ export type DiscussionComment = CommentContent & {
 export type DiscussionThread = DiscussionComment & {
   source: DiscussionSource;
   resolved: boolean;
+  summary?: boolean;
   replies: DiscussionComment[];
 };
 export type DiscussionContext = {
@@ -22,6 +23,9 @@ export type DiscussionContext = {
   title: string;
   sourceUid?: string;
   threadUid?: string;
+  outlineUid?: string;
+  outlineTitle?: string;
+  ancestors?: string[];
 };
 export type DiscussionSnapshot = {
   sources: DiscussionSource[];
@@ -43,30 +47,35 @@ const COMMENT_REFERENCE = `[?container :block/refs ?source]
 const SOURCE_CONTAINERS = `${COMMENT_REFERENCE}
   (not-join [?source] [?source :block/parents ?root] [?root :block/string "[[roam/comments]]"])`;
 
-const NATIVE_CONTAINERS = `[?page :block/uid ?pageUid] [?source :block/page ?page] ${SOURCE_CONTAINERS}`;
+// Start from the small native storage tree, then constrain its referenced source.
+const FROM_COMMENTS = `[?comments :block/string "[[roam/comments]]"]
+  [?comments :block/children ?date] [?date :block/children ?author]
+  [?author :block/children ?container] [?container :block/refs ?source]`;
+const ORDINARY_SOURCE = `(not-join [?source] [?source :block/parents ?root]
+  [?root :block/string "[[roam/comments]]"])`;
+const OUTLINE = `(or [(identity ?scope) ?source] [?source :block/parents ?scope])`;
+const EXACT_REFERENCE = `[?source :block/uid ?sourceUid] [(str "((" ?sourceUid "))") ?exact]
+  [?container :block/string ?exact]`;
+const SUMMARY_CONTAINER = `[:block/string {:block/_children [:block/string]}
+  {:block/children [:block/uid :block/order :block/props :create/time
+  {:create/user [{:user/display-page [:node/title]}]}]}]`;
+const FIND = `[:find (pull ?source [:block/uid])
+  (pull ?container ${SUMMARY_CONTAINER}) :in $ ?uid :where [?scope :block/uid ?uid]`;
+export const Q_PAGE_COMMENTS = `${FIND} ${FROM_COMMENTS} [?source :block/page ?scope] ${ORDINARY_SOURCE} ${EXACT_REFERENCE}]`;
+export const Q_OUTLINE_COMMENTS = `${FIND} ${OUTLINE} ${SOURCE_CONTAINERS} ${EXACT_REFERENCE}]`;
+export const Q_INLINE_COMMENTS = `[:find (pull ?source [:block/uid :block/string :block/order])
+  (pull ?container ${CONTAINER}) :in $ ?uid :where [?source :block/uid ?uid] ${SOURCE_CONTAINERS} ${EXACT_REFERENCE}]`;
 
-export const Q_PAGE_COMMENTS = `[:find (pull ?source [:block/uid :block/string :block/order])
-  (pull ?container ${CONTAINER}) :in $ ?pageUid :where ${NATIVE_CONTAINERS}]`;
+const Q_BADGES = `[:find ?uid ?reference (count-distinct ?thread) :in $ [?uid ...]
+  :where [?source :block/uid ?uid] ${SOURCE_CONTAINERS}
+  [?container :block/string ?reference] [?container :block/children ?thread]]`;
 
-const BADGE_COUNT_CLAUSES = `${SOURCE_CONTAINERS} [?source :block/uid ?uid]
-  [?container :block/string ?reference] [?container :block/children ?thread]`;
-const COUNT = "[:find ?uid ?reference (count-distinct ?thread)";
-const Q_BADGE_COUNTS = `${COUNT} :in $ ?pageUid :where [?page :block/uid ?pageUid]
-  [?source :block/page ?page] ${BADGE_COUNT_CLAUSES}]`;
-const Q_EMBED_COUNTS = `${COUNT} :in $ [?uid ...] :where [?source :block/uid ?uid]
-  ${BADGE_COUNT_CLAUSES}]`;
-
-// Keep closed-page reads lightweight, including blocks rendered from other pages.
 export const fetchBadgeCounts = async (
-  pageUid: string,
-  embeddedUids: string[] = [],
+  uids: string[],
 ): Promise<Map<string, number>> => {
-  const api = window.roamAlphaAPI.data.async;
-  const results = await Promise.all([
-    api.q(Q_BADGE_COUNTS, pageUid),
-    embeddedUids.length ? api.q(Q_EMBED_COUNTS, embeddedUids) : [],
-  ]);
-  const rows = results.flat();
+  const rows = uids.length
+    ? await window.roamAlphaAPI.data.async.q(Q_BADGES, uids)
+    : [];
   const counts = new Map<string, number>();
   for (const [uid, reference, count] of rows) {
     if (
@@ -81,13 +90,60 @@ export const fetchBadgeCounts = async (
 
 export const Q_REPLY_COMMENTS = `[:find ?uid (pull ?container ${CONTAINER})
   :in $ [?uid ...] :where [?source :block/uid ?uid]
-  ${COMMENT_REFERENCE}]`;
+  ${COMMENT_REFERENCE} ${EXACT_REFERENCE}]`;
 
-export const Q_PAGE_SOURCES = `[:find (pull ?source [:block/uid :block/string :block/order])
-  :in $ ?pageUid :where [?page :block/uid ?pageUid] [?source :block/page ?page]
-  [?source :block/string ?text]
-  (not-join [?source] [?source :block/string "[[roam/comments]]"])
-  (not-join [?source] [?source :block/parents ?root] [?root :block/string "[[roam/comments]]"])]`;
+// Source selection is a separate, user-initiated read. Start at the scope's
+// immediate children; typing a search also finds deeply nested source blocks.
+export const findDiscussionSources = async (
+  context: DiscussionContext,
+  search: string,
+) => {
+  const scopeUid = context.outlineUid || context.pageUid;
+  const membership = context.outlineUid
+    ? OUTLINE
+    : "[?source :block/page ?scope]";
+  const children = context.outlineUid
+    ? "(or [(identity ?scope) ?source] [?scope :block/children ?source])"
+    : "[?scope :block/children ?source]";
+  const candidates = search ? membership : children;
+  const query = `[:find (min 50 ?option) :in $ ?root ?term :where
+    [?scope :block/uid ?root] ${candidates} [?source :block/string ?text]
+    [?source :block/uid ?uid] [(get-else $ ?source :block/order 0) ?order]
+    [(re-pattern ?term) ?pattern] [(re-find ?pattern ?text)]
+    (not [?source :block/string "[[roam/comments]]"]) ${ORDINARY_SOURCE}
+    [(tuple ?order ?uid ?text) ?option]]`;
+  const literal = search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const rows = await window.roamAlphaAPI.data.async.q(
+    query,
+    scopeUid,
+    search ? "(?i)" + literal : "\\S",
+  );
+  const options = (rows[0]?.[0] || []) as [number, string, string][];
+  const sources = options.map(([order, uid, string]) => ({
+    uid,
+    string,
+    order,
+  }));
+  if (
+    !search &&
+    context.sourceUid &&
+    !sources.some((source) => source.uid === context.sourceUid)
+  ) {
+    // Discuss block can target a deep block that has never had a thread.
+    const exact = await window.roamAlphaAPI.data.async.q(
+      `[:find (pull ?source [:block/uid :block/string :block/order]) :in $ ?root ?uid :where
+        [?scope :block/uid ?root] [?source :block/uid ?uid] ${membership}
+        [?source :block/string ?text] (not [?source :block/string "[[roam/comments]]"]) ${ORDINARY_SOURCE}]`,
+      scopeUid,
+      context.sourceUid,
+    );
+    if (exact.length) {
+      const source = shapeSource(exact[0][0]);
+      if (source.string.trim()) sources.unshift(source);
+    }
+  }
+  return sources;
+};
 
 const record = (value: unknown): Record<string, unknown> =>
   value !== null && typeof value === "object" && !Array.isArray(value)
@@ -146,7 +202,7 @@ export const resolveDiscussionContext = async (
       "Open a page, or choose Discuss block from a block’s menu.",
     );
   const pulled = await api.data.async.pull(
-    "[:block/uid :block/string :node/title {:block/page [:block/uid :node/title]}]",
+    "[:block/uid :block/string :node/title {:block/parents [:block/uid]} {:block/page [:block/uid :node/title]}]",
     [":block/uid", target],
   );
   if (!pick(pulled, "block/uid"))
@@ -160,25 +216,32 @@ export const resolveDiscussionContext = async (
     pageUid,
     title: pick<string>(page, "node/title") || "Untitled",
     sourceUid: title ? undefined : target,
+    ancestors: pick<unknown[]>(pulled, "block/parents")?.map(
+      (n) => pick<string>(n, "block/uid") || "",
+    ),
+    outlineTitle: title ? undefined : pick<string>(pulled, "block/string"),
   };
 };
 
-export const fetchDiscussions = async (
-  pageUid: string,
+const readDiscussions = async (
+  uid: string,
+  scope: "page" | "outline" | "inline" = "page",
 ): Promise<DiscussionSnapshot> => {
   const api = window.roamAlphaAPI.data.async;
-  const [sourceRows, rows] = await Promise.all([
-    api.q(Q_PAGE_SOURCES, pageUid),
-    api.q(Q_PAGE_COMMENTS, pageUid),
-  ]);
-  const sources = sourceRows
-    .map(([node]) => shapeSource(node))
-    .filter((s) => s.uid && s.string.trim());
+  const query =
+    scope === "inline"
+      ? Q_INLINE_COMMENTS
+      : scope === "outline"
+        ? Q_OUTLINE_COMMENTS
+        : Q_PAGE_COMMENTS;
+  const rows = await api.q(query, uid);
+  const sources = new Map<string, DiscussionSource>();
   const byUid = new Map<string, DiscussionThread>();
   for (const [sourceNode, container] of rows) {
     const source = shapeSource(sourceNode);
     // Only exact native reference containers count, never a prose mention of the source.
     if (pick(container, "block/string") !== `((${source.uid}))`) continue;
+    sources.set(source.uid, source);
     const nodes = new Map(
       orderedChildren(container).map((n) => [pick(n, "block/uid"), n]),
     );
@@ -187,6 +250,7 @@ export const fetchDiscussions = async (
       byUid.set(comment.uid, {
         ...comment,
         source,
+        summary: scope !== "inline",
         resolved: isResolved(nodes.get(comment.uid)),
         replies: [],
       });
@@ -195,7 +259,7 @@ export const fetchDiscussions = async (
   const threads = [...byUid.values()];
   if (threads.length) {
     const replies = await api.q(
-      Q_REPLY_COMMENTS,
+      scope === "inline" ? Q_REPLY_COMMENTS : Q_REPLY_IDS,
       threads.map((t) => t.uid),
     );
     for (const [uid, container] of replies) {
@@ -211,7 +275,47 @@ export const fetchDiscussions = async (
     t.replies.sort((a, b) => a.time - b.time || a.uid.localeCompare(b.uid)),
   );
   threads.sort((a, b) => b.time - a.time || a.uid.localeCompare(b.uid));
-  return { sources, threads };
+  return { sources: [...sources.values()], threads };
+};
+
+const Q_REPLY_IDS = `[:find ?uid (pull ?container [:block/string {:block/children [:block/uid]}])
+  :in $ [?uid ...] :where [?source :block/uid ?uid] ${COMMENT_REFERENCE} ${EXACT_REFERENCE}]`;
+
+// Coalesce concurrent reads only. Subsequent refreshes must see remote edits.
+const pending = new Map<string, Promise<DiscussionSnapshot>>();
+export const fetchDiscussions = (
+  uid: string,
+  scope: "page" | "outline" | "inline" = "page",
+) => {
+  const key = JSON.stringify([graphName(), scope, uid]);
+  const existing = pending.get(key);
+  if (existing) return existing;
+  const read = readDiscussions(uid, scope).finally(() => pending.delete(key));
+  pending.set(key, read);
+  return read;
+};
+
+export const loadDiscussionLabels = async (uids: string[]) => {
+  const rows = await window.roamAlphaAPI.data.async.q(
+    "[:find ?uid ?text :in $ [?uid ...] :where [?b :block/uid ?uid] [?b :block/string ?text]]",
+    uids,
+  );
+  return new Map(rows.map(([uid, text]) => [String(uid), String(text)]));
+};
+
+export const loadThreadContent = async (uid: string) => {
+  const api = window.roamAlphaAPI.data.async;
+  const [node, rows] = await Promise.all([
+    api.pull(CONTENT, [":block/uid", uid]),
+    api.q(Q_REPLY_COMMENTS, [uid]),
+  ]);
+  return {
+    children: content(node).children,
+    replies: rows
+      .filter(([, c]) => pick(c, "block/string") === `((${uid}))`)
+      .flatMap(([, c]) => shapeComments(c))
+      .sort((a, b) => a.time - b.time || a.uid.localeCompare(b.uid)),
+  };
 };
 
 type NativeCommentApi = {
