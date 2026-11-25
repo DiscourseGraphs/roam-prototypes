@@ -63,11 +63,11 @@ const type = (text: string): void => {
     Simulate.change(textarea);
   });
 };
-const mount = async (sourceUid = "source", composeComment = false): Promise<void> => {
+const mount = async (sourceUid = "source", composeComment = false, nativeStorage = false): Promise<void> => {
   await act(async () => {
     ReactDOM.render(
       <DiscussionRail
-        context={{ pageUid: "page", title: "Notes", sourceUid, composeComment }}
+        context={{ pageUid: "page", title: "Notes", sourceUid, composeComment, nativeStorage }}
         onClose={() => {}}
         onSnapshot={() => {}}
       />,
@@ -151,6 +151,16 @@ describe("discussion rail", () => {
       text: "Comment from the bullet menu",
     });
     expect(host.querySelector('textarea[aria-label="New thread"]')).toBeNull();
+  });
+
+  it("opens a resolved native comment without creating a thread beneath it", async () => {
+    vi.mocked(fetchDiscussions).mockResolvedValue({
+      ...snapshot,
+      threads: [{ ...snapshot.threads[0], resolved: true }],
+    });
+    await mount("root", true, true);
+    expect(host.querySelector('textarea[aria-label="New thread"]')).toBeNull();
+    expect(host.querySelector('[data-thread-uid="root"]')?.getAttribute("data-expanded")).toBe("true");
   });
 
   it("posts to the visible picker option when the requested block is ineligible", async () => {

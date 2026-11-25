@@ -453,9 +453,13 @@ export const DiscussionRail = ({
   );
   const [pickingSource, setPickingSource] = React.useState(false);
   const [dismissedRequest, setDismissedRequest] = React.useState<DiscussionContext>();
-  const commentSource = context.composeComment && context !== dismissedRequest
-    ? context.sourceUid
-    : undefined;
+  const commentSource =
+    context.composeComment &&
+    !context.nativeStorage &&
+    context.outlineTitle !== "[[roam/comments]]" &&
+    context !== dismissedRequest
+      ? context.sourceUid
+      : undefined;
   const composing = Boolean(commentSource) || pickingSource;
   const closeComposer = () => {
     setDismissedRequest(context);
