@@ -1,0 +1,28 @@
+{
+  "name": "roam-meeting-tasks",
+  "version": "0.2.0",
+  "private": true,
+  "description": "Carried-over next actions and open tasks for a recurring-meeting page, rendered inline where the page's roam/render widget sits.",
+  "type": "module",
+  "scripts": {
+    "dev": "roam-prototype dev",
+    "build": "roam-prototype build",
+    "test": "vitest run --passWithNoTests",
+    "typecheck": "tsc -p tsconfig.check.json"
+  },
+  "dependencies": {
+    "roamjs-components": "catalog:",
+    "use-sync-external-store": "catalog:"
+  },
+  "devDependencies": {
+    "@discoursegraphs/extension-base": "workspace:*",
+    "@types/node": "^22.0.0",
+    "@types/react": "18.2.79",
+    "@types/react-dom": "18.2.25",
+    "jsdom": "catalog:",
+    "react": "18.2.0",
+    "react-dom": "18.2.0",
+    "typescript": "^5.9.0",
+    "vitest": "catalog:"
+  }
+}
