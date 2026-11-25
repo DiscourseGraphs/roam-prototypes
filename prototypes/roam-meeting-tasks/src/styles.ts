@@ -5,6 +5,8 @@
 import { FALLBACK_CLASS, STYLE_ID } from "~/config";
 
 const CSS = `
+  .rmt-native-macro { display: none !important; }
+  .rmt-macro-host { flex: 1; min-width: 0; }
   /* The shim's "waiting for the extension" note. Hidden whenever this
      stylesheet is present, which is exactly when the extension is loaded. */
   .${FALLBACK_CLASS} { display: none; }

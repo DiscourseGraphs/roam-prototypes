@@ -16,7 +16,7 @@ Check which build you are running with `roamMeetingTasks.debug()` in the browser
 
 ## What a widget shows
 
-A widget is placed with `{{roam/render: ((uid))}}`, where `uid` is the page's shared code block
+Place a widget with `{{meeting-tasks}}`
 (see "Installing on a graph"). It is scoped to the page it sits on and has two modes.
 
 **Page mode** (anywhere on the page that is not inside a meeting):
@@ -54,7 +54,7 @@ In both modes:
 | `page` | show page mode even inside a meeting |
 | `debug` | show a diagnostic line, including how long the widget took to load |
 
-Example: `{{roam/render: ((uid)) 365 debug}}`.
+Example: `{{meeting-tasks: 365, debug}}`.
 
 ## Graph conventions it relies on
 
@@ -75,7 +75,7 @@ are unique per graph, so one list serves every graph.
 
 ## Installing on a graph
 
-Two pieces are needed: the extension, and the shim in the graph's `roam/render` code block.
+One graph-level loader serves every meeting block and template.
 
 **1. Load the extension.** Either use **Load Developer Extensions from URL** with:
 
@@ -105,25 +105,15 @@ enabled. To try a pull-request preview, change `url` to the preview URL posted o
 
 The stylesheet is carried in the bundle, so neither loading path needs `extension.css`.
 
-**2. Put the shim in the code block.** Roam has no API for registering an inline component, so the
-`{{roam/render: ((uid))}}` blocks stay how a widget is placed. The code block they point at holds
-a short shim instead of the whole component. It renders an empty element and hands it to the
-extension. With the extension loaded, run `copy(roamMeetingTasks.shim)` in the browser console and
-paste the result over the code block's content. The source is `src/shim.ts`.
+**2. Add the macro to a meeting block or template.** Use `{{meeting-tasks}}` on its own or include an enablement hint in the same block:
 
-Existing `{{roam/render: ((uid))}}` blocks and templates keep working unchanged, because only the
-code block's content changes.
+```text
+{{meeting-tasks}} (if you are seeing this block, enable it here: ((SETUP_UID)))
+```
 
-Things to know before switching a graph over:
+Replace `SETUP_UID` with the UID of your graph's setup block. Before a user enables the loader, Roam displays the hint and its clickable block reference. Once loaded, the extension displays the widget in their place. Use one macro per block. Existing arguments go inside the braces, for example `{{meeting-tasks: 365, page, debug}}`.
 
-- Anyone who has not loaded the extension sees a one-line note in place of each widget ("waiting
-  for the roam-meeting-tasks extension"). With a `roam/js` loader, that is anyone who has not
-  enabled `roam/js` for the graph.
-- `roam/render` itself needs **custom components** turned on in each user's settings. That was
-  already true for the component this replaces.
-- The shim's function is named `dgMeetingTasks`, the name the old component used. Roam finds a
-  `roam/render` component by its function name on `window`, so the name must stay unique in the
-  graph.
+Existing `roam/render` invocations can still use the shared shim in `src/shim.ts`. The macro uses the same widget and needs only the loader.
 
 ## Performance
 

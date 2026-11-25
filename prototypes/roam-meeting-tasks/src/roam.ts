@@ -44,6 +44,8 @@ const num = (v: unknown): number => (typeof v === "number" ? v : 0);
 const list = (v: unknown): Pulled[] => (Array.isArray(v) ? (v as Pulled[]) : []);
 const uidOf = (v: unknown): string => str((v as Pulled | undefined)?.[":block/uid"]);
 const byUid = (uid: string) => [":block/uid", uid];
+export const readBlockText = async (uid: string): Promise<string> =>
+  str((await api().data.async.pull("[:block/string]", byUid(uid)))?.[":block/string"]);
 
 const toBlock = (b: Pulled): Block => ({
   uid: uidOf(b),
