@@ -182,27 +182,39 @@ const LazyRows = ({ rows, tasks }: Omit<RowsProps, "refs">) => {
 
 export const MeetingTasks = ({ args }: { args: WidgetArgs }) => {
   const revision = React.useSyncExternalStore(subscribe, getGeneration);
-  const state = useAsync(() => loadWidget(args), "load", [args, revision]);
+  const state = useAsync(async () => ({ result: await loadWidget(args), revision }), "load", [args, revision]);
+  const [request, setRequest] = React.useState<number | null>(null);
+  const updated = request !== null && state.kind === "done" && !state.refreshing && state.value.revision >= request;
+  React.useEffect(() => {
+    if (!updated) return;
+    const timer = window.setTimeout(() => setRequest(null), 2100);
+    return () => window.clearTimeout(timer);
+  }, [updated, request]);
+  React.useEffect(() => {
+    if (state.kind === "failed") setRequest(null);
+  }, [state.kind]);
   const [open, setOpen] = React.useState(false);
   const tasks = useTaskWrites();
   const reload = () => {
     tasks.clearError();
+    setRequest(generation + 1);
     refresh();
   };
   return (
     <div className="rmt" aria-busy={state.kind === "loading" || (state.kind === "done" && state.refreshing)}>
-      <button className="rmt-refresh" type="button" aria-label="Reload tasks" title="Reload tasks" onClick={reload}>
-        <span className="bp3-icon bp3-icon-refresh" aria-hidden="true" />
+      <button className="rmt-refresh" type="button" data-feedback={request !== null || undefined} aria-label="Reload tasks" title={updated ? "Updated just now" : "Reload tasks"} onClick={reload}>
+        <span className={`bp3-icon ${updated ? "bp3-icon-tick" : "bp3-icon-refresh"}`} aria-hidden="true" />
       </button>
+      <span className="rmt-sr" role="status">{request === null ? "" : updated ? "Updated just now" : "Checking tasks"}</span>
       {tasks.error && <div role="alert">{tasks.error}</div>}
       {state.kind === "loading" && <div className="rmt-muted">Loading tasks…</div>}
       {state.kind === "failed" && <div role="alert">Could not load tasks. Reload to retry.</div>}
-      {state.kind === "done" && (state.value.kind === "empty" ? (
+      {state.kind === "done" && (state.value.result.kind === "empty" ? (
         <div>No tasks to show.
-          {args.debug && <div className="rmt-debug">{state.value.reason} load={state.value.ms}ms</div>}
+          {args.debug && <div className="rmt-debug">{state.value.result.reason} load={state.value.result.ms}ms</div>}
         </div>
       ) : (
-        <TaskList loaded={state.value} args={args} open={open} setOpen={setOpen} tasks={tasks} />
+        <TaskList loaded={state.value.result} args={args} open={open} setOpen={setOpen} tasks={tasks} />
       ))}
     </div>
   );
@@ -216,27 +228,39 @@ const TaskList = ({ loaded, args, open, setOpen, tasks }: {
   tasks: ReturnType<typeof useTaskWrites>;
 }) => {
   const { view, refs } = loaded;
+  const [showHint, setShowHint] = React.useState(false);
+  const hintId = React.useId();
+  const hint = `${args.lookbackDays}-day window · ${view.olderCount} older ${view.olderCount === 1 ? "meeting" : "meetings"} hidden`;
+  const info = view.olderCount > 0 && (
+    <span className="rmt-info" onMouseEnter={() => setShowHint(true)} onMouseLeave={() => setShowHint(false)}>
+      <button type="button" aria-label="Meeting lookback details" aria-describedby={showHint ? hintId : undefined}
+        onFocus={() => setShowHint(true)} onBlur={() => setShowHint(false)} onClick={() => setShowHint(true)}
+        onKeyDown={(e) => { if (e.key === "Escape") setShowHint(false); }}>
+        <span className="bp3-icon bp3-icon-info-sign" aria-hidden="true" />
+      </button>
+      {showHint && <span className="rmt-tip" id={hintId} role="tooltip">{hint}</span>}
+    </span>
+  );
   const openCount = view.primary
     .concat(view.secondary)
     .filter((r) => !isDone(r.task.string)).length;
 
   return (
     <>
-      <div className="rmt-count">
+      <div className={`rmt-count${view.lastMeeting ? " rmt-sr" : ""}`}>
         {openCount} {openCount === 1 ? "open item" : "open items"}
       </div>
-      {view.primary.length > 0 && (
+      {(view.primary.length > 0 || view.lastMeeting) && (
         <>
           <div className="rmt-heading">
-            {view.primaryLabel}
-            {view.lastMeeting && (
+            {view.lastMeeting ? (
               <>
-                {" · "}
+                <span className="bp3-icon bp3-icon-link" aria-hidden="true" /> From{" "}
                 <BlockLink uid={view.lastMeeting.uid} className="rmt-meeting">
                   {view.lastMeeting.title}
                 </BlockLink>
               </>
-            )}
+            ) : view.primaryLabel}
           </div>
           <div data-section="primary">
             <Rows rows={view.primary} refs={refs} tasks={tasks} />
@@ -247,8 +271,11 @@ const TaskList = ({ loaded, args, open, setOpen, tasks }: {
         <>
           {/* Collapsed by default: on a long-lived page this section is dozens
               of items, which would bury the carried-over next actions. */}
-          <div className="rmt-heading rmt-toggle" onClick={() => setOpen((o) => !o)}>
-            {open ? "▾" : "▸"} {view.secondary.length} {view.secondaryLabel}
+          <div className="rmt-disclosure">
+            <button type="button" className="rmt-toggle" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
+              {open ? "▾" : "▸"} {view.secondary.length} {view.secondaryLabel}
+            </button>
+            {info}
           </div>
           {open && (
             <div data-section="secondary">
@@ -257,12 +284,7 @@ const TaskList = ({ loaded, args, open, setOpen, tasks }: {
           )}
         </>
       )}
-      {view.olderCount > 0 && (
-        <div className="rmt-footer">
-          window {args.lookbackDays}d · {view.olderCount}{" "}
-          {view.olderCount === 1 ? "older meeting" : "older meetings"} not shown
-        </div>
-      )}
+      {!view.secondary.length && info}
       {args.debug && (
         <div className="rmt-debug">
           {view.debug} load={loaded.ms}ms

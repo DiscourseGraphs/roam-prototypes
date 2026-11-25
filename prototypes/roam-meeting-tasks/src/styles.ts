@@ -11,7 +11,13 @@ const CSS = `
      stylesheet is present, which is exactly when the extension is loaded. */
   .${FALLBACK_CLASS} { display: none; }
 
-  .rmt { display: flow-root; font-size: 13px; line-height: 1.45; }
+  .rmt { display: flow-root; line-height: 1.45; padding: 6px 10px;
+    border: 1px solid color-mix(in srgb, currentColor 16%, transparent); border-radius: 3px;
+    background: color-mix(in srgb, currentColor 3%, transparent); }
+  .rmt-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .rmt-refresh[data-feedback] .bp3-icon-refresh { animation: rmt-spin 0.8s linear infinite; }
+  @keyframes rmt-spin { to { transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) { .rmt-refresh[data-feedback] .bp3-icon-refresh { animation: none; } }
   .rmt .rmt-refresh {
     float: right; display: grid; place-items: center; width: 24px; height: 24px;
     margin-left: 4px; padding: 0; border: 0; border-radius: 3px;
@@ -19,7 +25,7 @@ const CSS = `
   }
   .rmt-refresh .bp3-icon::before { font-size: 12px; }
   @media (hover: hover) and (pointer: fine) {
-    .rmt:not(:hover):not(:focus-within) .rmt-refresh { opacity: 0; }
+    .rmt:not(:hover):not(:focus-within) .rmt-refresh:not([data-feedback]) { opacity: 0; }
   }
   @media (any-pointer: coarse) {
     .rmt:not(:hover):not(:focus-within) .rmt-refresh { opacity: 1; }
@@ -28,10 +34,15 @@ const CSS = `
   .rmt-muted { font-size: 12px; opacity: 0.5; }
   .rmt-count { font-size: 12px; opacity: 0.7; margin-bottom: 2px; }
   .rmt-heading {
-    font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em;
-    opacity: 0.6; margin: 8px 0 2px;
+    padding: 1px 0 5px; margin-bottom: 4px; border-bottom: 1px solid color-mix(in srgb, currentColor 13%, transparent);
   }
-  .rmt-toggle { cursor: pointer; user-select: none; }
+  .rmt-heading .bp3-icon::before, .rmt-info .bp3-icon::before { font-size: 12px; }
+  .rmt-disclosure { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-top: 4px; }
+  .rmt-toggle, .rmt-info button { background: transparent; color: inherit; font: inherit; border: 0; padding: 2px; cursor: pointer; }
+  .rmt-info { position: relative; }
+  .rmt-tip { position: absolute; bottom: 100%; right: 0; z-index: 5; width: max-content; max-width: min(180px,60vw);
+    background: #30404d; color: white; border-radius: 3px; padding: 4px 7px; font-size: 12px; }
+  .rmt > .rmt-info .rmt-tip { left: 0; right: auto; }
   .rmt-row { display: flex; align-items: flex-start; gap: 6px; padding: 1px 0; }
   .rmt-row[data-done="true"] { opacity: 0.55; }
   .rmt .rmt-row[data-done="true"] .rmt-text { text-decoration: line-through; }
@@ -42,8 +53,7 @@ const CSS = `
   .rmt-date[data-inbox="true"] { opacity: 0.45; }
   /* Two classes deep so Roam's and Blueprint's own link colors lose. */
   .rmt .rmt-text { flex: 1 1 auto; color: inherit; text-decoration: none; }
-  .rmt .rmt-meeting { color: inherit; text-decoration: underline dotted; }
-  .rmt-footer { font-size: 11px; opacity: 0.5; margin-top: 6px; }
+  .rmt .rmt-meeting { text-decoration: underline; text-underline-offset: 2px; }
   .rmt-debug { font-size: 11px; opacity: 0.6; margin-top: 6px; }
 `;
 

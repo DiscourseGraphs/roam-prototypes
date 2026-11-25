@@ -137,14 +137,19 @@ describe("lookback window", () => {
     const all = texts(el).join(" ");
     expect(all).not.toMatch(/ancient item/);
     expect(all).toMatch(/page-level inbox task/);
-    expect(el.querySelector(".rmt-footer")?.textContent).toBe("window 120d · 1 older meeting not shown");
+    expect(el.querySelector("[role=tooltip]")).toBeNull();
+    const info = el.querySelector<HTMLButtonElement>(".rmt-disclosure .rmt-info button")!;
+    await act(async () => info.focus());
+    expect(el.querySelector("[role=tooltip]")?.textContent).toBe("120-day window · 1 older meeting hidden");
+    await act(async () => info.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+    expect(el.querySelector("[role=tooltip]")).toBeNull();
   });
 
   it("widens with a bare number, and drops the footer once nothing is excluded", async () => {
     const el = await render([host(), "365"]);
     await openSecondary(el);
     expect(texts(el).join(" ")).toMatch(/ancient item from outside the window/);
-    expect(el.querySelector(".rmt-footer")).toBeNull();
+    expect(el.querySelector(".rmt-info")).toBeNull();
   });
 });
 
@@ -169,7 +174,7 @@ describe("meeting mode (mounted inside the newest meeting)", () => {
   it("labels the section with a link to that meeting, without brackets", async () => {
     const el = await mountInM1();
     const headings = [...el.querySelectorAll(".rmt-heading")].map((h) => h.textContent);
-    expect(headings[0]).toBe("From last meeting · Meeting two");
+    expect(headings[0]).toBe(" From Meeting two");
     expect(el.querySelector(".rmt-meeting")?.getAttribute("href")).toMatch(new RegExp(`/page/${U("m2")}$`));
   });
 
@@ -185,7 +190,7 @@ describe("meeting mode (mounted inside the newest meeting)", () => {
     graph.add("m15na", "next actions", ["m15note"]);
     graph.add("m15note", "just a note, not a task");
     const el = await mountInM1();
-    expect(el.querySelector(".rmt-heading")?.textContent).toBe("From last meeting · Meeting two");
+    expect(el.querySelector(".rmt-heading")?.textContent).toBe(" From Meeting two");
   });
 
   it("does not list this meeting's own tasks as older open items", async () => {
@@ -267,6 +272,7 @@ describe("write-back", () => {
     refresh.focus();
     await act(async () => refresh.click());
     expect(document.activeElement).toBe(refresh);
+    expect(refresh.querySelector(".bp3-icon-tick")).toBeTruthy();
     const row = primaryRow(el, /Trang Doan/);
     const box = row.querySelector("input")!;
     box.focus();

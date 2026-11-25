@@ -39,12 +39,15 @@ In both modes:
   in two widgets at once. Both disable its checkbox while saving and reload after the write.
   Each save reads the current block text before changing its task marker.
 - Use the **Reload tasks** icon at the right edge after editing tasks elsewhere or to retry a failed
-  load. It appears on hover or keyboard focus and stays visible on touch screens. If a checkbox save fails, the widget shows an error and you can retry.
+  load. It appears on hover or keyboard focus and stays visible on touch screens. A successful
+  reload shows a checkmark for about two seconds. If a checkbox save fails, the widget shows an error and you can retry.
 - Items are listed newest meeting first, and in outline order within a meeting.
 - A DONE item stays visible for 14 days, then ages out.
 - Clicking an item opens it. Shift-click opens it in the right sidebar.
-- Only meetings from the last 120 days are read. A footer says how many older meetings were left
-  out. Tasks outside any meeting are always shown.
+- The **From** link opens the source meeting block. Shift-click opens it in the right sidebar.
+- Meetings use a 120-day lookback by default. When older meetings are excluded, hover, focus, or
+  tap the information icon beside the older-items disclosure to see the window and hidden count.
+  Tasks outside any meeting are always shown.
 
 ### Arguments
 
