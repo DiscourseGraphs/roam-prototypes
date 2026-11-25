@@ -59,7 +59,7 @@ importers:
     dependencies:
       roamjs-components:
         specifier: 'catalog:'
-        version: 0.89.0(25f1eaefe7300d3403328892d4fb02ee)
+        version: 0.89.0(a108def2d5f55c34ad4d8a697ea8381c)
       use-sync-external-store:
         specifier: 'catalog:'
         version: 1.6.0(react@18.2.0)
@@ -72,13 +72,13 @@ importers:
         version: 30.0.1
       vitest:
         specifier: 'catalog:'
-        version: 4.1.10(@types/node@26.2.0)(jsdom@30.0.1)(msw@2.15.0(@types/node@26.2.0)(typescript@7.0.2))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.25.12)(jiti@1.21.7)(sass@1.103.1)(yaml@2.9.0))
+        version: 4.1.10(@types/node@26.2.0)(jsdom@30.0.1)(msw@2.15.0(@types/node@26.2.0)(typescript@7.0.2))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.17.14)(jiti@1.21.7)(sass@1.103.1)(yaml@2.9.0))
 
   prototypes/properties-panel:
     dependencies:
       roamjs-components:
         specifier: 'catalog:'
-        version: 0.89.0(320e230ed0fb108a7ffb1c4252bad912)
+        version: 0.89.0(dc225aeb584988947d18b8c32b7f8b5e)
       use-sync-external-store:
         specifier: 'catalog:'
         version: 1.6.0(react@18.2.0)
@@ -97,7 +97,7 @@ importers:
         version: 30.0.1
       vitest:
         specifier: 'catalog:'
-        version: 4.1.10(@types/node@26.2.0)(jsdom@30.0.1)(msw@2.15.0(@types/node@26.2.0)(typescript@7.0.2))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.25.12)(jiti@1.21.7)(sass@1.103.1)(yaml@2.9.0))
+        version: 4.1.10(@types/node@26.2.0)(jsdom@30.0.1)(msw@2.15.0(@types/node@26.2.0)(typescript@7.0.2))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.17.14)(jiti@1.21.7)(sass@1.103.1)(yaml@2.9.0))
 
   prototypes/roam-inbox:
     dependencies:
@@ -115,7 +115,7 @@ importers:
         version: 0.89.0(16c5b1368544d7046e8da5f767be6a72)
       use-sync-external-store:
         specifier: 'catalog:'
-        version: 1.6.0(react@18.2.0)
+        version: 1.6.0(react@17.0.2)
     devDependencies:
       '@discoursegraphs/extension-base':
         specifier: workspace:*
@@ -143,7 +143,7 @@ importers:
     dependencies:
       roamjs-components:
         specifier: 'catalog:'
-        version: 0.89.0(3b15e0e8ac67b29e0263f2bbe5b35557)
+        version: 0.89.0(2f8349285c98360e172a7b172ea71eae)
       use-sync-external-store:
         specifier: 'catalog:'
         version: 1.6.0(react@18.2.0)
@@ -174,7 +174,7 @@ importers:
         version: 5.9.3
       vitest:
         specifier: 'catalog:'
-        version: 4.1.10(@types/node@22.20.2)(jsdom@30.0.1)(msw@2.15.0(@types/node@22.20.2)(typescript@5.9.3))(vite@8.2.1(@types/node@22.20.2)(esbuild@0.25.12)(jiti@1.21.7)(sass@1.103.1)(yaml@2.9.0))
+        version: 4.1.10(@types/node@22.20.2)(jsdom@30.0.1)(msw@2.15.0(@types/node@22.20.2)(typescript@5.9.3))(vite@8.2.1(@types/node@22.20.2)(esbuild@0.17.14)(jiti@1.21.7)(sass@1.103.1)(yaml@2.9.0))
 
   prototypes/zotero-roam-mcp:
     dependencies:
@@ -1371,6 +1371,9 @@ packages:
   '@smithy/core@3.33.2':
     resolution: {integrity: sha512-CUGXpnPkVdjUCbix+83sWLW9VFgQOm44MDOx/ihITJMAnOZKvL8YYIc7DR9pP/tZ8CIRvMiON/TucvygqbHO3w==}
     engines: {node: '>=18.0.0'}
+    deprecated: |-
+      Deprecated due to a bug in custom logger data redaction. Upgrade to the latest version. If you used a custom logger with this
+        version, review your logs and rotate any credentials or other secrets. See https://github.com/aws/aws-sdk-js-v3/issues/8393.
 
   '@smithy/credential-provider-imds@4.5.2':
     resolution: {integrity: sha512-A9uSdn72ozbRUSit0eib0TW7nXuNPlaeM0zcGkJ+nE6tFcSDbnmtwoxbTCFBukVQcszDAyvsd7+rTduPTXpygg==}
@@ -2004,6 +2007,7 @@ packages:
 
   axios-retry@4.5.0:
     resolution: {integrity: sha512-aR99oXhpEDGo0UuAlYcn2iGRds30k366Zfa05XWScR9QaQD4JYiP3/1Qt1u7YlefUOK+cn0CcwoL1oefavQUlQ==}
+    deprecated: axios-retry is no longer maintained. See https://github.com/softonic/axios-retry for alternatives.
     peerDependencies:
       axios: 0.x || 1.x
 
@@ -5306,7 +5310,7 @@ snapshots:
       ts-node: 10.9.2(@swc/core@1.16.1)(@types/node@22.20.2)(typescript@5.9.3)
       zod: 4.1.11
 
-  '@samepage/scripts@0.74.5(@aws-sdk/client-lambda@3.1111.0)(@aws-sdk/client-s3@3.1111.0)(@samepage/testing@0.74.5(@playwright/test@1.29.0)(@testing-library/react@16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@17.0.13)(@types/react@17.0.39)(react-dom@18.2.0(react@18.2.0))(react@18.2.0))(@testing-library/user-event@14.6.4(@testing-library/dom@10.4.1))(@types/jsdom@20.0.1)(c8@7.14.0)(debug@4.4.3)(dotenv@16.6.1)(jsdom@30.0.1)(ts-node@10.9.2(@swc/core@1.16.1)(@types/node@26.2.0)(typescript@7.0.2)))(archiver@5.3.2)(axios@1.20.0(debug@4.4.3))(debug@4.4.3)(dotenv@16.6.1)(esbuild@0.25.12)(patch-package@6.5.1)(tailwindcss@3.3.2(ts-node@10.9.2(@swc/core@1.16.1)(@types/node@26.2.0)(typescript@7.0.2)))(ts-node@10.9.2(@swc/core@1.16.1)(@types/node@26.2.0)(typescript@7.0.2))(zod@4.1.11)':
+  '@samepage/scripts@0.74.5(@aws-sdk/client-lambda@3.1111.0)(@aws-sdk/client-s3@3.1111.0)(@samepage/testing@0.74.5(@playwright/test@1.29.0)(@testing-library/react@16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@17.0.13)(@types/react@17.0.39)(react-dom@18.2.0(react@18.2.0))(react@18.2.0))(@testing-library/user-event@14.6.4(@testing-library/dom@10.4.1))(@types/jsdom@20.0.1)(c8@7.14.0)(debug@4.4.3)(dotenv@16.6.1)(jsdom@30.0.1)(ts-node@10.9.2(@swc/core@1.16.1)(@types/node@26.2.0)(typescript@7.0.2)))(archiver@5.3.2)(axios@1.20.0(debug@4.4.3))(debug@4.4.3)(dotenv@16.6.1)(esbuild@0.17.14)(patch-package@6.5.1)(tailwindcss@3.3.2(ts-node@10.9.2(@swc/core@1.16.1)(@types/node@26.2.0)(typescript@7.0.2)))(ts-node@10.9.2(@swc/core@1.16.1)(@types/node@26.2.0)(typescript@7.0.2))(zod@4.1.11)':
     dependencies:
       '@aws-sdk/client-lambda': 3.1111.0
       '@aws-sdk/client-s3': 3.1111.0
@@ -5315,13 +5319,13 @@ snapshots:
       axios: 1.20.0(debug@4.4.3)
       debug: 4.4.3
       dotenv: 16.6.1
-      esbuild: 0.25.12
+      esbuild: 0.17.14
       patch-package: 6.5.1
       tailwindcss: 3.3.2(ts-node@10.9.2(@swc/core@1.16.1)(@types/node@26.2.0)(typescript@7.0.2))
       ts-node: 10.9.2(@swc/core@1.16.1)(@types/node@26.2.0)(typescript@7.0.2)
       zod: 4.1.11
 
-  '@samepage/scripts@0.74.5(@aws-sdk/client-lambda@3.1111.0)(@aws-sdk/client-s3@3.1111.0)(@samepage/testing@0.74.5(@playwright/test@1.29.0)(@testing-library/react@16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@18.2.25)(@types/react@18.2.79)(react-dom@18.2.0(react@18.2.0))(react@18.2.0))(@testing-library/user-event@14.6.4(@testing-library/dom@10.4.1))(@types/jsdom@20.0.1)(c8@7.14.0)(debug@4.4.3)(dotenv@16.6.1)(jsdom@30.0.1)(ts-node@10.9.2(@swc/core@1.16.1)(@types/node@22.20.2)(typescript@5.9.3)))(archiver@5.3.2)(axios@1.20.0(debug@4.4.3))(debug@4.4.3)(dotenv@16.6.1)(esbuild@0.25.12)(patch-package@6.5.1)(tailwindcss@3.3.2(ts-node@10.9.2(@swc/core@1.16.1)(@types/node@22.20.2)(typescript@5.9.3)))(ts-node@10.9.2(@swc/core@1.16.1)(@types/node@22.20.2)(typescript@5.9.3))(zod@4.1.11)':
+  '@samepage/scripts@0.74.5(@aws-sdk/client-lambda@3.1111.0)(@aws-sdk/client-s3@3.1111.0)(@samepage/testing@0.74.5(@playwright/test@1.29.0)(@testing-library/react@16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@18.2.25)(@types/react@18.2.79)(react-dom@18.2.0(react@18.2.0))(react@18.2.0))(@testing-library/user-event@14.6.4(@testing-library/dom@10.4.1))(@types/jsdom@20.0.1)(c8@7.14.0)(debug@4.4.3)(dotenv@16.6.1)(jsdom@30.0.1)(ts-node@10.9.2(@swc/core@1.16.1)(@types/node@22.20.2)(typescript@5.9.3)))(archiver@5.3.2)(axios@1.20.0(debug@4.4.3))(debug@4.4.3)(dotenv@16.6.1)(esbuild@0.17.14)(patch-package@6.5.1)(tailwindcss@3.3.2(ts-node@10.9.2(@swc/core@1.16.1)(@types/node@22.20.2)(typescript@5.9.3)))(ts-node@10.9.2(@swc/core@1.16.1)(@types/node@22.20.2)(typescript@5.9.3))(zod@4.1.11)':
     dependencies:
       '@aws-sdk/client-lambda': 3.1111.0
       '@aws-sdk/client-s3': 3.1111.0
@@ -5330,7 +5334,7 @@ snapshots:
       axios: 1.20.0(debug@4.4.3)
       debug: 4.4.3
       dotenv: 16.6.1
-      esbuild: 0.25.12
+      esbuild: 0.17.14
       patch-package: 6.5.1
       tailwindcss: 3.3.2(ts-node@10.9.2(@swc/core@1.16.1)(@types/node@22.20.2)(typescript@5.9.3))
       ts-node: 10.9.2(@swc/core@1.16.1)(@types/node@22.20.2)(typescript@5.9.3)
@@ -5351,20 +5355,17 @@ snapshots:
       ts-node: 10.9.2(@swc/core@1.16.1)(@types/node@26.2.0)(typescript@7.0.2)
       zod: 4.1.11
 
-  '@samepage/scripts@0.74.5(@aws-sdk/client-lambda@3.1111.0)(@aws-sdk/client-s3@3.1111.0)(@samepage/testing@0.74.5(@playwright/test@1.29.0)(@testing-library/react@16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@18.2.25)(@types/react@18.2.79)(react-dom@18.2.0(react@18.2.0))(react@18.2.0))(@testing-library/user-event@14.6.4(@testing-library/dom@10.4.1))(@types/jsdom@20.0.1)(c8@7.14.0)(debug@4.4.3)(dotenv@16.6.1)(jsdom@30.0.1)(ts-node@10.9.2(@swc/core@1.16.1)(@types/node@26.2.0)(typescript@7.0.2)))(archiver@5.3.2)(axios@1.20.0(debug@4.4.3))(debug@4.4.3)(dotenv@16.6.1)(esbuild@0.25.12)(patch-package@6.5.1)(tailwindcss@3.3.2(ts-node@10.9.2(@swc/core@1.16.1)(@types/node@26.2.0)(typescript@7.0.2)))(ts-node@10.9.2(@swc/core@1.16.1)(@types/node@26.2.0)(typescript@7.0.2))(zod@4.1.11)':
+  '@samepage/testing@0.74.5(@playwright/test@1.29.0)(@testing-library/react@16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@17.0.13)(@types/react@17.0.39)(react-dom@17.0.2(react@17.0.2))(react@17.0.2))(@testing-library/user-event@14.6.4(@testing-library/dom@10.4.1))(@types/jsdom@20.0.1)(c8@7.14.0)(debug@4.4.3)(dotenv@16.6.1)(jsdom@30.0.1)(ts-node@10.9.2(@swc/core@1.16.1)(@types/node@22.20.2)(typescript@5.9.3))':
     dependencies:
-      '@aws-sdk/client-lambda': 3.1111.0
-      '@aws-sdk/client-s3': 3.1111.0
-      '@samepage/testing': 0.74.5(@playwright/test@1.29.0)(@testing-library/react@16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@18.2.25)(@types/react@18.2.79)(react-dom@18.2.0(react@18.2.0))(react@18.2.0))(@testing-library/user-event@14.6.4(@testing-library/dom@10.4.1))(@types/jsdom@20.0.1)(c8@7.14.0)(debug@4.4.3)(dotenv@16.6.1)(jsdom@30.0.1)(ts-node@10.9.2(@swc/core@1.16.1)(@types/node@26.2.0)(typescript@7.0.2))
-      archiver: 5.3.2
-      axios: 1.20.0(debug@4.4.3)
+      '@playwright/test': 1.29.0
+      '@testing-library/react': 16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@17.0.13)(@types/react@17.0.39)(react-dom@17.0.2(react@17.0.2))(react@17.0.2)
+      '@testing-library/user-event': 14.6.4(@testing-library/dom@10.4.1)
+      '@types/jsdom': 20.0.1
+      c8: 7.14.0
       debug: 4.4.3
       dotenv: 16.6.1
-      esbuild: 0.25.12
-      patch-package: 6.5.1
-      tailwindcss: 3.3.2(ts-node@10.9.2(@swc/core@1.16.1)(@types/node@26.2.0)(typescript@7.0.2))
-      ts-node: 10.9.2(@swc/core@1.16.1)(@types/node@26.2.0)(typescript@7.0.2)
-      zod: 4.1.11
+      jsdom: 30.0.1
+      ts-node: 10.9.2(@swc/core@1.16.1)(@types/node@22.20.2)(typescript@5.9.3)
 
   '@samepage/testing@0.74.5(@playwright/test@1.29.0)(@testing-library/react@16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@17.0.13)(@types/react@17.0.39)(react-dom@18.2.0(react@18.2.0))(react@18.2.0))(@testing-library/user-event@14.6.4(@testing-library/dom@10.4.1))(@types/jsdom@20.0.1)(c8@7.14.0)(debug@4.4.3)(dotenv@16.6.1)(jsdom@30.0.1)(ts-node@10.9.2(@swc/core@1.16.1)(@types/node@26.2.0)(typescript@7.0.2))':
     dependencies:
@@ -5617,6 +5618,16 @@ snapshots:
       '@types/react-dom': 17.0.13
       react: 17.0.2
       react-dom: 17.0.2(react@17.0.2)
+
+  '@testing-library/react@16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@17.0.13)(@types/react@17.0.39)(react-dom@17.0.2(react@17.0.2))(react@17.0.2)':
+    dependencies:
+      '@babel/runtime': 7.29.7
+      '@testing-library/dom': 10.4.1
+      react: 17.0.2
+      react-dom: 17.0.2(react@17.0.2)
+    optionalDependencies:
+      '@types/react': 17.0.39
+      '@types/react-dom': 17.0.13
 
   '@testing-library/react@16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@17.0.13)(@types/react@17.0.39)(react-dom@18.2.0(react@18.2.0))(react@18.2.0)':
     dependencies:
@@ -5875,15 +5886,6 @@ snapshots:
       msw: 2.15.0(@types/node@22.20.2)(typescript@5.9.3)
       vite: 8.2.1(@types/node@22.20.2)(esbuild@0.17.14)(jiti@1.21.7)(sass@1.103.1)(yaml@2.9.0)
 
-  '@vitest/mocker@4.1.10(msw@2.15.0(@types/node@22.20.2)(typescript@5.9.3))(vite@8.2.1(@types/node@22.20.2)(esbuild@0.25.12)(jiti@1.21.7)(sass@1.103.1)(yaml@2.9.0))':
-    dependencies:
-      '@vitest/spy': 4.1.10
-      estree-walker: 3.0.3
-      magic-string: 0.30.21
-    optionalDependencies:
-      msw: 2.15.0(@types/node@22.20.2)(typescript@5.9.3)
-      vite: 8.2.1(@types/node@22.20.2)(esbuild@0.25.12)(jiti@1.21.7)(sass@1.103.1)(yaml@2.9.0)
-
   '@vitest/mocker@4.1.10(msw@2.15.0(@types/node@26.2.0)(typescript@7.0.2))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.17.14)(jiti@1.21.7)(sass@1.103.1)(yaml@2.9.0))':
     dependencies:
       '@vitest/spy': 4.1.10
@@ -5892,15 +5894,6 @@ snapshots:
     optionalDependencies:
       msw: 2.15.0(@types/node@26.2.0)(typescript@7.0.2)
       vite: 8.2.1(@types/node@26.2.0)(esbuild@0.17.14)(jiti@1.21.7)(sass@1.103.1)(yaml@2.9.0)
-
-  '@vitest/mocker@4.1.10(msw@2.15.0(@types/node@26.2.0)(typescript@7.0.2))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.25.12)(jiti@1.21.7)(sass@1.103.1)(yaml@2.9.0))':
-    dependencies:
-      '@vitest/spy': 4.1.10
-      estree-walker: 3.0.3
-      magic-string: 0.30.21
-    optionalDependencies:
-      msw: 2.15.0(@types/node@26.2.0)(typescript@7.0.2)
-      vite: 8.2.1(@types/node@26.2.0)(esbuild@0.25.12)(jiti@1.21.7)(sass@1.103.1)(yaml@2.9.0)
 
   '@vitest/pretty-format@2.0.5':
     dependencies:
@@ -7259,6 +7252,11 @@ snapshots:
 
   make-error@1.3.6: {}
 
+  marked-react@1.1.2(react@17.0.2):
+    dependencies:
+      marked: 4.0.16
+      react: 17.0.2
+
   marked-react@1.1.2(react@18.2.0):
     dependencies:
       marked: 4.0.16
@@ -7873,114 +7871,12 @@ snapshots:
       - ts-node
       - zod
 
-  roamjs-components@0.89.0(25f1eaefe7300d3403328892d4fb02ee):
+  roamjs-components@0.89.0(2f8349285c98360e172a7b172ea71eae):
     dependencies:
       '@blueprintjs/core': 3.54.0(react-dom@18.2.0(react@18.2.0))(react@18.2.0)
       '@blueprintjs/datetime': 3.24.1(react-dom@18.2.0(react@18.2.0))(react@18.2.0)
       '@blueprintjs/select': 3.19.1(react-dom@18.2.0(react@18.2.0))(react@18.2.0)
-      '@samepage/scripts': 0.74.5(@aws-sdk/client-lambda@3.1111.0)(@aws-sdk/client-s3@3.1111.0)(@samepage/testing@0.74.5(@playwright/test@1.29.0)(@testing-library/react@16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@18.2.25)(@types/react@18.2.79)(react-dom@18.2.0(react@18.2.0))(react@18.2.0))(@testing-library/user-event@14.6.4(@testing-library/dom@10.4.1))(@types/jsdom@20.0.1)(c8@7.14.0)(debug@4.4.3)(dotenv@16.6.1)(jsdom@30.0.1)(ts-node@10.9.2(@swc/core@1.16.1)(@types/node@26.2.0)(typescript@7.0.2)))(archiver@5.3.2)(axios@1.20.0(debug@4.4.3))(debug@4.4.3)(dotenv@16.6.1)(esbuild@0.25.12)(patch-package@6.5.1)(tailwindcss@3.3.2(ts-node@10.9.2(@swc/core@1.16.1)(@types/node@26.2.0)(typescript@7.0.2)))(ts-node@10.9.2(@swc/core@1.16.1)(@types/node@26.2.0)(typescript@7.0.2))(zod@4.1.11)
-      '@types/crypto-js': 4.1.1
-      '@types/cytoscape': 3.31.0
-      '@types/file-saver': 2.0.5
-      '@types/jsdom': 20.0.1
-      '@types/marked': 4.3.2
-      '@types/nanoid': 2.0.0
-      '@types/react': 18.2.79
-      '@types/react-dom': 18.2.25
-      '@types/use-sync-external-store': 0.0.3
-      chrono-node: 2.3.0
-      color: 4.2.3
-      crypto-js: 3.1.9-1
-      cytoscape: 3.34.1
-      date-fns: 2.30.0
-      edn-data: 1.2.2
-      file-saver: 2.0.2
-      fuzzy: 0.1.3
-      hast-util-to-html: 7.1.3
-      idb: 6.1.5
-      insect: 5.9.1
-      jsdom: 30.0.1
-      jszip: 3.10.0
-      marked: 4.0.16
-      marked-react: 1.1.2(react@18.2.0)
-      nanoid: 3.3.18
-      react: 18.2.0
-      react-dom: 18.2.0(react@18.2.0)
-      refractor: 3.6.0
-      tslib: 2.8.1
-      use-sync-external-store: 1.6.0(react@18.2.0)
-      xregexp: 5.1.2
-    transitivePeerDependencies:
-      - '@aws-sdk/client-lambda'
-      - '@aws-sdk/client-s3'
-      - '@samepage/testing'
-      - archiver
-      - axios
-      - debug
-      - dotenv
-      - esbuild
-      - patch-package
-      - tailwindcss
-      - ts-node
-      - zod
-
-  roamjs-components@0.89.0(320e230ed0fb108a7ffb1c4252bad912):
-    dependencies:
-      '@blueprintjs/core': 3.54.0(react-dom@18.2.0(react@18.2.0))(react@18.2.0)
-      '@blueprintjs/datetime': 3.24.1(react-dom@18.2.0(react@18.2.0))(react@18.2.0)
-      '@blueprintjs/select': 3.19.1(react-dom@18.2.0(react@18.2.0))(react@18.2.0)
-      '@samepage/scripts': 0.74.5(@aws-sdk/client-lambda@3.1111.0)(@aws-sdk/client-s3@3.1111.0)(@samepage/testing@0.74.5(@playwright/test@1.29.0)(@testing-library/react@16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@17.0.13)(@types/react@17.0.39)(react-dom@18.2.0(react@18.2.0))(react@18.2.0))(@testing-library/user-event@14.6.4(@testing-library/dom@10.4.1))(@types/jsdom@20.0.1)(c8@7.14.0)(debug@4.4.3)(dotenv@16.6.1)(jsdom@30.0.1)(ts-node@10.9.2(@swc/core@1.16.1)(@types/node@26.2.0)(typescript@7.0.2)))(archiver@5.3.2)(axios@1.20.0(debug@4.4.3))(debug@4.4.3)(dotenv@16.6.1)(esbuild@0.25.12)(patch-package@6.5.1)(tailwindcss@3.3.2(ts-node@10.9.2(@swc/core@1.16.1)(@types/node@26.2.0)(typescript@7.0.2)))(ts-node@10.9.2(@swc/core@1.16.1)(@types/node@26.2.0)(typescript@7.0.2))(zod@4.1.11)
-      '@types/crypto-js': 4.1.1
-      '@types/cytoscape': 3.31.0
-      '@types/file-saver': 2.0.5
-      '@types/jsdom': 20.0.1
-      '@types/marked': 4.3.2
-      '@types/nanoid': 2.0.0
-      '@types/react': 17.0.39
-      '@types/react-dom': 17.0.13
-      '@types/use-sync-external-store': 0.0.3
-      chrono-node: 2.3.0
-      color: 4.2.3
-      crypto-js: 3.1.9-1
-      cytoscape: 3.34.1
-      date-fns: 2.30.0
-      edn-data: 1.2.2
-      file-saver: 2.0.2
-      fuzzy: 0.1.3
-      hast-util-to-html: 7.1.3
-      idb: 6.1.5
-      insect: 5.9.1
-      jsdom: 30.0.1
-      jszip: 3.10.0
-      marked: 4.0.16
-      marked-react: 1.1.2(react@18.2.0)
-      nanoid: 3.3.18
-      react: 18.2.0
-      react-dom: 18.2.0(react@18.2.0)
-      refractor: 3.6.0
-      tslib: 2.8.1
-      use-sync-external-store: 1.6.0(react@18.2.0)
-      xregexp: 5.1.2
-    transitivePeerDependencies:
-      - '@aws-sdk/client-lambda'
-      - '@aws-sdk/client-s3'
-      - '@samepage/testing'
-      - archiver
-      - axios
-      - debug
-      - dotenv
-      - esbuild
-      - patch-package
-      - tailwindcss
-      - ts-node
-      - zod
-
-  roamjs-components@0.89.0(3b15e0e8ac67b29e0263f2bbe5b35557):
-    dependencies:
-      '@blueprintjs/core': 3.54.0(react-dom@18.2.0(react@18.2.0))(react@18.2.0)
-      '@blueprintjs/datetime': 3.24.1(react-dom@18.2.0(react@18.2.0))(react@18.2.0)
-      '@blueprintjs/select': 3.19.1(react-dom@18.2.0(react@18.2.0))(react@18.2.0)
-      '@samepage/scripts': 0.74.5(@aws-sdk/client-lambda@3.1111.0)(@aws-sdk/client-s3@3.1111.0)(@samepage/testing@0.74.5(@playwright/test@1.29.0)(@testing-library/react@16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@18.2.25)(@types/react@18.2.79)(react-dom@18.2.0(react@18.2.0))(react@18.2.0))(@testing-library/user-event@14.6.4(@testing-library/dom@10.4.1))(@types/jsdom@20.0.1)(c8@7.14.0)(debug@4.4.3)(dotenv@16.6.1)(jsdom@30.0.1)(ts-node@10.9.2(@swc/core@1.16.1)(@types/node@22.20.2)(typescript@5.9.3)))(archiver@5.3.2)(axios@1.20.0(debug@4.4.3))(debug@4.4.3)(dotenv@16.6.1)(esbuild@0.25.12)(patch-package@6.5.1)(tailwindcss@3.3.2(ts-node@10.9.2(@swc/core@1.16.1)(@types/node@22.20.2)(typescript@5.9.3)))(ts-node@10.9.2(@swc/core@1.16.1)(@types/node@22.20.2)(typescript@5.9.3))(zod@4.1.11)
+      '@samepage/scripts': 0.74.5(@aws-sdk/client-lambda@3.1111.0)(@aws-sdk/client-s3@3.1111.0)(@samepage/testing@0.74.5(@playwright/test@1.29.0)(@testing-library/react@16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@18.2.25)(@types/react@18.2.79)(react-dom@18.2.0(react@18.2.0))(react@18.2.0))(@testing-library/user-event@14.6.4(@testing-library/dom@10.4.1))(@types/jsdom@20.0.1)(c8@7.14.0)(debug@4.4.3)(dotenv@16.6.1)(jsdom@30.0.1)(ts-node@10.9.2(@swc/core@1.16.1)(@types/node@22.20.2)(typescript@5.9.3)))(archiver@5.3.2)(axios@1.20.0(debug@4.4.3))(debug@4.4.3)(dotenv@16.6.1)(esbuild@0.17.14)(patch-package@6.5.1)(tailwindcss@3.3.2(ts-node@10.9.2(@swc/core@1.16.1)(@types/node@22.20.2)(typescript@5.9.3)))(ts-node@10.9.2(@swc/core@1.16.1)(@types/node@22.20.2)(typescript@5.9.3))(zod@4.1.11)
       '@types/crypto-js': 4.1.1
       '@types/cytoscape': 3.31.0
       '@types/file-saver': 2.0.5
@@ -8040,6 +7936,57 @@ snapshots:
       '@types/nanoid': 2.0.0
       '@types/react': 18.2.79
       '@types/react-dom': 18.2.25
+      '@types/use-sync-external-store': 0.0.3
+      chrono-node: 2.3.0
+      color: 4.2.3
+      crypto-js: 3.1.9-1
+      cytoscape: 3.34.1
+      date-fns: 2.30.0
+      edn-data: 1.2.2
+      file-saver: 2.0.2
+      fuzzy: 0.1.3
+      hast-util-to-html: 7.1.3
+      idb: 6.1.5
+      insect: 5.9.1
+      jsdom: 30.0.1
+      jszip: 3.10.0
+      marked: 4.0.16
+      marked-react: 1.1.2(react@18.2.0)
+      nanoid: 3.3.18
+      react: 18.2.0
+      react-dom: 18.2.0(react@18.2.0)
+      refractor: 3.6.0
+      tslib: 2.8.1
+      use-sync-external-store: 1.6.0(react@18.2.0)
+      xregexp: 5.1.2
+    transitivePeerDependencies:
+      - '@aws-sdk/client-lambda'
+      - '@aws-sdk/client-s3'
+      - '@samepage/testing'
+      - archiver
+      - axios
+      - debug
+      - dotenv
+      - esbuild
+      - patch-package
+      - tailwindcss
+      - ts-node
+      - zod
+
+  roamjs-components@0.89.0(dc225aeb584988947d18b8c32b7f8b5e):
+    dependencies:
+      '@blueprintjs/core': 3.54.0(react-dom@18.2.0(react@18.2.0))(react@18.2.0)
+      '@blueprintjs/datetime': 3.24.1(react-dom@18.2.0(react@18.2.0))(react@18.2.0)
+      '@blueprintjs/select': 3.19.1(react-dom@18.2.0(react@18.2.0))(react@18.2.0)
+      '@samepage/scripts': 0.74.5(@aws-sdk/client-lambda@3.1111.0)(@aws-sdk/client-s3@3.1111.0)(@samepage/testing@0.74.5(@playwright/test@1.29.0)(@testing-library/react@16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@17.0.13)(@types/react@17.0.39)(react-dom@18.2.0(react@18.2.0))(react@18.2.0))(@testing-library/user-event@14.6.4(@testing-library/dom@10.4.1))(@types/jsdom@20.0.1)(c8@7.14.0)(debug@4.4.3)(dotenv@16.6.1)(jsdom@30.0.1)(ts-node@10.9.2(@swc/core@1.16.1)(@types/node@26.2.0)(typescript@7.0.2)))(archiver@5.3.2)(axios@1.20.0(debug@4.4.3))(debug@4.4.3)(dotenv@16.6.1)(esbuild@0.17.14)(patch-package@6.5.1)(tailwindcss@3.3.2(ts-node@10.9.2(@swc/core@1.16.1)(@types/node@26.2.0)(typescript@7.0.2)))(ts-node@10.9.2(@swc/core@1.16.1)(@types/node@26.2.0)(typescript@7.0.2))(zod@4.1.11)
+      '@types/crypto-js': 4.1.1
+      '@types/cytoscape': 3.31.0
+      '@types/file-saver': 2.0.5
+      '@types/jsdom': 20.0.1
+      '@types/marked': 4.3.2
+      '@types/nanoid': 2.0.0
+      '@types/react': 17.0.39
+      '@types/react-dom': 17.0.13
       '@types/use-sync-external-store': 0.0.3
       chrono-node: 2.3.0
       color: 4.2.3
@@ -8685,21 +8632,6 @@ snapshots:
       sass: 1.103.1
       yaml: 2.9.0
 
-  vite@8.2.1(@types/node@22.20.2)(esbuild@0.25.12)(jiti@1.21.7)(sass@1.103.1)(yaml@2.9.0):
-    dependencies:
-      lightningcss: 1.33.0
-      picomatch: 4.0.5
-      postcss: 8.5.26
-      rolldown: 1.2.4
-      tinyglobby: 0.2.17
-    optionalDependencies:
-      '@types/node': 22.20.2
-      esbuild: 0.25.12
-      fsevents: 2.3.3
-      jiti: 1.21.7
-      sass: 1.103.1
-      yaml: 2.9.0
-
   vite@8.2.1(@types/node@26.2.0)(esbuild@0.17.14)(jiti@1.21.7)(sass@1.103.1)(yaml@2.9.0):
     dependencies:
       lightningcss: 1.33.0
@@ -8710,21 +8642,6 @@ snapshots:
     optionalDependencies:
       '@types/node': 26.2.0
       esbuild: 0.17.14
-      fsevents: 2.3.3
-      jiti: 1.21.7
-      sass: 1.103.1
-      yaml: 2.9.0
-
-  vite@8.2.1(@types/node@26.2.0)(esbuild@0.25.12)(jiti@1.21.7)(sass@1.103.1)(yaml@2.9.0):
-    dependencies:
-      lightningcss: 1.33.0
-      picomatch: 4.0.5
-      postcss: 8.5.26
-      rolldown: 1.2.4
-      tinyglobby: 0.2.17
-    optionalDependencies:
-      '@types/node': 26.2.0
-      esbuild: 0.25.12
       fsevents: 2.3.3
       jiti: 1.21.7
       sass: 1.103.1
@@ -8800,34 +8717,6 @@ snapshots:
     transitivePeerDependencies:
       - msw
 
-  vitest@4.1.10(@types/node@22.20.2)(jsdom@30.0.1)(msw@2.15.0(@types/node@22.20.2)(typescript@5.9.3))(vite@8.2.1(@types/node@22.20.2)(esbuild@0.25.12)(jiti@1.21.7)(sass@1.103.1)(yaml@2.9.0)):
-    dependencies:
-      '@vitest/expect': 4.1.10
-      '@vitest/mocker': 4.1.10(msw@2.15.0(@types/node@22.20.2)(typescript@5.9.3))(vite@8.2.1(@types/node@22.20.2)(esbuild@0.25.12)(jiti@1.21.7)(sass@1.103.1)(yaml@2.9.0))
-      '@vitest/pretty-format': 4.1.10
-      '@vitest/runner': 4.1.10
-      '@vitest/snapshot': 4.1.10
-      '@vitest/spy': 4.1.10
-      '@vitest/utils': 4.1.10
-      es-module-lexer: 2.3.1
-      expect-type: 1.4.0
-      magic-string: 0.30.21
-      obug: 2.1.4
-      pathe: 2.0.3
-      picomatch: 4.0.5
-      std-env: 4.2.0
-      tinybench: 2.9.0
-      tinyexec: 1.3.0
-      tinyglobby: 0.2.17
-      tinyrainbow: 3.1.1
-      vite: 8.2.1(@types/node@22.20.2)(esbuild@0.25.12)(jiti@1.21.7)(sass@1.103.1)(yaml@2.9.0)
-      why-is-node-running: 2.3.0
-    optionalDependencies:
-      '@types/node': 22.20.2
-      jsdom: 30.0.1
-    transitivePeerDependencies:
-      - msw
-
   vitest@4.1.10(@types/node@26.2.0)(jsdom@30.0.1)(msw@2.15.0(@types/node@26.2.0)(typescript@7.0.2))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.17.14)(jiti@1.21.7)(sass@1.103.1)(yaml@2.9.0)):
     dependencies:
       '@vitest/expect': 4.1.10
@@ -8849,34 +8738,6 @@ snapshots:
       tinyglobby: 0.2.17
       tinyrainbow: 3.1.1
       vite: 8.2.1(@types/node@26.2.0)(esbuild@0.17.14)(jiti@1.21.7)(sass@1.103.1)(yaml@2.9.0)
-      why-is-node-running: 2.3.0
-    optionalDependencies:
-      '@types/node': 26.2.0
-      jsdom: 30.0.1
-    transitivePeerDependencies:
-      - msw
-
-  vitest@4.1.10(@types/node@26.2.0)(jsdom@30.0.1)(msw@2.15.0(@types/node@26.2.0)(typescript@7.0.2))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.25.12)(jiti@1.21.7)(sass@1.103.1)(yaml@2.9.0)):
-    dependencies:
-      '@vitest/expect': 4.1.10
-      '@vitest/mocker': 4.1.10(msw@2.15.0(@types/node@26.2.0)(typescript@7.0.2))(vite@8.2.1(@types/node@26.2.0)(esbuild@0.25.12)(jiti@1.21.7)(sass@1.103.1)(yaml@2.9.0))
-      '@vitest/pretty-format': 4.1.10
-      '@vitest/runner': 4.1.10
-      '@vitest/snapshot': 4.1.10
-      '@vitest/spy': 4.1.10
-      '@vitest/utils': 4.1.10
-      es-module-lexer: 2.3.1
-      expect-type: 1.4.0
-      magic-string: 0.30.21
-      obug: 2.1.4
-      pathe: 2.0.3
-      picomatch: 4.0.5
-      std-env: 4.2.0
-      tinybench: 2.9.0
-      tinyexec: 1.3.0
-      tinyglobby: 0.2.17
-      tinyrainbow: 3.1.1
-      vite: 8.2.1(@types/node@26.2.0)(esbuild@0.25.12)(jiti@1.21.7)(sass@1.103.1)(yaml@2.9.0)
       why-is-node-running: 2.3.0
     optionalDependencies:
       '@types/node': 26.2.0
