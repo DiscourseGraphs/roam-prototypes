@@ -1,12 +1,4 @@
-/* The bridge between Roam's roam/render blocks and this extension.
- *
- * Roam has no API for registering an inline component (registerComponent is
- * for whole main-window views), so `{{roam/render: ((uid))}}` stays the way a
- * widget is placed. The code block it points at is a small shim (shim.ts)
- * that renders an empty host element and hands it here. Each host gets its
- * own React root, so the widget has ordinary state and effects: the shim
- * never runs any of the widget's code during Roam's render.
- */
+/* Shared React roots for the meeting-tasks macro and the legacy render shim. */
 import React from "react";
 import ReactDOM from "react-dom";
 import * as ReactDOMClient from "react-dom/client";

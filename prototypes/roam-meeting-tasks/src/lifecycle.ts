@@ -5,6 +5,7 @@ import { GLOBAL_KEY, QUEUE_KEY, VERSION } from "~/config";
 import { mount, mountedCount, release, unmountAll } from "~/mount";
 import { forgetReads } from "~/roam";
 import { SHIM_BLOCK } from "~/shim";
+import { observeMacros } from "~/macro";
 import { addStyles, removeStyles } from "~/styles";
 
 type PublicApi = {
@@ -19,9 +20,12 @@ type PublicApi = {
 type Queued = { el: Element; args: unknown };
 
 const globals = window as unknown as Record<string, unknown>;
+let stopMacros: (() => void) | undefined;
 
 export const load = (): void => {
   addStyles();
+  stopMacros?.();
+  stopMacros = observeMacros();
   const api: PublicApi = {
     version: VERSION,
     mount,
@@ -38,6 +42,8 @@ export const load = (): void => {
 };
 
 export const unload = (): void => {
+  stopMacros?.();
+  stopMacros = undefined;
   unmountAll();
   forgetReads();
   removeStyles();

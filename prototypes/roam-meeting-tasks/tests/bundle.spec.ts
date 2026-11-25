@@ -48,7 +48,15 @@ describe.skipIf(!existsSync(BUNDLE))("built bundle", () => {
     w.RoamLazy = anyProxy();
     w.TSLib = anyProxy();
     w.Nanoid = anyProxy();
-    installFakeRoam(buildGraph());
+    const graph = buildGraph();
+    const source = graph.blocks.get(U("host"))!;
+    source.string = "{{meeting-tasks: 365, page, debug}} (if you are seeing this block, enable it here: ((setupuid1)))";
+    installFakeRoam(graph);
+    const fixture = document.createElement("div");
+    fixture.innerHTML = `<div class="roam-block" id="block-input-${source.uid}"><button class="bp3-button rm-xparser-default-meeting-tasks">meeting-tasks</button> (if you are seeing this block, enable it here: <a href="#setupuid1">Setup</a>)</div>`;
+    document.body.append(fixture);
+    const original = fixture.firstElementChild as HTMLElement;
+    expect(getComputedStyle(original).display).not.toBe("none");
 
     const module = await import(/* @vite-ignore */ BUNDLE);
     const extension = module.default;
@@ -61,6 +69,15 @@ describe.skipIf(!existsSync(BUNDLE))("built bundle", () => {
     expect(w.roamMeetingTasks.version).toBe(version);
     expect(w.roamMeetingTasks.shim).toMatch(/^```javascript\nfunction dgMeetingTasks\(props\)/);
     expect(document.getElementById("roam-meeting-tasks-style")).toBeTruthy();
+    await vi.waitFor(() => expect(fixture.querySelector(".rmt-count")).toBeTruthy());
+    expect(getComputedStyle(original).display).toBe("none");
+
+    // Roam may reuse its button when the surrounding block is edited.
+    source.string = "{{meeting-tasks}} Related notes";
+    original.lastChild!.textContent = " Related notes";
+    await vi.waitFor(() => expect(getComputedStyle(original).display).not.toBe("none"));
+    expect(original.querySelector(".rmt-macro-host")).toBeTruthy();
+    expect(getComputedStyle(original.querySelector("button")!).display).toBe("none");
 
     const host = document.createElement("div");
     document.body.appendChild(host);
@@ -73,5 +90,8 @@ describe.skipIf(!existsSync(BUNDLE))("built bundle", () => {
     expect(w.roamMeetingTasks).toBeUndefined();
     expect(document.getElementById("roam-meeting-tasks-style")).toBeNull();
     expect(host.innerHTML).toBe("");
+    expect(fixture.querySelector(".rmt-macro-host")).toBeNull();
+    expect(getComputedStyle(original.querySelector("button")!).display).not.toBe("none");
+    expect(original.querySelector("a")?.getAttribute("href")).toBe("#setupuid1");
   });
 });
