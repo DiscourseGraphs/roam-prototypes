@@ -106,6 +106,20 @@ it("renders seven archive topics, one focused meeting topic, and reads only the 
   vi.stubGlobal("CSS", { escape: (uid) => uid });
   document.body.innerHTML =
     '<main class="roam-body-main"><div class="roam-article"><div class="rm-block-main" ><div class="rm-block-text" id="block-input-graph-body-outline-legacy-selected-2026">Selected source</div></div></div></main>';
+  let notifyIntersection;
+  vi.stubGlobal(
+    "IntersectionObserver",
+    class {
+      constructor(cb) {
+        notifyIntersection = cb;
+      }
+      observe(target) {
+        notifyIntersection([{ target, isIntersecting: true }]);
+      }
+      unobserve() {}
+      disconnect() {}
+    },
+  );
   expect(ds.q('[:find (count ?b) . :where [?b "block/page" 1]]', db)).toBe(
     27671,
   );
@@ -207,4 +221,17 @@ it("renders seven archive topics, one focused meeting topic, and reads only the 
     { query: Q_INLINE_COMMENTS, inputs: ["legacy-selected-2026"] },
     { query: Q_REPLY_COMMENTS, inputs: [["target-thread"]] },
   ]);
+  const sourceInput = document.querySelector(".rm-block-text");
+  await act(async () => {
+    notifyIntersection([{ target: sourceInput, isIntersecting: false }]);
+    await new Promise((resolve) => setTimeout(resolve, 150));
+  });
+  expect(
+    document.querySelector(".rmi-discussion-inline")?.textContent,
+  ).toContain("Meeting reply");
+  expect(
+    document
+      .querySelector(".rmi-discussion-badge button")
+      ?.getAttribute("aria-expanded"),
+  ).toBe("true");
 }, 30000);

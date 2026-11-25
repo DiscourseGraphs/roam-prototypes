@@ -472,7 +472,12 @@ const refreshPage = async () => {
         : list.find((candidate) => existing.has(candidate));
     if (uid) targets.add(uid);
   }
-  if (inline) targets.add(inline.uid);
+  if (inline) {
+    // Scrolling through a long conversation can take its source button outside
+    // the observed viewport while both the button and the discussion stay mounted.
+    existing.add(inline.uid);
+    targets.add(inline.uid);
+  }
   const uids = [...targets];
   const nextCounts = new Map<string, number>();
   for (let i = 0; i < uids.length; i += 100) {
