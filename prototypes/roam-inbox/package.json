@@ -1,6 +1,6 @@
 {
   "name": "roam-inbox",
-  "version": "0.6.0",
+  "version": "0.7.0-beta.1",
   "private": true,
   "description": "In-graph messaging for Roam: a /message command that addresses a block to a person, and a topbar inbox badge that counts what is new since you last looked.",
   "type": "module",
@@ -11,12 +11,17 @@
     "typecheck": "tsc -p tsconfig.check.json"
   },
   "dependencies": {
+    "@blueprintjs/core": "3.50.4",
+    "react": "17.0.2",
+    "react-dom": "17.0.2",
     "roamjs-components": "catalog:",
     "use-sync-external-store": "catalog:"
   },
   "devDependencies": {
     "@discoursegraphs/extension-base": "workspace:*",
     "@types/node": "^22.0.0",
+    "@types/react": "17.0.39",
+    "@types/react-dom": "17.0.13",
     "jsdom": "catalog:",
     "typescript": "^5.9.0",
     "vitest": "catalog:"

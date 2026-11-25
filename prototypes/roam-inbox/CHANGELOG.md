@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.7.0-beta.1 - Unreleased
+
+- Empty replies take one line until focused. Drafts keep the full editor open, and the page rail marks the selected thread with a thin rule.
+- Start a thread from the rail toolbar. Empty filters show a single status line.
+
+- Replaced thread action labels with a persistent expand/collapse chevron and compact resolve/reopen controls. The resolve control appears on hover or focus, and stays visible on touch.
+
+- Added a page discussion rail with separate topics, native comment replies, and shared resolve/reopen status.
+- Open discussions from the command palette, a block’s Plugins menu, or the existing inbox panel.
+- Discussions use Roam’s typography, link blue, and indented reply guides. Comment badges align at the right edge of each row, with the current source highlighted.
+- Added source-block navigation, Open/All/Resolved filters, and persistent badges that include resolved threads.
+- Open discussions in a floating panel that preserves page wrapping and scroll position. Click another block’s badge to focus it in the open panel. With the panel closed, click for inline comments or Shift-click for the panel.
+- Group page discussions by source block, bring the selected block to the top, and show thread counts on each filter.
+- Open the page rail directly from inline comments on touch screens.
+- Recover unsent drafts after a reload in the same tab and prevent a second submission when switching views during a post.
+- Keep unsent drafts when switching views or when a comment fails to post.
+- New threads post to the block shown in the picker. If someone resolves a thread while you write, your reply stays in drafts until you reopen it.
+- Keep badges on the current page and its visible block embeds when viewing another page’s discussions. Comment text containing a block reference keeps its ordinary child bullets.
+- Keep keyboard focus inside the mobile discussion panel during loading and errors.
+- Existing messaging, addressed replies, tasks, mentions, and unread behavior remain available.
+
 ## 0.6.0 - 2026-09-10
 
 - Ported into this repository as an installable developer extension: an ES

@@ -1,8 +1,21 @@
 /* Load, unload, and the `window.roamInbox` console surface. index.ts wraps
  * this in runExtension; tests call it directly. */
+import {
+  openDiscussions,
+  startDiscussions,
+  stopDiscussions,
+} from "~/discussions";
 import { startBadge, stopBadge } from "~/badge";
 import { LOG, logError, VERSION } from "~/config";
-import { loadSeen, myAddress, refreshLists, resetInbox, setIdentity, state, unreadMessages } from "~/inbox";
+import {
+  loadSeen,
+  myAddress,
+  refreshLists,
+  resetInbox,
+  setIdentity,
+  state,
+  unreadMessages,
+} from "~/inbox";
 import { isWatching, startWatching, stopWatching } from "~/live";
 import { resetMembers, warmMembers } from "~/members";
 import { closePanel } from "~/panel";
@@ -20,6 +33,7 @@ declare global {
       unload: () => void;
       refresh: () => Promise<void>;
       debug: () => Record<string, unknown>;
+      discuss: (sourceUid?: string) => Promise<void>;
     };
   }
 }
@@ -46,7 +60,11 @@ export const debug = (): Record<string, unknown> => {
       mentions: state.mentions.length,
       tasks: state.tasks.length,
     },
-    badge: unread.length ? `blue ${unread.length}` : state.messages.length ? "grey dot" : "hidden",
+    badge: unread.length
+      ? `blue ${unread.length}`
+      : state.messages.length
+        ? "grey dot"
+        : "hidden",
     unreadCount: unread.length,
     // How many uids you have acknowledged. `blockCreated` is the block's
     // birthday, NOT when it was addressed to you; see inbox.ts.
@@ -71,6 +89,7 @@ export const unload = (): void => {
   session += 1;
   closePicker();
   closePanel();
+  stopDiscussions();
   hideTip();
   try {
     disposeSlash?.();
@@ -89,10 +108,20 @@ export const unload = (): void => {
 
 export const load = async (): Promise<void> => {
   const mine = ++session;
-  window.roamInbox = { version: VERSION, unload, refresh: refreshLists, debug };
+  window.roamInbox = {
+    version: VERSION,
+    unload,
+    refresh: refreshLists,
+    debug,
+    discuss: openDiscussions,
+  };
   injectStyle();
+  startDiscussions();
   disposeSlash = registerMessageCommand();
-  if (!disposeSlash) console.warn(`${LOG} this Roam build has no slash-command API; /message is disabled`);
+  if (!disposeSlash)
+    console.warn(
+      `${LOG} this Roam build has no slash-command API; /message is disabled`,
+    );
   warmMembers();
 
   const identity = await currentUser().catch((e) => {
@@ -101,12 +130,16 @@ export const load = async (): Promise<void> => {
   });
   if (mine !== session) return;
   if (!identity) {
-    console.warn(`${LOG} no display page for the current user: /message works, inbox badge disabled`);
+    console.warn(
+      `${LOG} no display page for the current user: /message works, inbox badge disabled`,
+    );
     return;
   }
   const me = setIdentity(identity);
   await Promise.all([
-    ensurePage(me.address).catch((e) => logError(`could not create ${me.address}`, e)),
+    ensurePage(me.address).catch((e) =>
+      logError(`could not create ${me.address}`, e),
+    ),
     refreshLists(),
   ]);
   if (mine !== session) return;

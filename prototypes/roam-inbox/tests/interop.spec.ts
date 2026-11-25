@@ -22,7 +22,7 @@ const sourceFiles = (dir: string): string[] =>
   readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
     const full = join(dir, entry.name);
     if (entry.isDirectory()) return sourceFiles(full);
-    return entry.name.endsWith(".ts") ? [full] : [];
+    return /\.tsx?$/.test(entry.name) ? [full] : [];
   });
 
 describe("module interop", () => {
@@ -41,7 +41,11 @@ describe("module interop", () => {
     const offenders = sourceFiles(SRC).flatMap((file) =>
       readFileSync(file, "utf8")
         .split("\n")
-        .filter((line) => /roamAlphaAPI\.(q|pull|createBlock|updateBlock|createPage)\b/.test(line))
+        .filter((line) =>
+          /roamAlphaAPI\.(q|pull|createBlock|updateBlock|createPage)\b/.test(
+            line,
+          ),
+        )
         .map((line) => `${file.replace(SRC, "src")}: ${line.trim()}`),
     );
     expect(offenders).toEqual([]);
