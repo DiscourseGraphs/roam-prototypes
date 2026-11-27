@@ -1,0 +1,17 @@
+# Changelog
+
+## 0.1.1 - 2026-08-20
+
+- Chip now appears at the pointer's x, just below the link's whole line block (flipping above at the viewport edge), and the figure card anchors to the chip — long node titles no longer force mouse travel, and wrapped multi-line links no longer get the chip between their lines (first and second live-test feedback).
+- The `[[XXX]] - …` prefix fallback is now always active alongside the graph's configured formats, so near-miss titles (e.g. an EVD ending in a bare dash with no Source, which the plugin's format regex rejects) still get the chip (second live-test finding).
+
+## 0.1.0 - 2026-08-20
+
+- v1 implementation: hover chip on discourse-node references (event delegation, singleton, zero layout shift), pinned figure card, full-viewport lightbox, Esc unwinding.
+- Key-figure resolution: manual `discourse-graph.keyImage` prop (ENG-2123 forward-compat) with precedence over the automatic first-image walk (embeds, block refs, children, cycle guard); 5-minute per-page cache with hover prefetch.
+- Node-type eligibility from the graph's `discourse-graph/nodes/*` formats, with a `[[XXX]] - …` fallback and an extra-pattern setting.
+- Tests: 34 (unit + a dist smoke test on the roam/js load path); opt-in strict typecheck via `tsconfig.check.json`.
+
+## 0.0.0 - 2026-08-20
+
+- Created the Hover Key Figure prototype scaffold.
