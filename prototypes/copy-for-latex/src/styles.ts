@@ -1,0 +1,67 @@
+/* The menu's stylesheet, carried in the bundle rather than shipped beside it.
+ *
+ * Roam injects a published `extension.css` when it loads an extension from a
+ * URL, but nothing injects it when the module is pulled in by `import()` from
+ * a `roam/js` block — which is how previews get tested. The menu is
+ * `position: fixed`, so without these rules it renders as a static, unstyled
+ * list at the end of <body>: present, clickable, and invisible in practice.
+ *
+ * Keeping the rules here means the extension looks and behaves the same on
+ * both paths. `addStyle` returns the element so unload can remove it.
+ */
+export const MENU_CSS = `
+.roam-prototype-copy-for-latex.cfl-menu {
+  position: fixed;
+  z-index: 100;
+  min-width: 180px;
+  margin: 0;
+  padding: 5px;
+  list-style: none;
+  border-radius: 3px;
+  background: #fff;
+  color: #182026;
+  font-size: 14px;
+  line-height: 1.5;
+  box-shadow:
+    0 0 0 1px rgba(16, 22, 26, 0.1),
+    0 2px 4px rgba(16, 22, 26, 0.2),
+    0 8px 24px rgba(16, 22, 26, 0.2);
+}
+
+.roam-prototype-copy-for-latex .cfl-menu-item {
+  display: block;
+  padding: 5px 7px;
+  border-radius: 2px;
+  color: inherit;
+  text-decoration: none;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.roam-prototype-copy-for-latex .cfl-menu-item:hover {
+  background: rgba(167, 182, 194, 0.3);
+  text-decoration: none;
+}
+
+.roam-prototype-copy-for-latex .cfl-menu-divider {
+  margin: 5px 0;
+  border-top: 1px solid rgba(16, 22, 26, 0.15);
+}
+
+/* Roam marks dark mode on the body. There is no more semantic hook for it,
+ * so this one selector does track the host. */
+.bp3-dark .roam-prototype-copy-for-latex.cfl-menu,
+body.bp3-dark .roam-prototype-copy-for-latex.cfl-menu {
+  background: #30404d;
+  color: #f5f8fa;
+  box-shadow:
+    0 0 0 1px rgba(16, 22, 26, 0.2),
+    0 2px 4px rgba(16, 22, 26, 0.4),
+    0 8px 24px rgba(16, 22, 26, 0.4);
+}
+
+.bp3-dark .roam-prototype-copy-for-latex .cfl-menu-divider,
+body.bp3-dark .roam-prototype-copy-for-latex .cfl-menu-divider {
+  border-top-color: rgba(255, 255, 255, 0.15);
+}
+`;
