@@ -33,9 +33,7 @@ function getAllPages(){
 	return [];
 }
 
-function getCitekeyPages() {
-	return new Map([]);
-}
+const getCitekeyPages = fn((): Map<string, string> => new Map());
 
 function getCitekeyPagesWithEditTime(){
 	return new Map([]);
@@ -63,18 +61,16 @@ function hasBlockChildren(uid) {
 	return [uid_with_existing_block_with_children, existing_page_with_content_uid].includes(uid);
 }
 
-const importItemMetadata = fn(({ item }, uid) => {
-	const pageUID = uid || existing_page_uid;
-	return Promise.resolve({
-		args: { blocks: [], uid: pageUID },
-		error: null,
-		page: { new: !uid, title: "@" + item.key, uid: pageUID },
-		raw: {},
-		success: true
-	});
-});
+/** The shape both import functions resolve with. Widened past the happy path, so that tests can stub failed and uncertain outcomes. */
+type MockImportOutcome = {
+	args: { blocks: unknown[], uid: string },
+	error: unknown,
+	page: { new: boolean, title: string, uid: string },
+	raw?: Record<string, unknown>,
+	success: boolean | null
+};
 
-const importItemNotes = fn(({ item }, uid) => {
+const mockImportOutcome = ({ item }, uid): Promise<MockImportOutcome> => {
 	const pageUID = uid || existing_page_uid;
 	return Promise.resolve({
 		args: { blocks: [], uid: pageUID },
@@ -83,7 +79,11 @@ const importItemNotes = fn(({ item }, uid) => {
 		raw: {},
 		success: true
 	});
-});
+};
+
+const importItemMetadata = fn(mockImportOutcome);
+
+const importItemNotes = fn(mockImportOutcome);
 
 function makeDNP(date: Date | any, { brackets = true }: { brackets?: boolean } = {}) {
 	const thisdate = date.constructor === Date ? date : new Date(date);
