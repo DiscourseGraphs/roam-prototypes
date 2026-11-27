@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.6.1 - 2026-08-25
+
+- Action-row buttons no longer get crushed when the row runs out of width
+  next to the page title: each button keeps its natural single-line size
+  (`flex:none`, `white-space:nowrap`) and the row wraps onto more lines
+  instead. Before, flex shrink squeezed every button to min-content and
+  labels broke mid-word — with the vertically centered icon landing beside
+  the middle line, "Convert this Issue…" read as scrambled.
+
+## 0.6.0 - 2026-08-25
+
+- SmartBlock buttons declared in the properties block now render in the
+  title-level actions row — after the configured/registered action slots,
+  in block order — instead of at the bottom of the property grid (workflow
+  verbs at the title, the grid stays nouns; PRO-207). The row stays fresh
+  through the existing pull watch, so a self-consuming button (the
+  node-convert flow deletes its own block; its cancel path re-creates it)
+  disappears and returns with the snapshot.
+- A button's declared Blueprint icon (`{{…:SmartBlock:…:Icon=exchange}}`)
+  renders before its label, the way SmartBlocks' native button does; the
+  hardcoded 🖼 prefix is gone. A button without `Icon=` shows its label
+  only — the panel never invents an icon.
+
 ## 0.5.2 - 2026-08-19
 
 - The panel now updates when someone ELSE writes the properties block — a

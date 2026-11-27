@@ -99,6 +99,7 @@ describe("parsePropertiesTree", () => {
     uid: "d-btn",
     label: "Project canvas",
     workflow: "Page Canvas",
+    icon: "presentation",
   });
   eq("parse: duplicate key flagged", drifted.anomalies[0], {
     type: "duplicate-key",
