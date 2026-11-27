@@ -79,12 +79,14 @@ const Comment = ({
 type ComposerProps = {
   uid: string;
   isNew?: boolean;
+  autoFocus?: boolean;
   onPosted: () => Promise<void>;
 };
 
 const Composer = ({
   uid,
   isNew = false,
+  autoFocus = false,
   onPosted,
 }: ComposerProps): React.ReactElement => {
   const { draft, edit, submit } = useDiscussionDraft(
@@ -115,6 +117,7 @@ const Composer = ({
       <TextArea
         fill
         rows={2}
+        autoFocus={autoFocus}
         aria-label={isNew ? "New thread" : "Reply to thread"}
         placeholder={isNew ? "Start a discussion…" : "Write a reply…"}
         value={text}
@@ -448,7 +451,20 @@ export const DiscussionRail = ({
   const [preferredSource, setPreferredSource] = React.useState(
     context.sourceUid || context.outlineUid,
   );
-  const [composing, setComposing] = React.useState(false);
+  const [pickingSource, setPickingSource] = React.useState(false);
+  const [dismissedRequest, setDismissedRequest] = React.useState<DiscussionContext>();
+  const commentSource =
+    context.composeComment &&
+    !context.nativeStorage &&
+    context.outlineTitle !== "[[roam/comments]]" &&
+    context !== dismissedRequest
+      ? context.sourceUid
+      : undefined;
+  const composing = Boolean(commentSource) || pickingSource;
+  const closeComposer = () => {
+    setDismissedRequest(context);
+    setPickingSource(false);
+  };
   const [search, setSearch] = React.useState("");
   const [findingSources, setFindingSources] = React.useState(false);
   const [options, setOptions] = React.useState<DiscussionSource[]>([]);
@@ -456,6 +472,7 @@ export const DiscussionRail = ({
   const sourceUid = options.some((s) => s.uid === preferredSource)
     ? preferredSource
     : options[0]?.uid;
+  const composerUid = commentSource || (!findingSources ? sourceUid : undefined);
   const [loading, setLoading] = React.useState(true);
   const [refreshing, setRefreshing] = React.useState(false);
   const [error, setError] = React.useState("");
@@ -531,7 +548,7 @@ export const DiscussionRail = ({
     ) || undefined;
   const selectedSource = addressedThread?.source.uid ?? context.sourceUid;
   React.useEffect(() => {
-    if (!composing) return;
+    if (!pickingSource || commentSource) return;
     let current = true;
     setFindingSources(true);
     const load = () =>
@@ -557,7 +574,7 @@ export const DiscussionRail = ({
       current = false;
       window.clearTimeout(timer);
     };
-  }, [composing, context, search, snapshot, selectedSource]);
+  }, [pickingSource, commentSource, context, search, snapshot, selectedSource]);
   const rail = React.useRef<HTMLElement>(null);
   const [compact, setCompact] = React.useState(
     () => window.matchMedia?.("(max-width:650px)").matches || false,
@@ -578,6 +595,7 @@ export const DiscussionRail = ({
   React.useLayoutEffect(() => {
     if (loading || error || appliedContext.current === context) return;
     appliedContext.current = context;
+    if (commentSource) return;
     const candidates = snapshot.threads.filter(
       (t) => !selectedSource || t.source.uid === selectedSource,
     );
@@ -602,6 +620,7 @@ export const DiscussionRail = ({
     filter,
     composing,
     addressedThread,
+    commentSource,
     selectedSource,
   ]);
 
@@ -772,7 +791,8 @@ export const DiscussionRail = ({
           disabled={!composing && loading}
           onClick={() => {
             setSearch("");
-            setComposing(!composing);
+            if (composing) closeComposer();
+            else setPickingSource(true);
           }}
         />
       </div>
@@ -788,38 +808,45 @@ export const DiscussionRail = ({
             className="rmi-discussion-new"
             aria-label="Start a discussion"
           >
-            <label htmlFor="rmi-discussion-source-select">
-              Comment on a block
-            </label>
-            <input
-              className="bp3-input"
-              aria-label="Search source blocks"
-              placeholder="Search this outline…"
-              value={search}
-              onChange={(e) => setSearch(e.currentTarget.value)}
-            />
-            {!findingSources && !options.length && (
-              <p>No matching source blocks.</p>
+            {commentSource ? (
+              <p>{context.outlineTitle || "Empty block"}</p>
+            ) : (
+              <>
+                <label htmlFor="rmi-discussion-source-select">
+                  Comment on a block
+                </label>
+                <input
+                  className="bp3-input"
+                  aria-label="Search source blocks"
+                  placeholder="Search this outline…"
+                  value={search}
+                  onChange={(e) => setSearch(e.currentTarget.value)}
+                />
+                {!findingSources && !options.length && (
+                  <p>No matching source blocks.</p>
+                )}
+                <HTMLSelect
+                  id="rmi-discussion-source-select"
+                  fill
+                  autoFocus
+                  value={sourceUid || ""}
+                  onChange={(e) => setPreferredSource(e.currentTarget.value)}
+                  options={options.map((s) => ({
+                    value: s.uid,
+                    label: prettify(s.string, null).slice(0, 100) || "Empty block",
+                  }))}
+                />
+              </>
             )}
-            <HTMLSelect
-              id="rmi-discussion-source-select"
-              fill
-              autoFocus
-              value={sourceUid || ""}
-              onChange={(e) => setPreferredSource(e.currentTarget.value)}
-              options={options.map((s) => ({
-                value: s.uid,
-                label: prettify(s.string, null).slice(0, 100) || "Empty block",
-              }))}
-            />
-            {sourceUid && !findingSources && (
+            {composerUid && (
               <Composer
-                key={`new:${sourceUid}`}
-                uid={sourceUid}
+                key={`new:${composerUid}`}
+                uid={composerUid}
+                autoFocus={Boolean(commentSource)}
                 isNew
                 onPosted={async () => {
                   setFilter("open");
-                  setComposing(false);
+                  closeComposer();
                   composeButton.current?.focus();
                   await reload();
                 }}
