@@ -1,0 +1,26 @@
+{
+  "name": "graph-home",
+  "version": "0.0.0",
+  "private": true,
+  "description": "A navigation hub for a Roam graph home page.",
+  "type": "module",
+  "scripts": {
+    "dev": "roam-prototype dev",
+    "build": "roam-prototype build",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "roamjs-components": "catalog:",
+    "use-sync-external-store": "catalog:",
+    "@blueprintjs/core": "3.50.4",
+    "react": "17.0.2",
+    "react-dom": "17.0.2"
+  },
+  "devDependencies": {
+    "@discoursegraphs/extension-base": "workspace:*",
+    "jsdom": "catalog:",
+    "vitest": "catalog:",
+    "@types/react": "17.0.39",
+    "@types/react-dom": "17.0.13"
+  }
+}
